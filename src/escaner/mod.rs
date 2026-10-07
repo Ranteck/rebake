@@ -1,6 +1,8 @@
+pub mod archivos;
+pub mod git;
 pub mod plugins;
 
-use crate::modelo::{Ajuste, Fuente, Perfil, Tipo, TituloClaudeMd};
+use crate::modelo::{Ajuste, Fuente, Perfil, Tipo, TituloClaudeMd, Via};
 use crate::rutas;
 use anyhow::Result;
 use serde_json::Value;
@@ -76,6 +78,7 @@ pub fn escanear(entorno: &Entorno, perfiles: &[Perfil]) -> Escaneo {
     for perfil in perfiles {
         let dir = rutas::expandir(&perfil.dir, &entorno.home);
         plugins::detectar(entorno, &perfil.nombre, &dir, &mut salida);
+        archivos::detectar(entorno, &perfil.nombre, &dir, &mut salida);
     }
     salida.hallazgos = agrupar(std::mem::take(&mut salida.hallazgos));
     salida
@@ -120,5 +123,19 @@ pub fn leer_json(ruta: &Path, entorno: &Entorno, avisos: &mut Vec<String>) -> Op
             avisos.push(format!("no pude leer {}: {e}", rutas::contraer(ruta, &entorno.home)));
             None
         }
+    }
+}
+
+pub fn asignar_origen(h: &mut Hallazgo, ruta: &Path, entorno: &Entorno) -> bool {
+    match git::origen_de_archivo(ruta) {
+        git::Origen::Repo(repo) => {
+            h.fuente = Some(Fuente { repo, via: Via::Symlink, doc: None });
+            true
+        }
+        git::Origen::RepoSinRemoto(raiz) => {
+            h.pista = Some(format!("repo local sin remoto: {}", rutas::contraer(&raiz, &entorno.home)));
+            true
+        }
+        git::Origen::Desconocido => false,
     }
 }
