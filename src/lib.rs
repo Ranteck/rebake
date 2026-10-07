@@ -1,4 +1,5 @@
 pub mod archivo;
+pub mod checklist;
 pub mod escaner;
 pub mod modelo;
 pub mod perfiles;

@@ -84,6 +84,7 @@ pub fn escanear(entorno: &Entorno, perfiles: &[Perfil]) -> Escaneo {
         plugins::detectar(entorno, &perfil.nombre, &dir, &mut salida);
         archivos::detectar(entorno, &perfil.nombre, &dir, &mut salida);
         comandos::detectar(entorno, &perfil.nombre, &dir, &mut salida);
+        crate::checklist::detectar(entorno, &perfil.nombre, &dir, &mut salida);
     }
     salida.hallazgos = agrupar(std::mem::take(&mut salida.hallazgos));
     // Cada detector relee settings.json: un archivo inválido avisaría una vez por detector.
