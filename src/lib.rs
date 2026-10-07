@@ -1,6 +1,7 @@
 pub mod archivo;
 pub mod checklist;
 pub mod escaner;
+pub mod fusion;
 pub mod modelo;
 pub mod perfiles;
 pub mod proceso;
