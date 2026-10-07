@@ -44,3 +44,19 @@ impl HomeFalso {
         p
     }
 }
+
+pub struct PacmanFalso(pub Vec<PathBuf>);
+
+impl recetario::escaner::Pacman for PacmanFalso {
+    fn es_del_sistema(&self, binario: &Path) -> bool {
+        self.0.iter().any(|p| p == binario)
+    }
+}
+
+pub fn entorno<'a>(h: &HomeFalso, pacman: &'a PacmanFalso) -> recetario::escaner::Entorno<'a> {
+    recetario::escaner::Entorno { home: h.ruta().to_path_buf(), path: vec![h.ruta().join("bin")], pacman }
+}
+
+pub fn perfil(nombre: &str, dir: &str) -> recetario::modelo::Perfil {
+    recetario::modelo::Perfil { nombre: nombre.into(), dir: dir.into() }
+}
