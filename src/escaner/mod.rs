@@ -1,4 +1,5 @@
 pub mod archivos;
+pub mod comandos;
 pub mod git;
 pub mod plugins;
 
@@ -75,12 +76,19 @@ pub struct Escaneo {
 
 pub fn escanear(entorno: &Entorno, perfiles: &[Perfil]) -> Escaneo {
     let mut salida = Escaneo::default();
+    let mut claude = Hallazgo::nuevo("claude", Tipo::Claude, None);
+    claude.pista = Some("Claude Code CLI".into());
+    salida.hallazgos.push(claude);
     for perfil in perfiles {
         let dir = rutas::expandir(&perfil.dir, &entorno.home);
         plugins::detectar(entorno, &perfil.nombre, &dir, &mut salida);
         archivos::detectar(entorno, &perfil.nombre, &dir, &mut salida);
+        comandos::detectar(entorno, &perfil.nombre, &dir, &mut salida);
     }
     salida.hallazgos = agrupar(std::mem::take(&mut salida.hallazgos));
+    // Cada detector relee settings.json: un archivo inválido avisaría una vez por detector.
+    let mut vistos = std::collections::HashSet::new();
+    salida.avisos.retain(|a| vistos.insert(a.clone()));
     salida
 }
 
