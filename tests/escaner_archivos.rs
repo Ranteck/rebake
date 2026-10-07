@@ -95,3 +95,8 @@ fn normalizar_url_saca_credenciales() {
     assert_eq!(normalizar_url("https://github.com/a/b"), "https://github.com/a/b");
     assert_eq!(normalizar_url("git@github.com:a/b.git"), "git@github.com:a/b");
 }
+
+#[test]
+fn normalizar_url_saca_query() {
+    assert_eq!(recetario::escaner::normalizar_url("https://github.com/a/b.git?token=x"), "https://github.com/a/b");
+}

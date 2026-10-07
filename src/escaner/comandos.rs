@@ -7,16 +7,19 @@ use std::path::{Path, PathBuf};
 pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
     let Some(settings) = leer_json(&dir.join("settings.json"), entorno, &mut salida.avisos) else { return };
     for comando in comandos_de_hooks(&settings) {
-        let mut h = Hallazgo::nuevo(&format!("hook:{comando}"), Tipo::Hook, Some(perfil));
+        let visible = crate::secretos::ocultar(&comando);
+        let mut h = Hallazgo::nuevo(&format!("hook:{visible}"), Tipo::Hook, Some(perfil));
         h.requiere = vec!["claude".into()];
-        match palabras(&comando, &entorno.home).first().and_then(|b| herramienta(entorno, b, "hook", salida)) {
+        // Las asignaciones iniciales (`VAR=valor cmd`) no son el binario y pueden traer secretos.
+        let binario = palabras(&comando, &entorno.home).into_iter().find(|p| !es_asignacion(p));
+        match binario.and_then(|b| herramienta(entorno, &b, "hook", salida)) {
             Some(tool) => {
                 h.requiere.push(tool.id.clone());
                 h.fuente = tool.fuente.clone();
-                if h.fuente.is_none() { h.pista = Some(format!("comando de hook: {comando}")); }
+                if h.fuente.is_none() { h.pista = Some(format!("comando de hook: {visible}")); }
                 salida.hallazgos.push(tool);
             }
-            None => h.pista = Some(format!("comando de hook: {comando}")),
+            None => h.pista = Some(format!("comando de hook: {visible}")),
         }
         salida.hallazgos.push(h);
     }
@@ -110,4 +113,8 @@ pub fn palabras(comando: &str, home: &Path) -> Vec<String> {
             }
         })
         .collect()
+}
+
+fn es_asignacion(palabra: &str) -> bool {
+    palabra.split_once('=').is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
 }

@@ -60,3 +60,14 @@ fn claude_siempre_esta() {
     let c = e.hallazgos.iter().find(|x| x.id == "claude").unwrap();
     assert_eq!(c.tipo, Tipo::Claude);
 }
+
+#[test]
+fn hook_con_secreto_no_se_guarda() {
+    let h = HomeFalso::nuevo();
+    h.binario("bin/rtk", b"\x7fELF https://github.com/ejemplo/rtk\0");
+    h.escribir(".claude/settings.json", r#"{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "API_TOKEN=supersecreto rtk hook claude"}]}]}}"#);
+    let pacman = PacmanFalso(vec![]);
+    let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
+    assert!(!format!("{e:?}").contains("supersecreto"), "{e:?}");
+    assert!(e.hallazgos.iter().any(|x| x.id == "herramienta:rtk"));
+}

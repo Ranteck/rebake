@@ -1,12 +1,12 @@
 use crate::escaner::{leer_json, Entorno, Escaneo};
 use crate::modelo::{Ajuste, Estado, Modo, Paso, Recetario, TituloClaudeMd, OCULTO};
 use crate::rutas::contraer;
+use crate::secretos;
 use serde_json::Value;
 use std::path::Path;
 
 // Estas claves las reconstruyen los instaladores; repetirlas en la checklist confunde.
 const CUBIERTAS: [&str; 4] = ["enabledPlugins", "extraKnownMarketplaces", "hooks", "statusLine"];
-const SENSIBLES: [&str; 4] = ["token", "secret", "key", "password"];
 
 pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
     if let Some(settings) = leer_json(&dir.join("settings.json"), entorno, &mut salida.avisos) {
@@ -32,7 +32,7 @@ pub fn ajustes(perfil: &str, settings: &Value) -> Vec<Ajuste> {
 }
 
 fn aplanar(perfil: &str, clave: &str, valor: &Value, oculto: bool, salida: &mut Vec<Ajuste>) {
-    let oculto = oculto || SENSIBLES.iter().any(|s| clave.to_lowercase().contains(s));
+    let oculto = oculto || secretos::clave_sensible(clave);
     match valor {
         Value::Object(mapa) => {
             for (k, v) in mapa { aplanar(perfil, &format!("{clave}.{k}"), v, oculto, salida); }
@@ -45,7 +45,7 @@ fn aplanar(perfil: &str, clave: &str, valor: &Value, oculto: bool, salida: &mut 
             salida.push(Ajuste {
                 perfil: perfil.into(),
                 clave: clave.into(),
-                valor: if oculto { OCULTO.into() } else { texto },
+                valor: if oculto || secretos::parece_secreto(&texto) { OCULTO.into() } else { secretos::ocultar(&texto) },
             });
         }
     }

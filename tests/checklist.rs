@@ -83,3 +83,13 @@ fn no_filtra_secretos() {
     assert_eq!(valor(&e.ajustes, "env.API_TOKEN").as_deref(), Some(OCULTO));
     assert_eq!(e.titulos.len(), 1);
 }
+
+#[test]
+fn valores_con_forma_de_secreto_ocultos() {
+    let s = json!({"awsCredentialExport": "/bin/export", "model": "sk-ant-api03-abcdefghijkl", "otelHeadersHelper": "/bin/h", "theme": "dark"});
+    let a = checklist::ajustes("laburo", &s);
+    for clave in ["awsCredentialExport", "model", "otelHeadersHelper"] {
+        assert_eq!(valor(&a, clave).as_deref(), Some(OCULTO), "{clave}");
+    }
+    assert_eq!(valor(&a, "theme").as_deref(), Some("dark"));
+}
