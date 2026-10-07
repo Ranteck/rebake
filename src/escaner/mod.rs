@@ -113,8 +113,17 @@ fn agrupar(hallazgos: Vec<Hallazgo>) -> Vec<Hallazgo> {
     unidos
 }
 
+/// Saca credenciales incrustadas (`https://usuario:token@host/…`): el recetario se versiona.
 pub fn normalizar_url(url: &str) -> String {
-    url.trim().trim_end_matches('/').trim_end_matches(".git").to_string()
+    let url = url.trim().trim_end_matches('/').trim_end_matches(".git");
+    match url.split_once("://") {
+        Some((esquema, resto)) => {
+            let (autoridad, ruta) = resto.split_once('/').map_or((resto, ""), |(a, r)| (a, r));
+            let host = autoridad.rsplit_once('@').map_or(autoridad, |(_, h)| h);
+            if ruta.is_empty() { format!("{esquema}://{host}") } else { format!("{esquema}://{host}/{ruta}") }
+        }
+        None => url.to_string(),
+    }
 }
 
 pub fn leer_json(ruta: &Path, entorno: &Entorno, avisos: &mut Vec<String>) -> Option<Value> {

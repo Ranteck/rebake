@@ -76,3 +76,22 @@ fn import_symlink_resuelve_repo() {
     assert_eq!(hallazgo(&e, "import:RTK.md").pista.as_deref(), Some("archivo sin origen conocido: ~/.claude/RTK.md"));
     assert_eq!(hallazgo(&e, "import:RTK.md").requiere, ["claude"]);
 }
+
+#[test]
+fn remoto_con_credenciales_no_se_guarda() {
+    let h = HomeFalso::nuevo();
+    let repo = h.repo_git("Proyectos/privado", Some("https://usuario:ghp_SECRETO123@github.com/ejemplo/privado.git"));
+    h.escribir("Proyectos/privado/skills/privado/SKILL.md", "---\nname: privado\n---\n");
+    h.enlazar(".claude/skills/privado", &repo.join("skills/privado"));
+    let e = escanear_laburo(&h);
+    assert_eq!(hallazgo(&e, "skill:privado").fuente.clone().unwrap().repo, "https://github.com/ejemplo/privado");
+    assert!(!format!("{e:?}").contains("SECRETO"));
+}
+
+#[test]
+fn normalizar_url_saca_credenciales() {
+    use recetario::escaner::normalizar_url;
+    assert_eq!(normalizar_url("https://ghp_x@github.com/a/b.git/"), "https://github.com/a/b");
+    assert_eq!(normalizar_url("https://github.com/a/b"), "https://github.com/a/b");
+    assert_eq!(normalizar_url("git@github.com:a/b.git"), "git@github.com:a/b");
+}
