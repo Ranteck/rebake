@@ -147,7 +147,16 @@ fn cabeza_de_archivo(item: &Item, home: &Path) -> Option<String> {
         ruta
     };
     let texto = std::fs::read_to_string(archivo).ok()?;
-    Some(texto.lines().take(20).collect::<Vec<_>>().join("\n"))
+    // Lo que va al prompt puede terminar en una URL si una página inyecta instrucciones:
+    // sin secretos, no hay nada que filtrar.
+    Some(
+        texto
+            .lines()
+            .take(20)
+            .map(crate::secretos::ocultar)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 pub fn investigar(t: &Trabajo, claude: &str, tope: Duration) -> Result<Receta> {

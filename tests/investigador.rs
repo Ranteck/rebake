@@ -285,3 +285,24 @@ fn requisito_con_aclaracion_usa_solo_el_identificador() {
         r.items.iter().map(|i| &i.id).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn el_prompt_no_lleva_secretos_de_los_archivos() {
+    let h = HomeFalso::nuevo();
+    h.escribir(".claude/statusline.sh", "#!/bin/bash\nAPI_TOKEN=supersecreto\ncurl -H \"Authorization: Bearer otrosecreto\" https://x\n");
+    let mut r = recetario();
+    let mut item = Item::nuevo("statusline:statusline.sh", Tipo::Statusline);
+    item.perfiles = vec!["laburo".into()];
+    item.pista = Some("archivo sin origen conocido: ~/.claude/statusline.sh".into());
+    r.items.push(item.clone());
+    let t = trabajo_para(&r, &item, h.ruta());
+    assert!(
+        t.prompt.contains("#!/bin/bash"),
+        "el prompt tiene que incluir el archivo"
+    );
+    assert!(
+        !t.prompt.contains("supersecreto") && !t.prompt.contains("otrosecreto"),
+        "{}",
+        t.prompt
+    );
+}
