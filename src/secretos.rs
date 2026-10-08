@@ -76,9 +76,28 @@ pub fn ocultar(texto: &str) -> String {
                 ocultar_siguiente = false;
                 return parte.replacen(limpia, OCULTO, 1);
             }
-            if es_esquema_de_auth(limpia) || limpia.strip_suffix(':').is_some_and(clave_sensible) {
+            // `Bearer X`, `Authorization: X` y `--token X`: el secreto es la palabra siguiente.
+            let flag_sensible = limpia.starts_with('-')
+                && !limpia.contains('=')
+                && clave_sensible(limpia.trim_start_matches('-'));
+            if es_esquema_de_auth(limpia)
+                || limpia.strip_suffix(':').is_some_and(clave_sensible)
+                || flag_sensible
+            {
                 ocultar_siguiente = true;
                 return parte.to_string();
+            }
+            // Cabecera pegada en una sola palabra: `X-Api-Key:valor`, `Authorization:Bearer`.
+            if !limpia.contains("://")
+                && let Some((nombre, valor)) = limpia.split_once(':')
+                && clave_sensible(nombre)
+                && !valor.is_empty()
+            {
+                if es_esquema_de_auth(valor) {
+                    ocultar_siguiente = true;
+                    return parte.to_string();
+                }
+                return parte.replacen(limpia, &format!("{nombre}:{OCULTO}"), 1);
             }
             if let Some((nombre, valor)) = limpia.split_once('=')
                 && clave_sensible(nombre)
@@ -89,11 +108,21 @@ pub fn ocultar(texto: &str) -> String {
             if parece_secreto(limpia) {
                 return parte.replacen(limpia, OCULTO, 1);
             }
+            // En texto libre una URL puede llevar el secreto en la ruta (webhooks): basta el host.
             if limpia.contains("://") {
-                return parte.replacen(limpia, &sin_credenciales_url(limpia), 1);
+                return parte.replacen(limpia, &solo_host(limpia), 1);
             }
             parte.to_string()
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn solo_host(url: &str) -> String {
+    let sin_credenciales = sin_credenciales_url(url);
+    let Some((esquema, resto)) = sin_credenciales.split_once("://") else {
+        return sin_credenciales;
+    };
+    let host = resto.split(['/', '?', '#']).next().unwrap_or_default();
+    format!("{esquema}://{host}")
 }
