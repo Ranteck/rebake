@@ -1198,7 +1198,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "recetario"
+name = "rebake"
 version = "0.1.0"
 dependencies = [
  "anyhow",

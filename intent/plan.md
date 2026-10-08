@@ -1,6 +1,10 @@
 # Plan: recetario (desde spec.md 2026-10-07 e intent.md 2026-10-07)
 Estado: aceptado
 
+> Nota (2026-10-07): el producto se renombró a **rebake** y el archivo de recetas a
+> `~/.config/rebake/cookbook.toml` (ver `intent.md`, `## Cambios`). Este documento conserva
+> los nombres originales como registro.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** CLI pública en Rust, con TUI, que escanea el setup de Claude Code, investiga con

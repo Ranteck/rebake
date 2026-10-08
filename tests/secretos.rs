@@ -1,5 +1,5 @@
-use recetario::modelo::OCULTO;
-use recetario::secretos::{clave_sensible, ocultar};
+use rebake::modelo::OCULTO;
+use rebake::secretos::{clave_sensible, ocultar};
 
 #[test]
 fn ocultar_asignaciones_tokens_y_cabeceras() {

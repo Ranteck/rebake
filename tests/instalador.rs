@@ -1,5 +1,5 @@
-use recetario::instalador::*;
-use recetario::modelo::*;
+use rebake::instalador::*;
+use rebake::modelo::*;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;

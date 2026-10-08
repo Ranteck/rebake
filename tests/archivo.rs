@@ -1,5 +1,5 @@
-use recetario::archivo;
-use recetario::modelo::*;
+use rebake::archivo;
+use rebake::modelo::*;
 use std::fs;
 
 fn ejemplo() -> Recetario {
@@ -36,7 +36,7 @@ fn ejemplo() -> Recetario {
 #[test]
 fn ida_y_vuelta_sin_perdidas() {
     let dir = tempfile::tempdir().unwrap();
-    let ruta = dir.path().join("recetario.toml");
+    let ruta = dir.path().join("cookbook.toml");
     let r = ejemplo();
     archivo::guardar(&ruta, &r).unwrap();
     assert_eq!(archivo::leer(&ruta).unwrap(), r);
@@ -45,20 +45,20 @@ fn ida_y_vuelta_sin_perdidas() {
 #[test]
 fn campo_desconocido_da_linea_y_columna() {
     let texto = "version = 1\n\n[[item]]\nid = \"claude\"\ntipo = \"claude\"\nestado = \"pendiente\"\ncolor = \"rojo\"\n";
-    let err = archivo::parsear(texto, "recetario.toml")
+    let err = archivo::parsear(texto, "cookbook.toml")
         .unwrap_err()
         .to_string();
-    assert!(err.starts_with("recetario.toml:"), "{err}");
+    assert!(err.starts_with("cookbook.toml:"), "{err}");
     assert!(err.contains("color"), "{err}");
 }
 
 #[test]
 fn guardar_a_traves_de_symlink_conserva_el_enlace() {
     let dir = tempfile::tempdir().unwrap();
-    let real = dir.path().join("repo-privado").join("recetario.toml");
+    let real = dir.path().join("repo-privado").join("cookbook.toml");
     fs::create_dir_all(real.parent().unwrap()).unwrap();
     fs::write(&real, "version = 1\n").unwrap();
-    let enlace = dir.path().join("recetario.toml");
+    let enlace = dir.path().join("cookbook.toml");
     std::os::unix::fs::symlink(&real, &enlace).unwrap();
 
     archivo::guardar(&enlace, &ejemplo()).unwrap();
@@ -80,8 +80,8 @@ fn guardar_a_traves_de_symlink_conserva_el_enlace() {
 fn ruta_por_defecto_en_config() {
     let home = std::path::Path::new("/home/ejemplo");
     assert_eq!(
-        recetario::rutas::archivo_por_defecto(home),
-        home.join(".config/recetario/recetario.toml")
+        rebake::rutas::archivo_por_defecto(home),
+        home.join(".config/rebake/cookbook.toml")
     );
 }
 

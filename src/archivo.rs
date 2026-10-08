@@ -43,7 +43,7 @@ pub fn guardar(ruta: &Path, r: &Recetario) -> Result<()> {
         .context("la ruta del recetario no tiene carpeta")?;
     fs::create_dir_all(dir).with_context(|| format!("no pude crear {}", dir.display()))?;
     let texto = toml::to_string_pretty(r).context("no pude serializar el recetario")?;
-    let temporal = dir.join(format!(".recetario.toml.{}.tmp", std::process::id()));
+    let temporal = dir.join(format!(".cookbook.toml.{}.tmp", std::process::id()));
     let mut f = fs::File::create(&temporal)
         .with_context(|| format!("no pude crear {}", temporal.display()))?;
     f.write_all(texto.as_bytes())?;

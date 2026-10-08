@@ -76,7 +76,7 @@ struct PasoRespuesta {
 }
 
 pub fn binario_claude() -> String {
-    std::env::var("RECETARIO_CLAUDE").unwrap_or_else(|_| "claude".into())
+    std::env::var("REBAKE_CLAUDE").unwrap_or_else(|_| "claude".into())
 }
 
 pub fn argumentos(prompt: &str) -> Vec<String> {

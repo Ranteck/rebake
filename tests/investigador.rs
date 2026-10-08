@@ -1,7 +1,7 @@
 mod comun;
 use comun::HomeFalso;
-use recetario::investigador::*;
-use recetario::modelo::*;
+use rebake::investigador::*;
+use rebake::modelo::*;
 use std::time::Duration;
 
 const VALIDA: &str = r#"{"type":"result","subtype":"success","is_error":false,"result":"ok","structured_output":{

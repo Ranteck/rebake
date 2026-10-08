@@ -1,9 +1,9 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use recetario::modelo::*;
-use recetario::tui::app::{App, Efecto};
-use recetario::tui::vista;
+use rebake::modelo::*;
+use rebake::tui::app::{App, Efecto};
+use rebake::tui::vista;
 
 fn recetario() -> Recetario {
     let mut r = Recetario::nuevo();
@@ -121,7 +121,7 @@ fn investigar_todo_pide_solo_pendientes() {
 
 #[test]
 fn excluir_usa_el_item_elegido_aunque_cambie_la_lista() {
-    use recetario::investigador::{Receta, Requisito};
+    use rebake::investigador::{Receta, Requisito};
     let mut app = App::nueva(recetario());
     let pos = app
         .visibles()
@@ -175,7 +175,7 @@ fn durante_la_instalacion_no_se_reinstala_ni_se_sale_sin_confirmar() {
 
 #[test]
 fn al_terminar_la_instalacion_resume_y_va_a_la_checklist() {
-    use recetario::instalador::{Evento, Resultado};
+    use rebake::instalador::{Evento, Resultado};
     let mut app = App::nueva(recetario());
     app.instalacion = vec![
         ("claude".into(), None),
@@ -190,7 +190,7 @@ fn al_terminar_la_instalacion_resume_y_va_a_la_checklist() {
         Resultado::Fallo("`exit 7` terminó con código Some(7)".into()),
     ));
     assert!(!app.instalando);
-    assert_eq!(app.pestana, recetario::tui::app::Pestana::Checklist);
+    assert_eq!(app.pestana, rebake::tui::app::Pestana::Checklist);
     let m = app.mensaje.clone().unwrap();
     assert!(
         m.contains("1 instaladas")
@@ -198,7 +198,7 @@ fn al_terminar_la_instalacion_resume_y_va_a_la_checklist() {
             && m.contains("ultima-instalacion.log"),
         "{m}"
     );
-    app.pestana = recetario::tui::app::Pestana::Instalacion;
+    app.pestana = rebake::tui::app::Pestana::Instalacion;
     let p = pantalla(&app);
     assert!(
         p.contains("✗ plugin:codex@openai-codex") && p.contains("código Some(7)"),

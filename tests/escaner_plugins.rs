@@ -1,7 +1,7 @@
 mod comun;
 use comun::*;
-use recetario::escaner::escanear;
-use recetario::modelo::Via;
+use rebake::escaner::escanear;
+use rebake::modelo::Via;
 
 const CONOCIDOS: &str = r#"{
   "openai-codex": {"source": {"source": "github", "repo": "openai/codex-plugin-cc"}, "installLocation": "x"}

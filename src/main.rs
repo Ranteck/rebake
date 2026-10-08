@@ -1,21 +1,21 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use recetario::escaner::{Entorno, PacmanReal};
-use recetario::instalador::{self, Evento, Opciones, Resultado};
-use recetario::investigador::{self, aplicar, en_paralelo};
-use recetario::{acciones, archivo, rutas, servicio};
+use rebake::escaner::{Entorno, PacmanReal};
+use rebake::instalador::{self, Evento, Opciones, Resultado};
+use rebake::investigador::{self, aplicar, en_paralelo};
+use rebake::{acciones, archivo, rutas, servicio};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(
-    name = "recetario",
+    name = "rebake",
     version,
-    about = "Recetario de instaladores para un setup de Claude Code"
+    about = "Vuelve a hornear tu setup de Claude Code desde un cookbook de recetas de instalación"
 )]
 struct Cli {
-    /// Recetario a usar (por defecto ~/.config/recetario/recetario.toml)
+    /// Cookbook a usar (por defecto ~/.config/rebake/cookbook.toml)
     #[arg(long, global = true)]
     archivo: Option<PathBuf>,
     #[command(subcommand)]
@@ -24,7 +24,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Comando {
-    /// Escanea esta PC y agrega lo nuevo al recetario
+    /// Escanea esta PC y agrega lo nuevo al cookbook
     Escanear,
     /// Investiga con claude -p los ítems pendientes (o los ids indicados)
     Investigar { ids: Vec<String> },
@@ -37,7 +37,7 @@ enum Comando {
         #[arg(long)]
         si: bool,
     },
-    /// Cambia el nombre de un perfil en todo el recetario
+    /// Cambia el nombre de un perfil en todo el cookbook
     RenombrarPerfil { viejo: String, nuevo: String },
 }
 
@@ -46,7 +46,7 @@ fn main() -> ExitCode {
     let home = match rutas::home() {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("recetario: {e:#}");
+            eprintln!("rebake: {e:#}");
             return ExitCode::FAILURE;
         }
     };
@@ -56,7 +56,7 @@ fn main() -> ExitCode {
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
             tracing::error!(error = %format!("{e:#}"), "el comando falló");
-            eprintln!("recetario: {e:#}");
+            eprintln!("rebake: {e:#}");
             ExitCode::FAILURE
         }
     }
@@ -65,11 +65,11 @@ fn main() -> ExitCode {
 fn iniciar_logs(home: &Path) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let dir = rutas::dir_estado(home);
     if let Err(e) = std::fs::create_dir_all(&dir) {
-        eprintln!("recetario: sin logs, no pude crear {}: {e}", dir.display());
+        eprintln!("rebake: sin logs, no pude crear {}: {e}", dir.display());
         return None;
     }
     let (escritor, guardia) =
-        tracing_appender::non_blocking(tracing_appender::rolling::never(&dir, "recetario.log"));
+        tracing_appender::non_blocking(tracing_appender::rolling::never(&dir, "rebake.log"));
     tracing_subscriber::fmt()
         .with_writer(escritor)
         .with_ansi(false)
@@ -84,7 +84,7 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
         .archivo
         .unwrap_or_else(|| rutas::archivo_por_defecto(home));
     let Some(comando) = cli.comando else {
-        recetario::tui::ejecutar(&ruta, home)?;
+        rebake::tui::ejecutar(&ruta, home)?;
         return Ok(true);
     };
     let mut r = archivo::leer(&ruta)?;
@@ -123,7 +123,7 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
 }
 
 fn investigar(
-    r: &mut recetario::modelo::Recetario,
+    r: &mut rebake::modelo::Recetario,
     ruta: &Path,
     ids: &[String],
     home: &Path,
@@ -157,12 +157,7 @@ fn investigar(
     Ok(fallidos == 0)
 }
 
-fn instalar(
-    r: &recetario::modelo::Recetario,
-    home: &Path,
-    dry_run: bool,
-    si: bool,
-) -> Result<bool> {
+fn instalar(r: &rebake::modelo::Recetario, home: &Path, dry_run: bool, si: bool) -> Result<bool> {
     let orden = instalador::planificar(r)?;
     if orden.is_empty() {
         println!("no hay recetas aprobadas");

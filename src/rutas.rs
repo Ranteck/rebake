@@ -25,11 +25,11 @@ pub fn contraer(ruta: &Path, home: &Path) -> String {
 }
 
 pub fn archivo_por_defecto(home: &Path) -> PathBuf {
-    home.join(".config/recetario/recetario.toml")
+    home.join(".config/rebake/cookbook.toml")
 }
 
 pub fn dir_estado(home: &Path) -> PathBuf {
-    home.join(".local/state/recetario")
+    home.join(".local/state/rebake")
 }
 
 /// Fecha local no hace falta: `investigado` es informativo, y UTC evita depender de la zona.

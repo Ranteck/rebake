@@ -1,6 +1,10 @@
 # Spec: recetario (desde intent.md 2026-10-07)
 Estado: aceptado
 
+> Nota (2026-10-07): el producto se renombró a **rebake** y el archivo de recetas a
+> `~/.config/rebake/cookbook.toml` (ver `intent.md`, `## Cambios`). Este documento conserva
+> los nombres originales como registro.
+
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;
   Denis nombra cada perfil una vez y las rutas se guardan con `~`. Origen: Usuarios — "sus

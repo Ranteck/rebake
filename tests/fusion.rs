@@ -1,7 +1,7 @@
-use recetario::escaner::{Escaneo, Hallazgo};
-use recetario::fusion::{asegurar_perfiles, fusionar};
-use recetario::modelo::*;
-use recetario::perfiles::PerfilDetectado;
+use rebake::escaner::{Escaneo, Hallazgo};
+use rebake::fusion::{asegurar_perfiles, fusionar};
+use rebake::modelo::*;
+use rebake::perfiles::PerfilDetectado;
 use std::path::{Path, PathBuf};
 
 fn base() -> Recetario {

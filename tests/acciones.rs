@@ -1,5 +1,5 @@
-use recetario::acciones::*;
-use recetario::modelo::*;
+use rebake::acciones::*;
+use rebake::modelo::*;
 
 fn recetario_con(estado: Estado) -> Recetario {
     let mut r = Recetario::nuevo();

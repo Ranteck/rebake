@@ -1,6 +1,6 @@
 mod comun;
 use comun::HomeFalso;
-use recetario::perfiles::detectar;
+use rebake::perfiles::detectar;
 
 #[test]
 fn detecta_claude_y_claude_guion() {

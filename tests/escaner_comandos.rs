@@ -1,7 +1,7 @@
 mod comun;
 use comun::*;
-use recetario::escaner::{comandos::palabras, escanear};
-use recetario::modelo::Tipo;
+use rebake::escaner::{comandos::palabras, escanear};
+use rebake::modelo::Tipo;
 use std::path::Path;
 
 #[test]

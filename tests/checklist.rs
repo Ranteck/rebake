@@ -1,8 +1,8 @@
 mod comun;
 use comun::*;
-use recetario::checklist;
-use recetario::escaner::escanear;
-use recetario::modelo::*;
+use rebake::checklist;
+use rebake::escaner::escanear;
+use rebake::modelo::*;
 use serde_json::json;
 
 fn valor(a: &[Ajuste], clave: &str) -> Option<String> {

@@ -1,7 +1,7 @@
 mod comun;
 use comun::*;
-use recetario::escaner::{Escaneo, escanear};
-use recetario::modelo::Via;
+use rebake::escaner::{Escaneo, escanear};
+use rebake::modelo::Via;
 
 fn escanear_laburo(h: &HomeFalso) -> Escaneo {
     h.escribir(".claude/settings.json", "{}");
@@ -9,7 +9,7 @@ fn escanear_laburo(h: &HomeFalso) -> Escaneo {
     escanear(&entorno(h, &pacman), &[perfil("laburo", "~/.claude")])
 }
 
-fn hallazgo<'a>(e: &'a Escaneo, id: &str) -> &'a recetario::escaner::Hallazgo {
+fn hallazgo<'a>(e: &'a Escaneo, id: &str) -> &'a rebake::escaner::Hallazgo {
     e.hallazgos
         .iter()
         .find(|x| x.id == id)
@@ -142,7 +142,7 @@ fn remoto_con_credenciales_no_se_guarda() {
 
 #[test]
 fn normalizar_url_saca_credenciales() {
-    use recetario::escaner::normalizar_url;
+    use rebake::escaner::normalizar_url;
     assert_eq!(
         normalizar_url("https://ghp_x@github.com/a/b.git/"),
         "https://github.com/a/b"
@@ -160,7 +160,7 @@ fn normalizar_url_saca_credenciales() {
 #[test]
 fn normalizar_url_saca_query() {
     assert_eq!(
-        recetario::escaner::normalizar_url("https://github.com/a/b.git?token=x"),
+        rebake::escaner::normalizar_url("https://github.com/a/b.git?token=x"),
         "https://github.com/a/b"
     );
 }

@@ -393,7 +393,7 @@ impl App {
         self.avisar(&format!(
             "Instalación terminada: {ok} instaladas, {salteadas} salteadas, {error} con error, \
              {bloqueadas} bloqueadas · detalle en la pestaña 3 y en \
-             ~/.local/state/recetario/ultima-instalacion.log"
+             ~/.local/state/rebake/ultima-instalacion.log"
         ));
         self.pestana = Pestana::Checklist;
     }

@@ -1,8 +1,8 @@
 [package]
-name = "recetario"
+name = "rebake"
 version = "0.1.0"
 edition = "2024"
-description = "Recetario de instaladores para un setup de Claude Code"
+description = "Rebake your Claude Code setup on any machine from a cookbook of install recipes"
 license = "MIT"
 
 [dependencies]

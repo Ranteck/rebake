@@ -30,7 +30,7 @@ fn texto_cabecera(app: &App) -> String {
     let contar = |e: Estado| r.items.iter().filter(|i| i.estado == e).count();
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
     format!(
-        " recetario · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} pendientes  ✗ {} excluidas",
+        " rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} pendientes  ✗ {} excluidas",
         perfiles.join(" + "),
         contar(Estado::Aprobada),
         contar(Estado::PorRevisar),
