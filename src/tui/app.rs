@@ -16,9 +16,11 @@ pub enum Pestana {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Motivo y link guardan el ítem al empezar a escribir: una investigación en segundo plano
+/// puede reordenar la lista mientras tanto.
 pub enum Entrada {
-    Link,
-    Motivo,
+    Link { id: String },
+    Motivo { id: String },
     Filtro,
 }
 
@@ -27,6 +29,7 @@ pub enum Modo {
     Normal,
     Escribiendo { para: Entrada, texto: String },
     ConfirmarInstalacion,
+    ConfirmarSalida,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,6 +56,7 @@ pub struct App {
     pub salida: Vec<String>,
     pub hechos: HashSet<usize>,
     pub seleccion_checklist: usize,
+    pub instalando: bool,
 }
 
 impl App {
@@ -70,6 +74,7 @@ impl App {
             salida: vec![],
             hechos: HashSet::new(),
             seleccion_checklist: 0,
+            instalando: false,
         }
     }
 
@@ -105,13 +110,27 @@ impl App {
                     Efecto::Nada
                 }
             }
+            Modo::ConfirmarSalida => {
+                self.modo = Modo::Normal;
+                if k.code == KeyCode::Char('s') {
+                    Efecto::Salir
+                } else {
+                    self.avisar("la instalación sigue");
+                    Efecto::Nada
+                }
+            }
             Modo::Normal => self.normal(k.code),
         }
     }
 
     fn normal(&mut self, codigo: KeyCode) -> Efecto {
         match codigo {
+            KeyCode::Char('q') if self.instalando => {
+                self.avisar("Hay una instalación en curso y salir la corta. ¿Salir igual? s/n");
+                self.modo = Modo::ConfirmarSalida;
+            }
             KeyCode::Char('q') => return Efecto::Salir,
+            KeyCode::Char('P') if self.instalando => self.avisar("ya hay una instalación en curso"),
             KeyCode::Char('1') => self.pestana = Pestana::Recetas,
             KeyCode::Char('2') => self.pestana = Pestana::Checklist,
             KeyCode::Char('3') => self.pestana = Pestana::Instalacion,
@@ -170,15 +189,15 @@ impl App {
                     texto: self.filtro.clone(),
                 }
             }
-            (KeyCode::Char('x'), Some(_)) => {
+            (KeyCode::Char('x'), Some(id)) => {
                 self.modo = Modo::Escribiendo {
-                    para: Entrada::Motivo,
+                    para: Entrada::Motivo { id },
                     texto: String::new(),
                 }
             }
-            (KeyCode::Char('l'), Some(_)) => {
+            (KeyCode::Char('l'), Some(id)) => {
                 self.modo = Modo::Escribiendo {
-                    para: Entrada::Link,
+                    para: Entrada::Link { id },
                     texto: String::new(),
                 }
             }
@@ -255,10 +274,11 @@ impl App {
                     self.seleccion = 0;
                     return Efecto::Nada;
                 }
-                let Some(id) = self.id_seleccionado() else {
+                let (Entrada::Motivo { id } | Entrada::Link { id }) = &para else {
                     return Efecto::Nada;
                 };
-                let resultado = if para == Entrada::Motivo {
+                let id = id.clone();
+                let resultado = if matches!(para, Entrada::Motivo { .. }) {
                     acciones::excluir(&mut self.recetario, &id, &texto).map(|_| Efecto::Guardar)
                 } else {
                     acciones::pegar_link(&mut self.recetario, &id, &texto)
@@ -325,7 +345,12 @@ impl App {
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),
         };
+        let elegido = self.id_seleccionado();
         aplicar(&mut self.recetario, id, resultado, hoy);
+        // Un requisito nuevo reordena la lista: la selección sigue al mismo ítem.
+        if let Some(pos) = elegido.and_then(|e| self.visibles().iter().position(|i| i.id == e)) {
+            self.seleccion = pos;
+        }
         self.avisar(&texto);
     }
 
@@ -346,7 +371,30 @@ impl App {
                     fila.1 = Some(res);
                 }
                 self.en_curso = None;
+                if self.instalacion.iter().all(|(_, r)| r.is_some()) {
+                    self.terminar_instalacion();
+                }
             }
         }
+    }
+
+    fn terminar_instalacion(&mut self) {
+        self.instalando = false;
+        let contar = |f: fn(&Resultado) -> bool| {
+            self.instalacion
+                .iter()
+                .filter(|(_, r)| r.as_ref().is_some_and(f))
+                .count()
+        };
+        let ok = contar(|r| matches!(r, Resultado::Ok));
+        let salteadas = contar(|r| matches!(r, Resultado::Salteado));
+        let error = contar(|r| matches!(r, Resultado::Fallo(_)));
+        let bloqueadas = contar(|r| matches!(r, Resultado::Bloqueado(_)));
+        self.avisar(&format!(
+            "Instalación terminada: {ok} instaladas, {salteadas} salteadas, {error} con error, \
+             {bloqueadas} bloqueadas · detalle en la pestaña 3 y en \
+             ~/.local/state/recetario/ultima-instalacion.log"
+        ));
+        self.pestana = Pestana::Checklist;
     }
 }

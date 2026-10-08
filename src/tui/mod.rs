@@ -127,8 +127,13 @@ fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
             return None;
         }
     };
+    if orden.is_empty() {
+        app.mensaje = Some("no hay recetas aprobadas".into());
+        return None;
+    }
     app.instalacion = orden.iter().map(|id| (id.clone(), None)).collect();
     app.pestana = Pestana::Instalacion;
+    app.instalando = true;
     let recetario = app.recetario.clone();
     let opciones = Opciones {
         dry_run: false,
@@ -139,7 +144,7 @@ fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         instalador::instalar(&recetario, &orden, &opciones, &mut |e| {
-            // Si la TUI se cerró, nadie escucha: la instalación sigue y queda en el log.
+            // Solo falla si la TUI ya terminó; no queda nadie a quien avisar.
             let _ = tx.send(e);
         });
     });

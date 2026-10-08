@@ -280,11 +280,17 @@ fn instalacion(f: &mut Frame, app: &App, area: Rect) {
                 Some(Resultado::Fallo(_)) => "✗",
                 Some(Resultado::Bloqueado(_)) => "⊘",
             };
-            Line::from(format!("{s} {id}"))
+            let motivo = match res {
+                Some(Resultado::Fallo(m) | Resultado::Bloqueado(m)) => format!(" — {m}"),
+                _ => String::new(),
+            };
+            Line::from(format!("{s} {id}{motivo}"))
         })
         .collect();
     f.render_widget(
-        Paragraph::new(lineas).block(Block::default().borders(Borders::ALL).title("Instalación")),
+        Paragraph::new(lineas)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Instalación")),
         izq,
     );
     let alto = der.height.saturating_sub(2) as usize;
@@ -320,8 +326,8 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
     let segunda = match &app.modo {
         Modo::Escribiendo { para, texto } => {
             let etiqueta = match para {
-                Entrada::Link => "Link del repo",
-                Entrada::Motivo => "Motivo para excluir",
+                Entrada::Link { .. } => "Link del repo",
+                Entrada::Motivo { .. } => "Motivo para excluir",
                 Entrada::Filtro => "Filtro",
             };
             format!(" {etiqueta}: {texto}_   (Enter confirma, Esc cancela)")

@@ -118,3 +118,90 @@ fn investigar_todo_pide_solo_pendientes() {
     );
     assert!(app.investigando.contains("statusline:statusline.sh"));
 }
+
+#[test]
+fn excluir_usa_el_item_elegido_aunque_cambie_la_lista() {
+    use recetario::investigador::{Receta, Requisito};
+    let mut app = App::nueva(recetario());
+    let pos = app
+        .visibles()
+        .iter()
+        .position(|i| i.id == "statusline:statusline.sh")
+        .unwrap();
+    app.seleccion = pos;
+    tecla(&mut app, KeyCode::Char('x'));
+    for c in "no lo uso".chars() {
+        tecla(&mut app, KeyCode::Char(c));
+    }
+    // Llega una investigación que agrega un requisito que se ordena antes.
+    let receta = Receta {
+        repo: "https://github.com/openai/codex-plugin-cc".into(),
+        doc: "https://github.com/openai/codex-plugin-cc#install".into(),
+        pasos: vec![],
+        requiere: vec![Requisito {
+            tipo: "marketplace".into(),
+            nombre: "openai-codex".into(),
+        }],
+        verificar: None,
+    };
+    app.registrar_investigacion("plugin:codex@openai-codex", Ok(receta), "2026-10-07");
+    assert_eq!(app.seleccionado().unwrap().id, "statusline:statusline.sh");
+    tecla(&mut app, KeyCode::Enter);
+    assert_eq!(
+        app.recetario
+            .item("statusline:statusline.sh")
+            .unwrap()
+            .estado,
+        Estado::Excluida
+    );
+    assert_ne!(
+        app.recetario
+            .item("marketplace:openai-codex")
+            .unwrap()
+            .estado,
+        Estado::Excluida
+    );
+}
+
+#[test]
+fn durante_la_instalacion_no_se_reinstala_ni_se_sale_sin_confirmar() {
+    let mut app = App::nueva(recetario());
+    app.instalando = true;
+    assert_eq!(tecla(&mut app, KeyCode::Char('P')), Efecto::Nada);
+    assert!(app.mensaje.as_deref().unwrap().contains("en curso"));
+    assert_eq!(tecla(&mut app, KeyCode::Char('q')), Efecto::Nada);
+    assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Salir);
+}
+
+#[test]
+fn al_terminar_la_instalacion_resume_y_va_a_la_checklist() {
+    use recetario::instalador::{Evento, Resultado};
+    let mut app = App::nueva(recetario());
+    app.instalacion = vec![
+        ("claude".into(), None),
+        ("plugin:codex@openai-codex".into(), None),
+    ];
+    app.instalando = true;
+    app.evento_instalacion(Evento::Inicio("claude".into()));
+    app.evento_instalacion(Evento::Fin("claude".into(), Resultado::Ok));
+    app.evento_instalacion(Evento::Inicio("plugin:codex@openai-codex".into()));
+    app.evento_instalacion(Evento::Fin(
+        "plugin:codex@openai-codex".into(),
+        Resultado::Fallo("`exit 7` terminó con código Some(7)".into()),
+    ));
+    assert!(!app.instalando);
+    assert_eq!(app.pestana, recetario::tui::app::Pestana::Checklist);
+    let m = app.mensaje.clone().unwrap();
+    assert!(
+        m.contains("1 instaladas")
+            && m.contains("1 con error")
+            && m.contains("ultima-instalacion.log"),
+        "{m}"
+    );
+    app.pestana = recetario::tui::app::Pestana::Instalacion;
+    let p = pantalla(&app);
+    assert!(
+        p.contains("✗ plugin:codex@openai-codex") && p.contains("código Some(7)"),
+        "{p}"
+    );
+}
