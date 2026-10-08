@@ -90,3 +90,21 @@ fn ejecutable_ocupado_un_instante_se_reintenta() {
     assert!(s.exito());
     assert_eq!(s.texto.trim(), "corrio");
 }
+
+#[test]
+fn nieto_en_otra_sesion_no_cuelga() {
+    let inicio = Instant::now();
+    let s = ejecutar(
+        &mut sh("setsid sleep 6 & echo listo"),
+        Duration::from_secs(30),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(s.exito());
+    assert!(s.texto.contains("listo"));
+    assert!(
+        inicio.elapsed() < Duration::from_secs(4),
+        "tardó {:?}",
+        inicio.elapsed()
+    );
+}

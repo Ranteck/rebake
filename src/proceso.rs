@@ -5,6 +5,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+const MARGEN_DRENADO: Duration = Duration::from_secs(1);
+
 #[derive(Debug)]
 pub struct Salida {
     pub codigo: Option<i32>,
@@ -75,13 +77,17 @@ pub fn ejecutar(
     };
     // Un nieto en segundo plano puede dejar la salida abierta y bloquear a los lectores.
     matar_grupo(hijo.id());
-    for lector in lectores {
-        // Un lector solo termina con error si entró en pánico, y no hay nada que recuperar.
-        let _ = lector.join();
+    // Un proceso que escapó a otra sesión (setsid) puede mantener la salida abierta para
+    // siempre: se drena lo que quede durante un margen corto y los lectores se sueltan.
+    let limite = Instant::now() + MARGEN_DRENADO;
+    loop {
+        let resto = limite.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(resto) {
+            Ok(l) => recibir(l, &mut texto),
+            Err(_) => break,
+        }
     }
-    while let Ok(l) = rx.try_recv() {
-        recibir(l, &mut texto);
-    }
+    drop(lectores);
     Ok(Salida {
         codigo: estado.code(),
         texto,
