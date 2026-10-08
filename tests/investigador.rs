@@ -252,3 +252,36 @@ fn doc_sin_url_es_error_y_con_texto_se_extrae() {
         "https://github.com/a/b#readme"
     );
 }
+
+#[test]
+fn requisito_con_aclaracion_usa_solo_el_identificador() {
+    let mut r = recetario();
+    r.items
+        .push(Item::nuevo("marketplace:openai-codex", Tipo::Marketplace));
+    let receta = Receta {
+        repo: "https://github.com/ejemplo/house-rules".into(),
+        doc: "https://github.com/ejemplo/house-rules#install".into(),
+        pasos: vec![],
+        requiere: vec![
+            Requisito {
+                tipo: "marketplace".into(),
+                nombre: "openai-codex (openai/codex-plugin-cc)".into(),
+            },
+            Requisito {
+                tipo: "herramienta".into(),
+                nombre: "codex (@openai/codex, CLI global)".into(),
+            },
+        ],
+        verificar: None,
+    };
+    aplicar(&mut r, ID, Ok(receta), "2026-10-07");
+    assert_eq!(
+        r.item(ID).unwrap().requiere,
+        ["marketplace:openai-codex", "herramienta:codex"]
+    );
+    assert!(
+        r.items.iter().all(|i| !i.id.contains('(')),
+        "{:?}",
+        r.items.iter().map(|i| &i.id).collect::<Vec<_>>()
+    );
+}

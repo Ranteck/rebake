@@ -27,7 +27,7 @@ const REGLAS: &str = "Reglas:
 3. Usá flags no interactivos (p. ej. -y) cuando la doc los ofrece. Cada paso tiene que poder correrse dos veces sin fallar: si un comando falla al repetirse, envolvelo con una guarda (p. ej. `[ -d ~/x ] || git clone URL ~/x`).
 4. por_perfil = true si el paso configura un perfil de Claude Code: se corre una vez por perfil con CLAUDE_CONFIG_DIR apuntando a ese perfil. Si el instalador no respeta CLAUDE_CONFIG_DIR, decilo en `nota`.
 5. verificar: un comando de shell que termine con código 0 solo si ya está instalado; para ítems por perfil usá \"$CLAUDE_CONFIG_DIR\".
-6. requiere: lo que hay que instalar antes. Los paquetes de pacman van con tipo \"sistema\" y su nombre de paquete; no los pongas como pasos.
+6. requiere: lo que hay que instalar antes. Los paquetes de pacman van con tipo \"sistema\" y su nombre de paquete; no los pongas como pasos. En `nombre` va solo el identificador (p. ej. `codex`, `openai-codex`), sin aclaraciones.
 7. Nunca incluyas tokens, claves ni datos personales.
 8. doc: la URL exacta de la sección de instalación que usaste.";
 
@@ -278,14 +278,24 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
     let mut nuevos = Vec::new();
     let mut sistema = Vec::new();
     for req in receta.requiere {
+        // El modelo a veces agrega aclaraciones ("codex (@openai/codex)"); el id es solo el nombre.
+        let nombre = req
+            .nombre
+            .split(|c: char| c.is_whitespace() || c == '(')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        if nombre.is_empty() {
+            continue;
+        }
         if req.tipo == "sistema" {
             sistema.push(PaqueteSistema {
-                paquete: req.nombre,
+                paquete: nombre,
                 para: id.into(),
             });
             continue;
         }
-        let rid = format!("{}:{}", req.tipo, req.nombre);
+        let rid = format!("{}:{}", req.tipo, nombre);
         if rid == id {
             continue;
         }
