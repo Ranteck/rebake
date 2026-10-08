@@ -87,6 +87,8 @@ pub fn argumentos(prompt: &str) -> Vec<String> {
         "--strict-mcp-config",
         "--tools",
         "WebSearch,WebFetch",
+        "--allowedTools",
+        "WebSearch,WebFetch",
         "--no-session-persistence",
         "--output-format",
         "json",
@@ -180,6 +182,17 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
             .unwrap_or("sin detalle");
         bail!("claude no pudo investigar: {detalle}");
     }
+    // Sin permiso para leer la web, la "receta" sería inventada: se trata como error.
+    let denegados: Vec<&str> = resultado
+        .get("permission_denials")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|d| d.get("tool_name").and_then(Value::as_str))
+        .collect();
+    if !denegados.is_empty() {
+        bail!("claude no tuvo permiso para usar {}", denegados.join(", "));
+    }
     let estructurada = resultado
         .get("structured_output")
         .cloned()
@@ -189,9 +202,11 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
     if r.pasos.iter().any(|p| p.cmd.trim().is_empty()) {
         bail!("la respuesta no cumple el formato: hay un paso sin comando");
     }
+    let doc = primera_url(&r.doc)
+        .ok_or_else(|| anyhow!("la respuesta no trae la URL de la doc: {}", r.doc))?;
     Ok(Receta {
         repo: r.repo,
-        doc: r.doc,
+        doc,
         verificar: r.verificar.filter(|v| !v.trim().is_empty()),
         requiere: r.requiere,
         pasos: r
@@ -301,4 +316,13 @@ fn tipo_de(tipo: &str) -> Tipo {
         "skill" => Tipo::Skill,
         _ => Tipo::Herramienta,
     }
+}
+
+fn primera_url(texto: &str) -> Option<String> {
+    let inicio = texto.find("https://").or_else(|| texto.find("http://"))?;
+    let url: String = texto[inicio..]
+        .chars()
+        .take_while(|c| !c.is_whitespace() && !matches!(c, ')' | ']' | '>' | '"' | '\''))
+        .collect();
+    Some(url.trim_end_matches(['.', ',']).to_string())
 }

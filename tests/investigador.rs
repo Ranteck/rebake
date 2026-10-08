@@ -204,3 +204,51 @@ fn en_paralelo_devuelve_todos() {
     ids.sort();
     assert_eq!(ids, ["skill:s0", "skill:s1", "skill:s2"]);
 }
+
+#[test]
+fn argumentos_preaprueban_la_web() {
+    let a = argumentos("investigá");
+    let i = a
+        .iter()
+        .position(|x| x == "--allowedTools")
+        .expect("falta --allowedTools");
+    assert_eq!(a[i + 1], "WebSearch,WebFetch");
+}
+
+fn salida(estructurada: &str, denegados: &str) -> String {
+    format!(
+        r#"{{"type":"result","subtype":"success","is_error":false,"permission_denials":{denegados},"structured_output":{estructurada}}}"#
+    )
+}
+
+#[test]
+fn permiso_denegado_es_error() {
+    let s = salida(
+        r#"{"repo":"https://github.com/a/b","doc":"https://github.com/a/b#install","pasos":[],"requiere":[]}"#,
+        r#"[{"tool_name":"WebFetch","tool_use_id":"x","tool_input":{}}]"#,
+    );
+    let err = parsear_salida(&s).unwrap_err().to_string();
+    assert!(err.contains("permiso") && err.contains("WebFetch"), "{err}");
+}
+
+#[test]
+fn doc_sin_url_es_error_y_con_texto_se_extrae() {
+    let sin_url = salida(
+        r#"{"repo":"https://github.com/a/b","doc":"NO VERIFICADO: no se pudo leer el README","pasos":[],"requiere":[]}"#,
+        "[]",
+    );
+    assert!(
+        parsear_salida(&sin_url)
+            .unwrap_err()
+            .to_string()
+            .contains("URL")
+    );
+    let con_texto = salida(
+        r#"{"repo":"https://github.com/a/b","doc":"README.md (https://github.com/a/b#readme)","pasos":[],"requiere":[]}"#,
+        "[]",
+    );
+    assert_eq!(
+        parsear_salida(&con_texto).unwrap().doc,
+        "https://github.com/a/b#readme"
+    );
+}
