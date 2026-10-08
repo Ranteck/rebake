@@ -11,3 +11,4 @@ pub mod proceso;
 pub mod rutas;
 pub mod secretos;
 pub mod servicio;
+pub mod tui;
