@@ -118,3 +118,18 @@ falló primero:
    exfiltración si una página inyecta instrucciones).
 5. "Ejecución de comandos generados por un LLM": es el diseño aprobado (concern 7 del spec);
    se mitiga con la aprobación obligatoria y la cita, sin cambio de código.
+
+## Revisión final de la rama
+Un revisor independiente (sin el contexto de esta sesión) revisó `c8b2b11..ff961cc`: 0 críticos,
+7 importantes y 13 menores. Los 7 importantes se corrigieron, cada uno con un test que falló
+primero (suite 87/87, arnés de la TUI 15/15):
+1. Un re-escaneo con un perfil ilegible achicaba ítems revisados y borraba su checklist.
+2. Un hook o statusline cuyo comando es el propio script se tomaba como herramienta.
+3. Secretos en webhooks, `--flag valor` y cabeceras pegadas pasaban sin ocultar.
+4. La TUI podía excluir o enlazar otro ítem si una investigación reordenaba la lista.
+5. Durante una instalación, `P` lanzaba otra y `q` la cortaba sin aviso.
+6. La instalación en la TUI terminaba sin resumen, sin motivo de fallas y sin ir a la checklist.
+7. El tope no aplicaba si un proceso escapaba a otra sesión (`setsid`).
+
+Los 13 menores quedaron anotados para decidir después. Repetido el escaneo real después de los
+arreglos: mismos 73 ítems, hooks resueltos a sus repos y sin secretos.
