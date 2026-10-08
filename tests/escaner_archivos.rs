@@ -164,3 +164,34 @@ fn normalizar_url_saca_query() {
         "https://github.com/a/b"
     );
 }
+
+#[test]
+fn fuente_de_un_perfil_gana_a_la_pista_del_otro() {
+    let h = HomeFalso::nuevo();
+    let repo = h.repo_git(
+        "Proyectos/graph-engineer",
+        Some("https://github.com/ejemplo/graph-engineer"),
+    );
+    h.escribir(
+        "Proyectos/graph-engineer/skills/graph-engineer/SKILL.md",
+        "x",
+    );
+    h.enlazar(
+        ".claude/skills/graph-engineer",
+        &repo.join("skills/graph-engineer"),
+    );
+    h.escribir(".claude-personal/skills/graph-engineer/SKILL.md", "copia");
+    h.escribir(".claude/settings.json", "{}");
+    h.escribir(".claude-personal/settings.json", "{}");
+    let pacman = PacmanFalso(vec![]);
+    let e = escanear(
+        &entorno(&h, &pacman),
+        &[
+            perfil("laburo", "~/.claude"),
+            perfil("personal", "~/.claude-personal"),
+        ],
+    );
+    let x = hallazgo(&e, "skill:graph-engineer");
+    assert!(x.fuente.is_some());
+    assert!(x.pista.is_none(), "{:?}", x.pista);
+}

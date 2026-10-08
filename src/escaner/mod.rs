@@ -120,6 +120,10 @@ fn agrupar(hallazgos: Vec<Hallazgo>) -> Vec<Hallazgo> {
                 if u.pista.is_none() {
                     u.pista = h.pista;
                 }
+                // Si algún perfil dio la fuente, la pista de otro perfil ya no aplica.
+                if u.fuente.is_some() {
+                    u.pista = None;
+                }
             }
             None => unidos.push(h),
         }
@@ -162,7 +166,7 @@ pub fn leer_json(ruta: &Path, entorno: &Entorno, avisos: &mut Vec<String>) -> Op
 }
 
 pub fn asignar_origen(h: &mut Hallazgo, ruta: &Path, entorno: &Entorno) -> bool {
-    match git::origen_de_archivo(ruta) {
+    match git::origen_de_archivo(ruta, &entorno.home) {
         git::Origen::Repo(repo) => {
             h.fuente = Some(Fuente {
                 repo,

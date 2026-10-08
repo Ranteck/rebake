@@ -10,11 +10,18 @@ pub enum Origen {
     Desconocido,
 }
 
-pub fn origen_de_archivo(ruta: &Path) -> Origen {
-    let es_enlace = std::fs::symlink_metadata(ruta)
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false);
-    if !es_enlace {
+/// `tope` es hasta dónde subir buscando symlinks (el HOME): una skill suele ser una carpeta
+/// enlazada y el archivo que se mira (un script, un SKILL.md) vive adentro.
+pub fn origen_de_archivo(ruta: &Path, tope: &Path) -> Origen {
+    let pasa_por_enlace = ruta
+        .ancestors()
+        .take_while(|a| a.starts_with(tope) && *a != tope)
+        .any(|a| {
+            std::fs::symlink_metadata(a)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+        });
+    if !pasa_por_enlace {
         return Origen::Desconocido;
     }
     let Ok(real) = std::fs::canonicalize(ruta) else {

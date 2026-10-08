@@ -9,7 +9,8 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
         return;
     };
     for comando in comandos_de_hooks(&settings) {
-        let visible = crate::secretos::ocultar(&comando);
+        let visible =
+            crate::secretos::ocultar(&comando).replace(&*entorno.home.to_string_lossy(), "~");
         let mut h = Hallazgo::nuevo(&format!("hook:{visible}"), Tipo::Hook, Some(perfil));
         h.requiere = vec!["claude".into()];
         // Las asignaciones iniciales (`VAR=valor cmd`) no son el binario y pueden traer secretos.
@@ -26,6 +27,22 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
                 salida.hallazgos.push(tool);
             }
             None => h.pista = Some(format!("comando de hook: {visible}")),
+        }
+        // Un hook como `sh script.sh` viene del repo del script, no del intérprete.
+        if h.fuente.is_none() {
+            let scripts = palabras(&comando, &entorno.home)
+                .into_iter()
+                .skip(1)
+                .map(PathBuf::from)
+                .filter(|p| p.is_file());
+            for script in scripts {
+                if asignar_origen(&mut h, &script, entorno) {
+                    if h.fuente.is_some() {
+                        h.pista = None;
+                    }
+                    break;
+                }
+            }
         }
         salida.hallazgos.push(h);
     }

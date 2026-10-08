@@ -98,3 +98,34 @@ fn hook_con_secreto_no_se_guarda() {
     assert!(!format!("{e:?}").contains("supersecreto"), "{e:?}");
     assert!(e.hallazgos.iter().any(|x| x.id == "herramienta:rtk"));
 }
+
+#[test]
+fn hook_con_script_resuelve_repo_y_usa_tilde() {
+    let h = HomeFalso::nuevo();
+    let sh = h.binario("bin/sh", b"#!/bin/sh\n");
+    let repo = h.repo_git("Proyectos/sdlc", Some("https://github.com/ejemplo/sdlc"));
+    h.escribir(
+        "Proyectos/sdlc/skills/sdlc/scripts/cargar.sh",
+        "#!/bin/sh\n",
+    );
+    h.enlazar(".claude/skills/sdlc", &repo.join("skills/sdlc"));
+    let script = h.ruta().join(".claude/skills/sdlc/scripts/cargar.sh");
+    let settings = format!(
+        r#"{{"hooks": {{"SessionStart": [{{"hooks": [{{"type": "command", "command": "sh '{}'"}}]}}]}}}}"#,
+        script.display()
+    );
+    h.escribir(".claude/settings.json", &settings);
+    let pacman = PacmanFalso(vec![sh]);
+    let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
+    let hook = e
+        .hallazgos
+        .iter()
+        .find(|x| x.tipo == Tipo::Hook)
+        .expect("falta el hook");
+    assert_eq!(hook.id, "hook:sh '~/.claude/skills/sdlc/scripts/cargar.sh'");
+    assert_eq!(
+        hook.fuente.as_ref().unwrap().repo,
+        "https://github.com/ejemplo/sdlc"
+    );
+    assert!(hook.pista.is_none());
+}
