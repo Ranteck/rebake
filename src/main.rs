@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use recetario::escaner::{Entorno, PacmanReal};
 use recetario::instalador::{self, Evento, Opciones, Resultado};
 use recetario::investigador::{self, aplicar, en_paralelo};
@@ -73,7 +73,7 @@ fn iniciar_logs(home: &Path) -> Option<tracing_appender::non_blocking::WorkerGua
 fn correr(cli: Cli, home: &Path) -> Result<bool> {
     let ruta = cli.archivo.unwrap_or_else(|| rutas::archivo_por_defecto(home));
     let Some(comando) = cli.comando else {
-        Cli::command().print_help()?;
+        recetario::tui::ejecutar(&ruta, home)?;
         return Ok(true);
     };
     let mut r = archivo::leer(&ruta)?;
