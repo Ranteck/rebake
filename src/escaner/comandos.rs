@@ -17,6 +17,26 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
         let binario = palabras(&comando, &entorno.home)
             .into_iter()
             .find(|p| !es_asignacion(p));
+        // Si el comando es una ruta, es un script del usuario: primero se busca su repo.
+        let es_script = binario.as_ref().is_some_and(|b| {
+            let ruta = Path::new(b);
+            if !b.contains('/') || !ruta.is_file() {
+                return false;
+            }
+            if asignar_origen(&mut h, ruta, entorno) {
+                return true;
+            }
+            // Un script local (con shebang) no es una herramienta que se instale aparte.
+            let con_shebang = std::fs::read(ruta).is_ok_and(|b| b.starts_with(b"#!"));
+            if con_shebang {
+                h.pista = Some(format!(
+                    "archivo sin origen conocido: {}",
+                    contraer(ruta, &entorno.home)
+                ));
+            }
+            con_shebang
+        });
+        let binario = binario.filter(|_| !es_script);
         match binario.and_then(|b| herramienta(entorno, &b, "hook", salida)) {
             Some(tool) => {
                 h.requiere.push(tool.id.clone());
@@ -26,13 +46,14 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
                 }
                 salida.hallazgos.push(tool);
             }
+            None if es_script => {}
             None => h.pista = Some(format!("comando de hook: {visible}")),
         }
         // Un hook como `sh script.sh` viene del repo del script, no del intérprete.
         if h.fuente.is_none() {
             let scripts = palabras(&comando, &entorno.home)
                 .into_iter()
-                .skip(1)
+                .filter(|p| p.contains('/'))
                 .map(PathBuf::from)
                 .filter(|p| p.is_file());
             for script in scripts {
@@ -82,12 +103,14 @@ fn comandos_de_hooks(settings: &Value) -> Vec<String> {
 
 fn statusline(entorno: &Entorno, perfil: &str, comando: &str, salida: &mut Escaneo) {
     let palabras = palabras(comando, &entorno.home);
+    // Un intérprete por nombre (`bash script.sh`) es una herramienta; una ruta es el script.
     let tool = palabras
         .first()
+        .filter(|b| !b.contains('/'))
         .and_then(|b| herramienta(entorno, b, "statusline", salida));
     for palabra in &palabras {
         let ruta = PathBuf::from(palabra);
-        if !palabra.contains('/') || !ruta.is_file() || Some(palabra) == palabras.first() {
+        if !palabra.contains('/') || !ruta.is_file() {
             continue;
         }
         let nombre = ruta

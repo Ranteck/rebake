@@ -129,3 +129,69 @@ fn hook_con_script_resuelve_repo_y_usa_tilde() {
     );
     assert!(hook.pista.is_none());
 }
+
+#[test]
+fn statusline_que_es_el_script_queda_como_statusline() {
+    let h = HomeFalso::nuevo();
+    h.binario(".claude/statusline.sh", b"#!/bin/bash\n");
+    h.escribir(
+        ".claude/settings.json",
+        r#"{"statusLine": {"type": "command", "command": "~/.claude/statusline.sh"}}"#,
+    );
+    let pacman = PacmanFalso(vec![]);
+    let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
+    let s = e
+        .hallazgos
+        .iter()
+        .find(|x| x.id == "statusline:statusline.sh")
+        .expect("falta la statusline");
+    assert_eq!(s.perfiles, ["laburo"]);
+    assert!(
+        e.hallazgos.iter().all(|x| x.tipo != Tipo::Herramienta),
+        "{:?}",
+        e.hallazgos
+    );
+}
+
+#[test]
+fn hook_que_es_el_script_resuelve_su_repo() {
+    let h = HomeFalso::nuevo();
+    let repo = h.repo_git(
+        "Proyectos/avisos",
+        Some("https://github.com/ejemplo/avisos"),
+    );
+    h.binario("Proyectos/avisos/notify.sh", b"#!/bin/sh\n");
+    h.enlazar(".claude/hooks/notify.sh", &repo.join("notify.sh"));
+    h.escribir(".claude/settings.json", r#"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "~/.claude/hooks/notify.sh"}]}]}}"#);
+    let pacman = PacmanFalso(vec![]);
+    let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
+    let hook = e.hallazgos.iter().find(|x| x.tipo == Tipo::Hook).unwrap();
+    assert_eq!(
+        hook.fuente.as_ref().unwrap().repo,
+        "https://github.com/ejemplo/avisos"
+    );
+    assert!(
+        e.hallazgos.iter().all(|x| x.tipo != Tipo::Herramienta),
+        "{:?}",
+        e.hallazgos
+    );
+}
+
+#[test]
+fn hook_con_script_local_no_es_herramienta() {
+    let h = HomeFalso::nuevo();
+    h.binario(".claude/hooks/local.sh", b"#!/bin/sh\necho hola\n");
+    h.escribir(".claude/settings.json", r#"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "~/.claude/hooks/local.sh"}]}]}}"#);
+    let pacman = PacmanFalso(vec![]);
+    let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
+    let hook = e.hallazgos.iter().find(|x| x.tipo == Tipo::Hook).unwrap();
+    assert_eq!(
+        hook.pista.as_deref(),
+        Some("archivo sin origen conocido: ~/.claude/hooks/local.sh")
+    );
+    assert!(
+        e.hallazgos.iter().all(|x| x.tipo != Tipo::Herramienta),
+        "{:?}",
+        e.hallazgos
+    );
+}
