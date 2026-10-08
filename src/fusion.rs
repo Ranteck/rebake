@@ -26,7 +26,16 @@ pub fn fusionar(r: &mut Recetario, escaneo: Escaneo, existe_herramienta: &dyn Fn
     for h in escaneo.hallazgos {
         match r.item_mut(&h.id) {
             Some(item) => {
-                item.perfiles = h.perfiles;
+                // Lo revisado solo gana perfiles en un escaneo: uno que no se pudo leer no lo achica.
+                if item.estado == Estado::Pendiente {
+                    item.perfiles = h.perfiles;
+                } else {
+                    for p in h.perfiles {
+                        if !item.perfiles.contains(&p) {
+                            item.perfiles.push(p);
+                        }
+                    }
+                }
                 item.ausente = false;
                 item.pista = h.pista;
                 for req in h.requiere {
@@ -56,6 +65,10 @@ pub fn fusionar(r: &mut Recetario, escaneo: Escaneo, existe_herramienta: &dyn Fn
             _ => true,
         };
     }
-    r.checklist.ajustes = escaneo.ajustes;
-    r.checklist.titulos = escaneo.titulos;
+    // Se reemplaza solo lo de los perfiles que se leyeron: el resto queda como estaba.
+    let leidos: HashSet<String> = escaneo.perfiles_leidos.into_iter().collect();
+    r.checklist.ajustes.retain(|a| !leidos.contains(&a.perfil));
+    r.checklist.ajustes.extend(escaneo.ajustes);
+    r.checklist.titulos.retain(|t| !leidos.contains(&t.perfil));
+    r.checklist.titulos.extend(escaneo.titulos);
 }

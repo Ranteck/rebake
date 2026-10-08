@@ -78,6 +78,8 @@ pub struct Escaneo {
     pub avisos: Vec<String>,
     pub ajustes: Vec<Ajuste>,
     pub titulos: Vec<TituloClaudeMd>,
+    /// Perfiles cuyos `settings.json` y `CLAUDE.md` se leyeron bien en este escaneo.
+    pub perfiles_leidos: Vec<String>,
 }
 
 pub fn escanear(entorno: &Entorno, perfiles: &[Perfil]) -> Escaneo {

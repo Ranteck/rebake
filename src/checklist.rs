@@ -14,17 +14,28 @@ const CUBIERTAS: [&str; 4] = [
 ];
 
 pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
-    if let Some(settings) = leer_json(&dir.join("settings.json"), entorno, &mut salida.avisos) {
-        salida.ajustes.extend(ajustes(perfil, &settings));
+    let settings = leer_json(&dir.join("settings.json"), entorno, &mut salida.avisos);
+    if let Some(settings) = &settings {
+        salida.ajustes.extend(ajustes(perfil, settings));
     }
     let ruta = dir.join("CLAUDE.md");
-    match std::fs::read_to_string(&ruta) {
-        Ok(texto) => salida.titulos.extend(titulos(perfil, &texto)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => salida.avisos.push(format!(
-            "no pude leer {}: {e}",
-            contraer(&ruta, &entorno.home)
-        )),
+    let claude_md_ok = match std::fs::read_to_string(&ruta) {
+        Ok(texto) => {
+            salida.titulos.extend(titulos(perfil, &texto));
+            true
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            salida.avisos.push(format!(
+                "no pude leer {}: {e}",
+                contraer(&ruta, &entorno.home)
+            ));
+            false
+        }
+    };
+    // Solo un perfil leído entero reemplaza su parte de la checklist en la fusión.
+    if settings.is_some() && claude_md_ok {
+        salida.perfiles_leidos.push(perfil.to_string());
     }
 }
 

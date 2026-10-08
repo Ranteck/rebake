@@ -172,3 +172,49 @@ fn nuevo_entra_pendiente() {
     assert_eq!(r.checklist.ajustes.len(), 1);
     assert_eq!(r.checklist.sistema.len(), 1);
 }
+
+#[test]
+fn perfil_ilegible_no_borra_lo_revisado_ni_su_checklist() {
+    let mut r = base();
+    let mut aprobado = Item::nuevo("plugin:codex@openai-codex", Tipo::Plugin);
+    aprobado.perfiles = vec!["laburo".into(), "personal".into()];
+    aprobado.estado = Estado::Aprobada;
+    r.items.push(aprobado);
+    let mut pendiente = Item::nuevo("skill:x", Tipo::Skill);
+    pendiente.perfiles = vec!["laburo".into(), "personal".into()];
+    r.items.push(pendiente);
+    let ajuste = |perfil: &str, valor: &str| Ajuste {
+        perfil: perfil.into(),
+        clave: "theme".into(),
+        valor: valor.into(),
+    };
+    r.checklist.ajustes = vec![ajuste("laburo", "dark"), ajuste("personal", "light")];
+    r.checklist.titulos = vec![TituloClaudeMd {
+        perfil: "personal".into(),
+        texto: "Propio".into(),
+    }];
+
+    // El perfil personal no se pudo leer: el escaneo solo vio laburo.
+    let mut e = escaneo(vec![
+        hallazgo("plugin:codex@openai-codex", Tipo::Plugin, &["laburo"]),
+        hallazgo("skill:x", Tipo::Skill, &["laburo"]),
+    ]);
+    e.ajustes = vec![ajuste("laburo", "dracula")];
+    e.perfiles_leidos = vec!["laburo".into()];
+    fusionar(&mut r, e, &nunca);
+
+    assert_eq!(
+        r.item("plugin:codex@openai-codex").unwrap().perfiles,
+        ["laburo", "personal"]
+    );
+    assert_eq!(r.item("skill:x").unwrap().perfiles, ["laburo"]);
+    let mut valores: Vec<_> = r
+        .checklist
+        .ajustes
+        .iter()
+        .map(|a| (a.perfil.as_str(), a.valor.as_str()))
+        .collect();
+    valores.sort();
+    assert_eq!(valores, [("laburo", "dracula"), ("personal", "light")]);
+    assert_eq!(r.checklist.titulos.len(), 1);
+}
