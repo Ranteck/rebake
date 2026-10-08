@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader, Read};
 use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -20,7 +20,7 @@ impl Salida {
 
 pub fn ejecutar(cmd: &mut Command, tope: Duration, al_leer: &mut dyn FnMut(&str)) -> std::io::Result<Salida> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0);
-    let mut hijo = cmd.spawn()?;
+    let mut hijo = lanzar(cmd)?;
     let (tx, rx) = mpsc::channel::<String>();
     let mut fuentes: Vec<Box<dyn Read + Send>> = Vec::new();
     if let Some(s) = hijo.stdout.take() { fuentes.push(Box::new(s)); }
@@ -64,6 +64,22 @@ pub fn ejecutar(cmd: &mut Command, tope: Duration, al_leer: &mut dyn FnMut(&str)
     }
     while let Ok(l) = rx.try_recv() { recibir(l, &mut texto); }
     Ok(Salida { codigo: estado.code(), texto, vencido })
+}
+
+/// ETXTBSY es transitorio: otro hilo hizo fork mientras se escribía el ejecutable y ese hijo
+/// todavía no llegó a exec (rust-lang/rust#114554). Pasa al ejecutar un binario recién escrito.
+fn lanzar(cmd: &mut Command) -> std::io::Result<Child> {
+    let mut espera = Duration::from_millis(10);
+    for _ in 0..8 {
+        match cmd.spawn() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                thread::sleep(espera);
+                espera *= 2;
+            }
+            otro => return otro,
+        }
+    }
+    cmd.spawn()
 }
 
 fn matar_grupo(pid: u32) {

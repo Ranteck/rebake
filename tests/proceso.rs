@@ -45,3 +45,22 @@ fn pasa_variables_de_entorno() {
     assert!(lineas.contains(&"/tmp/perfil-x".to_string()));
     assert!(lineas.contains(&"error".to_string()));
 }
+
+#[test]
+fn ejecutable_ocupado_un_instante_se_reintenta() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("script");
+    std::fs::write(&script, "#!/bin/sh\necho corrio\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // Un descriptor de escritura abierto hace que exec falle con ETXTBSY hasta que se cierra.
+    let ocupado = std::fs::OpenOptions::new().write(true).open(&script).unwrap();
+    let liberar = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(60));
+        drop(ocupado);
+    });
+    let s = ejecutar(&mut Command::new(&script), Duration::from_secs(5), &mut |_| {}).unwrap();
+    liberar.join().unwrap();
+    assert!(s.exito());
+    assert_eq!(s.texto.trim(), "corrio");
+}
