@@ -98,3 +98,23 @@ fn ids_repetidos_son_invalidos() {
     r.items.push(r.items[0].clone());
     assert!(validar(&r).is_err());
 }
+
+#[test]
+fn crear_privado_es_0600_y_no_sigue_symlinks() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let ruta = dir.path().join("editar.toml");
+    archivo::crear_privado(&ruta, "contenido").unwrap();
+    assert_eq!(
+        fs::metadata(&ruta).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(fs::read_to_string(&ruta).unwrap(), "contenido");
+
+    let victima = dir.path().join("victima");
+    fs::write(&victima, "original").unwrap();
+    let trampa = dir.path().join("trampa.toml");
+    std::os::unix::fs::symlink(&victima, &trampa).unwrap();
+    assert!(archivo::crear_privado(&trampa, "malicioso").is_err());
+    assert_eq!(fs::read_to_string(&victima).unwrap(), "original");
+}

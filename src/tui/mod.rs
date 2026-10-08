@@ -56,7 +56,7 @@ fn bucle(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, home: &Path
             Efecto::Guardar => guardar(app, ruta),
             Efecto::Escanear => escanear(app, ruta),
             Efecto::Investigar(ids) => investigar(app, ruta, home, ids, &tx_inv),
-            Efecto::Editar(id) => editar(terminal, app, ruta, &id)?,
+            Efecto::Editar(id) => editar(terminal, app, ruta, home, &id)?,
             Efecto::Instalar => rx_inst = instalar(app, home).or(rx_inst.take()),
         }
     }
@@ -146,14 +146,26 @@ fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
     Some(rx)
 }
 
-fn editar(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, id: &str) -> Result<()> {
+fn editar(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    ruta: &Path,
+    home: &Path,
+    id: &str,
+) -> Result<()> {
     let item = app
         .recetario
         .item(id)
         .context("el ítem a editar ya no existe")?;
-    let temporal =
-        std::env::temp_dir().join(format!("recetario-{}-editar.toml", std::process::id()));
-    std::fs::write(&temporal, acciones::item_como_toml(item)?)?;
+    // En la carpeta de estado del usuario y no en /tmp, que es compartido con otros usuarios.
+    let dir = rutas::dir_estado(home);
+    std::fs::create_dir_all(&dir).with_context(|| format!("no pude crear {}", dir.display()))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or_default();
+    let temporal = dir.join(format!("editar-{}-{nanos}.toml", std::process::id()));
+    archivo::crear_privado(&temporal, &acciones::item_como_toml(item)?)?;
     ratatui::restore();
     let editor = std::env::var("VISUAL")
         .or_else(|_| std::env::var("EDITOR"))

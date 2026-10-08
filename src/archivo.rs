@@ -66,3 +66,17 @@ fn destino_real(ruta: &Path) -> Result<PathBuf> {
         _ => Ok(ruta.to_path_buf()),
     }
 }
+
+/// Crea un archivo solo legible por el usuario y falla si la ruta ya existe: así un symlink
+/// plantado por otro usuario no se sigue (`O_EXCL`).
+pub fn crear_privado(ruta: &Path, contenido: &str) -> Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(ruta)
+        .with_context(|| format!("no pude crear {}", ruta.display()))?;
+    f.write_all(contenido.as_bytes())?;
+    Ok(())
+}
