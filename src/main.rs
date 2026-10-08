@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use recetario::escaner::{Entorno, PacmanReal};
 use recetario::instalador::{self, Evento, Opciones, Resultado};
@@ -9,7 +9,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "recetario", version, about = "Recetario de instaladores para un setup de Claude Code")]
+#[command(
+    name = "recetario",
+    version,
+    about = "Recetario de instaladores para un setup de Claude Code"
+)]
 struct Cli {
     /// Recetario a usar (por defecto ~/.config/recetario/recetario.toml)
     #[arg(long, global = true)]
@@ -64,14 +68,21 @@ fn iniciar_logs(home: &Path) -> Option<tracing_appender::non_blocking::WorkerGua
         eprintln!("recetario: sin logs, no pude crear {}: {e}", dir.display());
         return None;
     }
-    let (escritor, guardia) = tracing_appender::non_blocking(tracing_appender::rolling::never(&dir, "recetario.log"));
-    tracing_subscriber::fmt().with_writer(escritor).with_ansi(false).with_max_level(tracing::Level::INFO).init();
+    let (escritor, guardia) =
+        tracing_appender::non_blocking(tracing_appender::rolling::never(&dir, "recetario.log"));
+    tracing_subscriber::fmt()
+        .with_writer(escritor)
+        .with_ansi(false)
+        .with_max_level(tracing::Level::INFO)
+        .init();
     Some(guardia)
 }
 
 /// `Ok(false)` = terminó, pero algo no salió (p. ej. una receta falló).
 fn correr(cli: Cli, home: &Path) -> Result<bool> {
-    let ruta = cli.archivo.unwrap_or_else(|| rutas::archivo_por_defecto(home));
+    let ruta = cli
+        .archivo
+        .unwrap_or_else(|| rutas::archivo_por_defecto(home));
     let Some(comando) = cli.comando else {
         recetario::tui::ejecutar(&ruta, home)?;
         return Ok(true);
@@ -83,9 +94,21 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
             let entorno = Entorno::real(&pacman)?;
             let resumen = servicio::escanear(&mut r, &entorno)?;
             archivo::guardar(&ruta, &r)?;
-            for a in &resumen.avisos { eprintln!("aviso: {a}"); }
-            tracing::info!(comando = "escanear", items = r.items.len(), nuevos = resumen.nuevos, avisos = resumen.avisos.len());
-            println!("{} ítems ({} nuevos) en {}", r.items.len(), resumen.nuevos, ruta.display());
+            for a in &resumen.avisos {
+                eprintln!("aviso: {a}");
+            }
+            tracing::info!(
+                comando = "escanear",
+                items = r.items.len(),
+                nuevos = resumen.nuevos,
+                avisos = resumen.avisos.len()
+            );
+            println!(
+                "{} ítems ({} nuevos) en {}",
+                r.items.len(),
+                resumen.nuevos,
+                ruta.display()
+            );
             Ok(true)
         }
         Comando::Investigar { ids } => investigar(&mut r, &ruta, &ids, home),
@@ -99,15 +122,31 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
     }
 }
 
-fn investigar(r: &mut recetario::modelo::Recetario, ruta: &Path, ids: &[String], home: &Path) -> Result<bool> {
+fn investigar(
+    r: &mut recetario::modelo::Recetario,
+    ruta: &Path,
+    ids: &[String],
+    home: &Path,
+) -> Result<bool> {
     let trabajos = servicio::trabajos(r, ids, home)?;
     let total = trabajos.len();
-    let rx = en_paralelo(trabajos, investigador::binario_claude(), investigador::TOPE, investigador::PARALELO);
+    let rx = en_paralelo(
+        trabajos,
+        investigador::binario_claude(),
+        investigador::TOPE,
+        investigador::PARALELO,
+    );
     let (mut ok, mut fallidos) = (0, 0);
     for (n, (id, resultado)) in rx.iter().enumerate() {
         match &resultado {
-            Ok(_) => { ok += 1; eprintln!("[{}/{total}] {id} → por revisar", n + 1); }
-            Err(e) => { fallidos += 1; eprintln!("[{}/{total}] {id} → error: {e:#}", n + 1); }
+            Ok(_) => {
+                ok += 1;
+                eprintln!("[{}/{total}] {id} → por revisar", n + 1);
+            }
+            Err(e) => {
+                fallidos += 1;
+                eprintln!("[{}/{total}] {id} → error: {e:#}", n + 1);
+            }
         }
         tracing::info!(comando = "investigar", id = %id, ok = resultado.is_ok());
         aplicar(r, &id, resultado, &rutas::hoy());
@@ -118,14 +157,26 @@ fn investigar(r: &mut recetario::modelo::Recetario, ruta: &Path, ids: &[String],
     Ok(fallidos == 0)
 }
 
-fn instalar(r: &recetario::modelo::Recetario, home: &Path, dry_run: bool, si: bool) -> Result<bool> {
+fn instalar(
+    r: &recetario::modelo::Recetario,
+    home: &Path,
+    dry_run: bool,
+    si: bool,
+) -> Result<bool> {
     let orden = instalador::planificar(r)?;
     if orden.is_empty() {
         println!("no hay recetas aprobadas");
         return Ok(true);
     }
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
-    if !dry_run && !si && !confirmar(&format!("¿Instalar {} recetas en {}? [s/N] ", orden.len(), perfiles.join(", ")))? {
+    if !dry_run
+        && !si
+        && !confirmar(&format!(
+            "¿Instalar {} recetas en {}? [s/N] ",
+            orden.len(),
+            perfiles.join(", ")
+        ))?
+    {
         bail!("instalación cancelada");
     }
     let opciones = Opciones {
@@ -145,13 +196,21 @@ fn instalar(r: &recetario::modelo::Recetario, home: &Path, dry_run: bool, si: bo
             Resultado::Ok => "instalado".to_string(),
             Resultado::Salteado => "salteado (ya estaba)".to_string(),
             Resultado::Simulado => "simulado".to_string(),
-            Resultado::Fallo(m) => { todo_bien = false; format!("falló: {m}") }
-            Resultado::Bloqueado(m) => { todo_bien = false; format!("bloqueado: {m}") }
+            Resultado::Fallo(m) => {
+                todo_bien = false;
+                format!("falló: {m}")
+            }
+            Resultado::Bloqueado(m) => {
+                todo_bien = false;
+                format!("bloqueado: {m}")
+            }
         };
         tracing::info!(comando = "instalar", id = %id, resultado = %texto);
         println!("{id}: {texto}");
     }
-    if !dry_run { print!("{}", servicio::texto_checklist(r)); }
+    if !dry_run {
+        print!("{}", servicio::texto_checklist(r));
+    }
     Ok(todo_bien)
 }
 
@@ -159,6 +218,9 @@ fn confirmar(pregunta: &str) -> Result<bool> {
     eprint!("{pregunta}");
     std::io::stderr().flush()?;
     let mut linea = String::new();
-    std::io::stdin().lock().read_line(&mut linea).context("no pude leer la respuesta")?;
+    std::io::stdin()
+        .lock()
+        .read_line(&mut linea)
+        .context("no pude leer la respuesta")?;
     Ok(matches!(linea.trim(), "s" | "S" | "si" | "sí"))
 }

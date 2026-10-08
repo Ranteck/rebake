@@ -10,7 +10,9 @@ pub struct PerfilDetectado {
 
 pub fn detectar(home: &Path) -> Result<Vec<PerfilDetectado>> {
     let mut encontrados = Vec::new();
-    for entrada in fs::read_dir(home).with_context(|| format!("no pude listar {}", home.display()))? {
+    for entrada in
+        fs::read_dir(home).with_context(|| format!("no pude listar {}", home.display()))?
+    {
         let entrada = entrada?;
         let nombre = entrada.file_name().to_string_lossy().into_owned();
         let sugerido = match nombre.as_str() {
@@ -22,7 +24,10 @@ pub fn detectar(home: &Path) -> Result<Vec<PerfilDetectado>> {
         };
         let dir = entrada.path();
         if dir.is_dir() && dir.join("settings.json").is_file() {
-            encontrados.push(PerfilDetectado { nombre_sugerido: sugerido, dir });
+            encontrados.push(PerfilDetectado {
+                nombre_sugerido: sugerido,
+                dir,
+            });
         }
     }
     encontrados.sort_by(|a, b| a.dir.cmp(&b.dir));

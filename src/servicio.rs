@@ -1,10 +1,10 @@
 use crate::checklist;
 use crate::escaner::{self, Entorno};
 use crate::fusion;
-use crate::investigador::{trabajo_para, Trabajo};
+use crate::investigador::{Trabajo, trabajo_para};
 use crate::modelo::{Estado, Recetario};
 use crate::perfiles;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::path::Path;
@@ -28,7 +28,12 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
 
 pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabajo>> {
     if ids.is_empty() {
-        return Ok(r.items.iter().filter(|i| i.estado == Estado::Pendiente).map(|i| trabajo_para(r, i, home)).collect());
+        return Ok(r
+            .items
+            .iter()
+            .filter(|i| i.estado == Estado::Pendiente)
+            .map(|i| trabajo_para(r, i, home))
+            .collect());
     }
     ids.iter()
         .map(|id| match r.item(id) {
@@ -41,7 +46,9 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
 
 pub fn texto_checklist(r: &Recetario) -> String {
     let mut s = String::from("\n== Checklist ==\n\nLogins\n");
-    for l in checklist::logins(r) { let _ = writeln!(s, "  [ ] {l}"); }
+    for l in checklist::logins(r) {
+        let _ = writeln!(s, "  [ ] {l}");
+    }
     let manuales = checklist::pasos_manuales(r);
     if !manuales.is_empty() {
         s.push_str("\nPasos manuales\n");
@@ -52,15 +59,21 @@ pub fn texto_checklist(r: &Recetario) -> String {
     }
     if !r.checklist.ajustes.is_empty() {
         s.push_str("\nAjustes\n");
-        for a in &r.checklist.ajustes { let _ = writeln!(s, "  [ ] [{}] {} = {}", a.perfil, a.clave, a.valor); }
+        for a in &r.checklist.ajustes {
+            let _ = writeln!(s, "  [ ] [{}] {} = {}", a.perfil, a.clave, a.valor);
+        }
     }
     if !r.checklist.sistema.is_empty() {
         s.push_str("\nPaquetes del sistema\n");
-        for p in &r.checklist.sistema { let _ = writeln!(s, "  [ ] sudo pacman -S {} (para {})", p.paquete, p.para); }
+        for p in &r.checklist.sistema {
+            let _ = writeln!(s, "  [ ] sudo pacman -S {} (para {})", p.paquete, p.para);
+        }
     }
     if !r.checklist.titulos.is_empty() {
         s.push_str("\nTu texto propio en CLAUDE.md\n");
-        for t in &r.checklist.titulos { let _ = writeln!(s, "  [ ] [{}] {}", t.perfil, t.texto); }
+        for t in &r.checklist.titulos {
+            let _ = writeln!(s, "  [ ] [{}] {}", t.perfil, t.texto);
+        }
     }
     s
 }

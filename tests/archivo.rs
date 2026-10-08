@@ -4,7 +4,10 @@ use std::fs;
 
 fn ejemplo() -> Recetario {
     let mut r = Recetario::nuevo();
-    r.perfiles.push(Perfil { nombre: "laburo".into(), dir: "~/.claude".into() });
+    r.perfiles.push(Perfil {
+        nombre: "laburo".into(),
+        dir: "~/.claude".into(),
+    });
     let mut item = Item::nuevo("plugin:codex@openai-codex", Tipo::Plugin);
     item.perfiles = vec!["laburo".into()];
     item.estado = Estado::Aprobada;
@@ -22,7 +25,11 @@ fn ejemplo() -> Recetario {
         nota: None,
     });
     r.items.push(item);
-    r.checklist.ajustes.push(Ajuste { perfil: "laburo".into(), clave: "theme".into(), valor: "dark".into() });
+    r.checklist.ajustes.push(Ajuste {
+        perfil: "laburo".into(),
+        clave: "theme".into(),
+        valor: "dark".into(),
+    });
     r
 }
 
@@ -38,7 +45,9 @@ fn ida_y_vuelta_sin_perdidas() {
 #[test]
 fn campo_desconocido_da_linea_y_columna() {
     let texto = "version = 1\n\n[[item]]\nid = \"claude\"\ntipo = \"claude\"\nestado = \"pendiente\"\ncolor = \"rojo\"\n";
-    let err = archivo::parsear(texto, "recetario.toml").unwrap_err().to_string();
+    let err = archivo::parsear(texto, "recetario.toml")
+        .unwrap_err()
+        .to_string();
     assert!(err.starts_with("recetario.toml:"), "{err}");
     assert!(err.contains("color"), "{err}");
 }
@@ -54,8 +63,17 @@ fn guardar_a_traves_de_symlink_conserva_el_enlace() {
 
     archivo::guardar(&enlace, &ejemplo()).unwrap();
 
-    assert!(fs::symlink_metadata(&enlace).unwrap().file_type().is_symlink());
-    assert!(fs::read_to_string(&real).unwrap().contains("codex@openai-codex"));
+    assert!(
+        fs::symlink_metadata(&enlace)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        fs::read_to_string(&real)
+            .unwrap()
+            .contains("codex@openai-codex")
+    );
 }
 
 #[test]

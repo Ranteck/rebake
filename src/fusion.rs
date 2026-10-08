@@ -8,7 +8,9 @@ use std::path::Path;
 pub fn asegurar_perfiles(r: &mut Recetario, detectados: &[PerfilDetectado], home: &Path) {
     for d in detectados {
         let dir = contraer(&d.dir, home);
-        if r.perfiles.iter().any(|p| p.dir == dir) { continue; }
+        if r.perfiles.iter().any(|p| p.dir == dir) {
+            continue;
+        }
         let mut nombre = d.nombre_sugerido.clone();
         let mut n = 2;
         while r.perfiles.iter().any(|p| p.nombre == nombre) {
@@ -28,7 +30,9 @@ pub fn fusionar(r: &mut Recetario, escaneo: Escaneo, existe_herramienta: &dyn Fn
                 item.ausente = false;
                 item.pista = h.pista;
                 for req in h.requiere {
-                    if !item.requiere.contains(&req) { item.requiere.push(req); }
+                    if !item.requiere.contains(&req) {
+                        item.requiere.push(req);
+                    }
                 }
                 // Un pendiente puede ganar fuente (p. ej. el repo recibió un remoto); lo revisado no se toca.
                 if item.estado == Estado::Pendiente && item.fuente.is_none() {

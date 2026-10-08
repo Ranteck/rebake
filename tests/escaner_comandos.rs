@@ -7,8 +7,14 @@ use std::path::Path;
 #[test]
 fn palabras_respeta_comillas_y_home() {
     let home = Path::new("/home/x");
-    assert_eq!(palabras("bash \"$HOME/.claude/statusline.sh\" 'a b'", home), ["bash", "/home/x/.claude/statusline.sh", "a b"]);
-    assert_eq!(palabras("~/bin/tool ${HOME}/y", home), ["/home/x/bin/tool", "/home/x/y"]);
+    assert_eq!(
+        palabras("bash \"$HOME/.claude/statusline.sh\" 'a b'", home),
+        ["bash", "/home/x/.claude/statusline.sh", "a b"]
+    );
+    assert_eq!(
+        palabras("~/bin/tool ${HOME}/y", home),
+        ["/home/x/bin/tool", "/home/x/y"]
+    );
 }
 
 #[test]
@@ -27,12 +33,22 @@ fn statusline_con_comillas_y_home() {
     let h = HomeFalso::nuevo();
     let bash = h.binario("bin/bash", b"#!/bin/sh\n");
     h.escribir(".claude/statusline.sh", "#!/bin/bash\n");
-    h.escribir(".claude/settings.json", r#"{"statusLine": {"type": "command", "command": "bash \"$HOME/.claude/statusline.sh\""}}"#);
+    h.escribir(
+        ".claude/settings.json",
+        r#"{"statusLine": {"type": "command", "command": "bash \"$HOME/.claude/statusline.sh\""}}"#,
+    );
     let pacman = PacmanFalso(vec![bash]);
     let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
-    let s = e.hallazgos.iter().find(|x| x.id == "statusline:statusline.sh").expect("falta la statusline");
+    let s = e
+        .hallazgos
+        .iter()
+        .find(|x| x.id == "statusline:statusline.sh")
+        .expect("falta la statusline");
     assert_eq!(s.tipo, Tipo::Statusline);
-    assert_eq!(s.pista.as_deref(), Some("archivo sin origen conocido: ~/.claude/statusline.sh"));
+    assert_eq!(
+        s.pista.as_deref(),
+        Some("archivo sin origen conocido: ~/.claude/statusline.sh")
+    );
     assert!(e.hallazgos.iter().all(|x| x.id != "herramienta:bash"));
 }
 
@@ -43,10 +59,21 @@ fn hook_crea_herramienta_con_url_del_binario() {
     h.escribir(".claude/settings.json", r#"{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "rtk hook claude"}]}]}}"#);
     let pacman = PacmanFalso(vec![]);
     let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
-    let rtk = e.hallazgos.iter().find(|x| x.id == "herramienta:rtk").expect("falta rtk");
-    assert_eq!(rtk.fuente.as_ref().unwrap().repo, "https://github.com/ejemplo/rtk");
+    let rtk = e
+        .hallazgos
+        .iter()
+        .find(|x| x.id == "herramienta:rtk")
+        .expect("falta rtk");
+    assert_eq!(
+        rtk.fuente.as_ref().unwrap().repo,
+        "https://github.com/ejemplo/rtk"
+    );
     assert!(rtk.perfiles.is_empty());
-    let hook = e.hallazgos.iter().find(|x| x.id == "hook:rtk hook claude").unwrap();
+    let hook = e
+        .hallazgos
+        .iter()
+        .find(|x| x.id == "hook:rtk hook claude")
+        .unwrap();
     assert!(hook.requiere.contains(&"herramienta:rtk".to_string()));
     assert_eq!(hook.perfiles, ["laburo"]);
 }

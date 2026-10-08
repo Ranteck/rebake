@@ -18,13 +18,24 @@ impl Salida {
     }
 }
 
-pub fn ejecutar(cmd: &mut Command, tope: Duration, al_leer: &mut dyn FnMut(&str)) -> std::io::Result<Salida> {
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0);
+pub fn ejecutar(
+    cmd: &mut Command,
+    tope: Duration,
+    al_leer: &mut dyn FnMut(&str),
+) -> std::io::Result<Salida> {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .process_group(0);
     let mut hijo = lanzar(cmd)?;
     let (tx, rx) = mpsc::channel::<String>();
     let mut fuentes: Vec<Box<dyn Read + Send>> = Vec::new();
-    if let Some(s) = hijo.stdout.take() { fuentes.push(Box::new(s)); }
-    if let Some(s) = hijo.stderr.take() { fuentes.push(Box::new(s)); }
+    if let Some(s) = hijo.stdout.take() {
+        fuentes.push(Box::new(s));
+    }
+    if let Some(s) = hijo.stderr.take() {
+        fuentes.push(Box::new(s));
+    }
     let lectores: Vec<_> = fuentes
         .into_iter()
         .map(|fuente| {
@@ -32,7 +43,9 @@ pub fn ejecutar(cmd: &mut Command, tope: Duration, al_leer: &mut dyn FnMut(&str)
             thread::spawn(move || {
                 for linea in BufReader::new(fuente).lines() {
                     let Ok(linea) = linea else { break };
-                    if tx.send(linea).is_err() { break; }
+                    if tx.send(linea).is_err() {
+                        break;
+                    }
                 }
             })
         })
@@ -48,13 +61,17 @@ pub fn ejecutar(cmd: &mut Command, tope: Duration, al_leer: &mut dyn FnMut(&str)
     let inicio = Instant::now();
     let mut vencido = false;
     let estado = loop {
-        if let Some(estado) = hijo.try_wait()? { break estado; }
+        if let Some(estado) = hijo.try_wait()? {
+            break estado;
+        }
         if inicio.elapsed() >= tope {
             vencido = true;
             matar_grupo(hijo.id());
             break hijo.wait()?;
         }
-        if let Ok(l) = rx.recv_timeout(Duration::from_millis(50)) { recibir(l, &mut texto); }
+        if let Ok(l) = rx.recv_timeout(Duration::from_millis(50)) {
+            recibir(l, &mut texto);
+        }
     };
     // Un nieto en segundo plano puede dejar la salida abierta y bloquear a los lectores.
     matar_grupo(hijo.id());
@@ -62,8 +79,14 @@ pub fn ejecutar(cmd: &mut Command, tope: Duration, al_leer: &mut dyn FnMut(&str)
         // Un lector solo termina con error si entró en pánico, y no hay nada que recuperar.
         let _ = lector.join();
     }
-    while let Ok(l) = rx.try_recv() { recibir(l, &mut texto); }
-    Ok(Salida { codigo: estado.code(), texto, vencido })
+    while let Ok(l) = rx.try_recv() {
+        recibir(l, &mut texto);
+    }
+    Ok(Salida {
+        codigo: estado.code(),
+        texto,
+        vencido,
+    })
 }
 
 /// ETXTBSY es transitorio: otro hilo hizo fork mientras se escribía el ejecutable y ese hijo

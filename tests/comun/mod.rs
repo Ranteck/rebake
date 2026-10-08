@@ -10,7 +10,9 @@ pub struct HomeFalso {
 
 impl HomeFalso {
     pub fn nuevo() -> Self {
-        HomeFalso { dir: tempfile::tempdir().unwrap() }
+        HomeFalso {
+            dir: tempfile::tempdir().unwrap(),
+        }
     }
     pub fn ruta(&self) -> &Path {
         self.dir.path()
@@ -29,7 +31,18 @@ impl HomeFalso {
     pub fn repo_git(&self, rel: &str, remoto: Option<&str>) -> PathBuf {
         let p = self.ruta().join(rel);
         fs::create_dir_all(&p).unwrap();
-        let git = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&p).args(args).output().unwrap().status.success());
+        let git = |args: &[&str]| {
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&p)
+                    .args(args)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            )
+        };
         git(&["init", "-q"]);
         if let Some(url) = remoto {
             git(&["remote", "add", "origin", url]);
@@ -54,9 +67,16 @@ impl recetario::escaner::Pacman for PacmanFalso {
 }
 
 pub fn entorno<'a>(h: &HomeFalso, pacman: &'a PacmanFalso) -> recetario::escaner::Entorno<'a> {
-    recetario::escaner::Entorno { home: h.ruta().to_path_buf(), path: vec![h.ruta().join("bin")], pacman }
+    recetario::escaner::Entorno {
+        home: h.ruta().to_path_buf(),
+        path: vec![h.ruta().join("bin")],
+        pacman,
+    }
 }
 
 pub fn perfil(nombre: &str, dir: &str) -> recetario::modelo::Perfil {
-    recetario::modelo::Perfil { nombre: nombre.into(), dir: dir.into() }
+    recetario::modelo::Perfil {
+        nombre: nombre.into(),
+        dir: dir.into(),
+    }
 }

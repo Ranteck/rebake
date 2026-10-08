@@ -3,12 +3,19 @@ use recetario::modelo::*;
 
 fn recetario_con(estado: Estado) -> Recetario {
     let mut r = Recetario::nuevo();
-    r.perfiles.push(Perfil { nombre: "claude".into(), dir: "~/.claude".into() });
+    r.perfiles.push(Perfil {
+        nombre: "claude".into(),
+        dir: "~/.claude".into(),
+    });
     let mut item = Item::nuevo("statusline:statusline.sh", Tipo::Statusline);
     item.perfiles = vec!["claude".into()];
     item.estado = estado;
     r.items.push(item);
-    r.checklist.ajustes.push(Ajuste { perfil: "claude".into(), clave: "theme".into(), valor: "dark".into() });
+    r.checklist.ajustes.push(Ajuste {
+        perfil: "claude".into(),
+        clave: "theme".into(),
+        valor: "dark".into(),
+    });
     r
 }
 
@@ -51,7 +58,9 @@ fn edicion_invalida_no_cambia() {
     let antes = r.clone();
     let texto = item_como_toml(r.item(ID).unwrap()).unwrap() + "color = \"rojo\"\n";
     assert!(reemplazar_desde_toml(&mut r, ID, &texto).is_err());
-    let otro_id = item_como_toml(r.item(ID).unwrap()).unwrap().replace(ID, "statusline:otra.sh");
+    let otro_id = item_como_toml(r.item(ID).unwrap())
+        .unwrap()
+        .replace(ID, "statusline:otra.sh");
     assert!(reemplazar_desde_toml(&mut r, ID, &otro_id).is_err());
     assert_eq!(r, antes);
 }
@@ -59,7 +68,9 @@ fn edicion_invalida_no_cambia() {
 #[test]
 fn edicion_valida_queda_por_revisar() {
     let mut r = recetario_con(Estado::Pendiente);
-    let texto = item_como_toml(r.item(ID).unwrap()).unwrap().replace("estado = \"pendiente\"", "estado = \"aprobada\"")
+    let texto = item_como_toml(r.item(ID).unwrap())
+        .unwrap()
+        .replace("estado = \"pendiente\"", "estado = \"aprobada\"")
         + "\n[[paso]]\ncmd = \"npx @kamranahmedse/claude-statusline\"\nmodo = \"auto\"\npor_perfil = false\n";
     reemplazar_desde_toml(&mut r, ID, &texto).unwrap();
     let x = r.item(ID).unwrap();
@@ -74,6 +85,9 @@ fn renombrar_perfil_actualiza_items() {
     assert_eq!(r.perfiles[0].nombre, "laburo");
     assert_eq!(r.item(ID).unwrap().perfiles, ["laburo"]);
     assert_eq!(r.checklist.ajustes[0].perfil, "laburo");
-    r.perfiles.push(Perfil { nombre: "personal".into(), dir: "~/.claude-personal".into() });
+    r.perfiles.push(Perfil {
+        nombre: "personal".into(),
+        dir: "~/.claude-personal".into(),
+    });
     assert!(renombrar_perfil(&mut r, "laburo", "personal").is_err());
 }

@@ -7,8 +7,8 @@ use crate::investigador::{self, Receta};
 use crate::{acciones, archivo, rutas, servicio};
 use anyhow::{Context, Result};
 use app::{App, Efecto, Pestana};
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
 use ratatui::DefaultTerminal;
+use ratatui::crossterm::event::{self, Event, KeyEventKind};
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc;
@@ -36,12 +36,20 @@ fn bucle(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, home: &Path
             guardar(app, ruta);
         }
         if let Some(rx) = &rx_inst {
-            while let Ok(e) = rx.try_recv() { app.evento_instalacion(e); }
+            while let Ok(e) = rx.try_recv() {
+                app.evento_instalacion(e);
+            }
         }
         terminal.draw(|f| vista::dibujar(f, app))?;
-        if !event::poll(Duration::from_millis(100))? { continue; }
-        let Event::Key(tecla) = event::read()? else { continue };
-        if tecla.kind != KeyEventKind::Press { continue; }
+        if !event::poll(Duration::from_millis(100))? {
+            continue;
+        }
+        let Event::Key(tecla) = event::read()? else {
+            continue;
+        };
+        if tecla.kind != KeyEventKind::Press {
+            continue;
+        }
         match app.tecla(tecla) {
             Efecto::Nada => {}
             Efecto::Salir => return Ok(()),
@@ -65,7 +73,11 @@ fn escanear(app: &mut App, ruta: &Path) {
     let pacman = PacmanReal;
     match Entorno::real(&pacman).and_then(|e| servicio::escanear(&mut app.recetario, &e)) {
         Ok(res) => {
-            let avisos = if res.avisos.is_empty() { String::new() } else { format!(" · aviso: {}", res.avisos.join(" · ")) };
+            let avisos = if res.avisos.is_empty() {
+                String::new()
+            } else {
+                format!(" · aviso: {}", res.avisos.join(" · "))
+            };
             app.mensaje = Some(format!("escaneo: {} nuevos{avisos}", res.nuevos));
             guardar(app, ruta);
         }
@@ -73,20 +85,35 @@ fn escanear(app: &mut App, ruta: &Path) {
     }
 }
 
-fn investigar(app: &mut App, ruta: &Path, home: &Path, ids: Vec<String>, tx: &mpsc::Sender<Investigado>) {
+fn investigar(
+    app: &mut App,
+    ruta: &Path,
+    home: &Path,
+    ids: Vec<String>,
+    tx: &mpsc::Sender<Investigado>,
+) {
     guardar(app, ruta);
     match servicio::trabajos(&app.recetario, &ids, home) {
         Ok(trabajos) => {
-            let rx = investigador::en_paralelo(trabajos, investigador::binario_claude(), investigador::TOPE, investigador::PARALELO);
+            let rx = investigador::en_paralelo(
+                trabajos,
+                investigador::binario_claude(),
+                investigador::TOPE,
+                investigador::PARALELO,
+            );
             let tx = tx.clone();
             thread::spawn(move || {
                 for m in rx {
-                    if tx.send(m).is_err() { break; }
+                    if tx.send(m).is_err() {
+                        break;
+                    }
                 }
             });
         }
         Err(e) => {
-            for id in &ids { app.investigando.remove(id); }
+            for id in &ids {
+                app.investigando.remove(id);
+            }
             app.mensaje = Some(format!("{e:#}"));
         }
     }
@@ -120,13 +147,24 @@ fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
 }
 
 fn editar(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, id: &str) -> Result<()> {
-    let item = app.recetario.item(id).context("el ítem a editar ya no existe")?;
-    let temporal = std::env::temp_dir().join(format!("recetario-{}-editar.toml", std::process::id()));
+    let item = app
+        .recetario
+        .item(id)
+        .context("el ítem a editar ya no existe")?;
+    let temporal =
+        std::env::temp_dir().join(format!("recetario-{}-editar.toml", std::process::id()));
     std::fs::write(&temporal, acciones::item_como_toml(item)?)?;
     ratatui::restore();
-    let editor = std::env::var("VISUAL").or_else(|_| std::env::var("EDITOR")).unwrap_or_else(|_| "vi".into());
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".into());
     // Vía `sh` para aceptar editores con argumentos (p. ej. "code --wait").
-    let estado = Command::new("sh").arg("-c").arg(format!("{editor} \"$1\"")).arg("sh").arg(&temporal).status();
+    let estado = Command::new("sh")
+        .arg("-c")
+        .arg(format!("{editor} \"$1\""))
+        .arg("sh")
+        .arg(&temporal)
+        .status();
     *terminal = ratatui::init();
     app.mensaje = Some(match estado {
         Ok(s) if s.success() => {

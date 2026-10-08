@@ -38,8 +38,14 @@ pub struct Entorno<'a> {
 
 impl<'a> Entorno<'a> {
     pub fn real(pacman: &'a dyn Pacman) -> Result<Self> {
-        let path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
-        Ok(Entorno { home: rutas::home()?, path, pacman })
+        let path = std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).collect())
+            .unwrap_or_default();
+        Ok(Entorno {
+            home: rutas::home()?,
+            path,
+            pacman,
+        })
     }
 }
 
@@ -99,13 +105,21 @@ fn agrupar(hallazgos: Vec<Hallazgo>) -> Vec<Hallazgo> {
         match unidos.iter_mut().find(|u| u.id == h.id) {
             Some(u) => {
                 for p in h.perfiles {
-                    if !u.perfiles.contains(&p) { u.perfiles.push(p); }
+                    if !u.perfiles.contains(&p) {
+                        u.perfiles.push(p);
+                    }
                 }
                 for r in h.requiere {
-                    if !u.requiere.contains(&r) { u.requiere.push(r); }
+                    if !u.requiere.contains(&r) {
+                        u.requiere.push(r);
+                    }
                 }
-                if u.fuente.is_none() { u.fuente = h.fuente; }
-                if u.pista.is_none() { u.pista = h.pista; }
+                if u.fuente.is_none() {
+                    u.fuente = h.fuente;
+                }
+                if u.pista.is_none() {
+                    u.pista = h.pista;
+                }
             }
             None => unidos.push(h),
         }
@@ -118,7 +132,9 @@ pub fn normalizar_url(url: &str) -> String {
     let url = crate::secretos::sin_credenciales_url(url.trim());
     // Un repo no necesita query ni ancla, y ahí también puede viajar un token.
     let url = url.split(['?', '#']).next().unwrap_or_default();
-    url.trim_end_matches('/').trim_end_matches(".git").to_string()
+    url.trim_end_matches('/')
+        .trim_end_matches(".git")
+        .to_string()
 }
 
 pub fn leer_json(ruta: &Path, entorno: &Entorno, avisos: &mut Vec<String>) -> Option<Value> {
@@ -126,14 +142,20 @@ pub fn leer_json(ruta: &Path, entorno: &Entorno, avisos: &mut Vec<String>) -> Op
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
-            avisos.push(format!("no pude leer {}: {e}", rutas::contraer(ruta, &entorno.home)));
+            avisos.push(format!(
+                "no pude leer {}: {e}",
+                rutas::contraer(ruta, &entorno.home)
+            ));
             return None;
         }
     };
     match serde_json::from_str(&texto) {
         Ok(v) => Some(v),
         Err(e) => {
-            avisos.push(format!("no pude leer {}: {e}", rutas::contraer(ruta, &entorno.home)));
+            avisos.push(format!(
+                "no pude leer {}: {e}",
+                rutas::contraer(ruta, &entorno.home)
+            ));
             None
         }
     }
@@ -142,11 +164,18 @@ pub fn leer_json(ruta: &Path, entorno: &Entorno, avisos: &mut Vec<String>) -> Op
 pub fn asignar_origen(h: &mut Hallazgo, ruta: &Path, entorno: &Entorno) -> bool {
     match git::origen_de_archivo(ruta) {
         git::Origen::Repo(repo) => {
-            h.fuente = Some(Fuente { repo, via: Via::Symlink, doc: None });
+            h.fuente = Some(Fuente {
+                repo,
+                via: Via::Symlink,
+                doc: None,
+            });
             true
         }
         git::Origen::RepoSinRemoto(raiz) => {
-            h.pista = Some(format!("repo local sin remoto: {}", rutas::contraer(&raiz, &entorno.home)));
+            h.pista = Some(format!(
+                "repo local sin remoto: {}",
+                rutas::contraer(&raiz, &entorno.home)
+            ));
             true
         }
         git::Origen::Desconocido => false,

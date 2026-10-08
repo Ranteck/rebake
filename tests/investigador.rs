@@ -11,28 +11,51 @@ const VALIDA: &str = r#"{"type":"result","subtype":"success","is_error":false,"r
  "requiere":[{"tipo":"herramienta","nombre":"codex"},{"tipo":"sistema","nombre":"jq"}]}}"#;
 
 fn claude_falso(h: &HomeFalso, salida: &str) -> String {
-    let script = format!("#!/bin/sh\ncat <<'FIN'\nruido en una linea previa\n{}\nFIN\n", salida.replace('\n', ""));
-    h.binario("bin/claude", script.as_bytes()).display().to_string()
+    let script = format!(
+        "#!/bin/sh\ncat <<'FIN'\nruido en una linea previa\n{}\nFIN\n",
+        salida.replace('\n', "")
+    );
+    h.binario("bin/claude", script.as_bytes())
+        .display()
+        .to_string()
 }
 
 fn recetario() -> Recetario {
     let mut r = Recetario::nuevo();
-    r.perfiles.push(Perfil { nombre: "laburo".into(), dir: "~/.claude".into() });
+    r.perfiles.push(Perfil {
+        nombre: "laburo".into(),
+        dir: "~/.claude".into(),
+    });
     let mut item = Item::nuevo("import:HOUSE-RULES.md", Tipo::Import);
     item.perfiles = vec!["laburo".into()];
-    item.fuente = Some(Fuente { repo: "https://github.com/ejemplo/house-rules".into(), via: Via::Symlink, doc: None });
+    item.fuente = Some(Fuente {
+        repo: "https://github.com/ejemplo/house-rules".into(),
+        via: Via::Symlink,
+        doc: None,
+    });
     r.items.push(item);
     r
 }
 
 const ID: &str = "import:HOUSE-RULES.md";
 
-fn trabajo() -> Trabajo { Trabajo { id: ID.into(), prompt: "x".into() } }
+fn trabajo() -> Trabajo {
+    Trabajo {
+        id: ID.into(),
+        prompt: "x".into(),
+    }
+}
 
 #[test]
 fn argumentos_sin_bash() {
     let a = argumentos("investigá");
-    for flag in ["-p", "--restricted", "--strict-mcp-config", "--no-session-persistence", "--json-schema"] {
+    for flag in [
+        "-p",
+        "--restricted",
+        "--strict-mcp-config",
+        "--no-session-persistence",
+        "--json-schema",
+    ] {
         assert!(a.iter().any(|x| x == flag), "falta {flag}");
     }
     let tools = a.iter().position(|x| x == "--tools").unwrap();
@@ -50,10 +73,16 @@ fn respuesta_valida_queda_por_revisar() {
     let x = r.item(ID).unwrap();
     assert_eq!(x.estado, Estado::PorRevisar);
     assert_eq!(x.pasos.len(), 1);
-    assert_eq!(x.pasos[0].cita.as_deref(), Some("curl -fsSL https://ejemplo/install.sh | sh"));
+    assert_eq!(
+        x.pasos[0].cita.as_deref(),
+        Some("curl -fsSL https://ejemplo/install.sh | sh")
+    );
     let f = x.fuente.clone().unwrap();
     assert_eq!(f.via, Via::Symlink);
-    assert_eq!(f.doc.as_deref(), Some("https://github.com/ejemplo/house-rules#install"));
+    assert_eq!(
+        f.doc.as_deref(),
+        Some("https://github.com/ejemplo/house-rules#install")
+    );
     assert_eq!(x.investigado.as_deref(), Some("2026-10-07"));
     assert!(x.error.is_none());
 }
@@ -61,20 +90,40 @@ fn respuesta_valida_queda_por_revisar() {
 #[test]
 fn json_invalido_queda_pendiente_con_error() {
     let h = HomeFalso::nuevo();
-    let claude = claude_falso(&h, r#"{"type":"result","subtype":"success","is_error":false,"structured_output":{"repo":"x","doc":"y"}}"#);
+    let claude = claude_falso(
+        &h,
+        r#"{"type":"result","subtype":"success","is_error":false,"structured_output":{"repo":"x","doc":"y"}}"#,
+    );
     let mut r = recetario();
-    aplicar(&mut r, ID, investigar(&trabajo(), &claude, Duration::from_secs(10)), "2026-10-07");
+    aplicar(
+        &mut r,
+        ID,
+        investigar(&trabajo(), &claude, Duration::from_secs(10)),
+        "2026-10-07",
+    );
     let x = r.item(ID).unwrap();
     assert_eq!(x.estado, Estado::Pendiente);
-    assert!(x.error.as_deref().unwrap().contains("formato"), "{:?}", x.error);
+    assert!(
+        x.error.as_deref().unwrap().contains("formato"),
+        "{:?}",
+        x.error
+    );
 }
 
 #[test]
 fn tope_queda_pendiente() {
     let h = HomeFalso::nuevo();
-    let claude = h.binario("bin/claude", b"#!/bin/sh\nsleep 30\n").display().to_string();
+    let claude = h
+        .binario("bin/claude", b"#!/bin/sh\nsleep 30\n")
+        .display()
+        .to_string();
     let mut r = recetario();
-    aplicar(&mut r, ID, investigar(&trabajo(), &claude, Duration::from_millis(300)), "2026-10-07");
+    aplicar(
+        &mut r,
+        ID,
+        investigar(&trabajo(), &claude, Duration::from_millis(300)),
+        "2026-10-07",
+    );
     let x = r.item(ID).unwrap();
     assert_eq!(x.estado, Estado::Pendiente);
     assert!(x.error.as_deref().unwrap().contains("superó"));
@@ -85,12 +134,31 @@ fn requisito_nuevo_y_de_sistema() {
     let h = HomeFalso::nuevo();
     let claude = claude_falso(&h, VALIDA);
     let mut r = recetario();
-    aplicar(&mut r, ID, investigar(&trabajo(), &claude, Duration::from_secs(10)), "2026-10-07");
+    aplicar(
+        &mut r,
+        ID,
+        investigar(&trabajo(), &claude, Duration::from_secs(10)),
+        "2026-10-07",
+    );
     let codex = r.item("herramienta:codex").unwrap();
     assert_eq!(codex.estado, Estado::Pendiente);
-    assert_eq!(codex.pista.as_deref(), Some("requisito de import:HOUSE-RULES.md"));
-    assert!(r.item(ID).unwrap().requiere.contains(&"herramienta:codex".to_string()));
-    assert_eq!(r.checklist.sistema, vec![PaqueteSistema { paquete: "jq".into(), para: ID.into() }]);
+    assert_eq!(
+        codex.pista.as_deref(),
+        Some("requisito de import:HOUSE-RULES.md")
+    );
+    assert!(
+        r.item(ID)
+            .unwrap()
+            .requiere
+            .contains(&"herramienta:codex".to_string())
+    );
+    assert_eq!(
+        r.checklist.sistema,
+        vec![PaqueteSistema {
+            paquete: "jq".into(),
+            para: ID.into()
+        }]
+    );
     assert!(r.item("sistema:jq").is_none());
 }
 
@@ -103,17 +171,36 @@ fn requisito_excluido_no_revive() {
     codex.estado = Estado::Excluida;
     codex.motivo = Some("no lo uso".into());
     r.items.push(codex);
-    aplicar(&mut r, ID, investigar(&trabajo(), &claude, Duration::from_secs(10)), "2026-10-07");
-    assert_eq!(r.item("herramienta:codex").unwrap().estado, Estado::Excluida);
+    aplicar(
+        &mut r,
+        ID,
+        investigar(&trabajo(), &claude, Duration::from_secs(10)),
+        "2026-10-07",
+    );
+    assert_eq!(
+        r.item("herramienta:codex").unwrap().estado,
+        Estado::Excluida
+    );
 }
 
 #[test]
 fn en_paralelo_devuelve_todos() {
     let h = HomeFalso::nuevo();
     let claude = claude_falso(&h, VALIDA);
-    let trabajos = (0..3).map(|i| Trabajo { id: format!("skill:s{i}"), prompt: "x".into() }).collect();
+    let trabajos = (0..3)
+        .map(|i| Trabajo {
+            id: format!("skill:s{i}"),
+            prompt: "x".into(),
+        })
+        .collect();
     let rx = en_paralelo(trabajos, claude, Duration::from_secs(10), 2);
-    let mut ids: Vec<String> = rx.iter().map(|(id, r)| { assert!(r.is_ok()); id }).collect();
+    let mut ids: Vec<String> = rx
+        .iter()
+        .map(|(id, r)| {
+            assert!(r.is_ok());
+            id
+        })
+        .collect();
     ids.sort();
     assert_eq!(ids, ["skill:s0", "skill:s1", "skill:s2"]);
 }

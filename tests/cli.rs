@@ -7,20 +7,32 @@ fn recetario(h: &HomeFalso, args: &[&str], claude: Option<&str>) -> Output {
     let mut c = Command::new(env!("CARGO_BIN_EXE_recetario"));
     c.args(args)
         .env("HOME", h.ruta())
-        .env("PATH", format!("{}:/usr/bin:/bin", h.ruta().join("bin").display()))
+        .env(
+            "PATH",
+            format!("{}:/usr/bin:/bin", h.ruta().join("bin").display()),
+        )
         .env_remove("CLAUDE_CONFIG_DIR");
-    if let Some(cl) = claude { c.env("RECETARIO_CLAUDE", cl); }
+    if let Some(cl) = claude {
+        c.env("RECETARIO_CLAUDE", cl);
+    }
     c.output().unwrap()
 }
 
 fn texto(o: &Output) -> String {
-    format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
 }
 
 #[test]
 fn escanear_crea_recetario() {
     let h = HomeFalso::nuevo();
-    h.escribir(".claude/settings.json", r#"{"enabledPlugins": {"codex@openai-codex": true}, "theme": "dark"}"#);
+    h.escribir(
+        ".claude/settings.json",
+        r#"{"enabledPlugins": {"codex@openai-codex": true}, "theme": "dark"}"#,
+    );
     let o = recetario(&h, &["escanear"], None);
     assert!(o.status.success(), "{}", texto(&o));
     let r = archivo::leer(&h.ruta().join(".config/recetario/recetario.toml")).unwrap();
@@ -34,12 +46,18 @@ const RESPUESTA: &str = r#"{"type":"result","subtype":"success","is_error":false
 #[test]
 fn de_punta_a_punta_con_claude_falso() {
     let h = HomeFalso::nuevo();
-    let repo = h.repo_git("Proyectos/house-rules", Some("https://github.com/ejemplo/house-rules"));
+    let repo = h.repo_git(
+        "Proyectos/house-rules",
+        Some("https://github.com/ejemplo/house-rules"),
+    );
     h.escribir("Proyectos/house-rules/HOUSE-RULES.md", "# reglas\n");
     h.enlazar(".claude/HOUSE-RULES.md", &repo.join("HOUSE-RULES.md"));
     h.escribir(".claude/CLAUDE.md", "@HOUSE-RULES.md\n");
     h.escribir(".claude/settings.json", "{}");
-    let claude = h.binario("bin/claude-falso", format!("#!/bin/sh\ncat <<'FIN'\n{RESPUESTA}\nFIN\n").as_bytes());
+    let claude = h.binario(
+        "bin/claude-falso",
+        format!("#!/bin/sh\ncat <<'FIN'\n{RESPUESTA}\nFIN\n").as_bytes(),
+    );
     let claude = claude.to_str().unwrap();
     let ruta = h.ruta().join(".config/recetario/recetario.toml");
     let id = "import:HOUSE-RULES.md";
@@ -65,5 +83,9 @@ fn de_punta_a_punta_con_claude_falso() {
     assert!(salida.contains("gh auth login"), "{salida}");
 
     let o = recetario(&h, &["instalar", "--si"], None);
-    assert!(String::from_utf8_lossy(&o.stdout).contains("salteado"), "{}", texto(&o));
+    assert!(
+        String::from_utf8_lossy(&o.stdout).contains("salteado"),
+        "{}",
+        texto(&o)
+    );
 }

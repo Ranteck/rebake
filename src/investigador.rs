@@ -2,12 +2,12 @@ use crate::escaner::normalizar_url;
 use crate::modelo::{Estado, Fuente, Item, Modo, PaqueteSistema, Paso, Recetario, Tipo, Via};
 use crate::proceso::ejecutar;
 use crate::rutas::expandir;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
 use std::process::Command;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
@@ -81,8 +81,17 @@ pub fn binario_claude() -> String {
 
 pub fn argumentos(prompt: &str) -> Vec<String> {
     [
-        "-p", prompt, "--restricted", "--strict-mcp-config", "--tools", "WebSearch,WebFetch",
-        "--no-session-persistence", "--output-format", "json", "--json-schema", ESQUEMA,
+        "-p",
+        prompt,
+        "--restricted",
+        "--strict-mcp-config",
+        "--tools",
+        "WebSearch,WebFetch",
+        "--no-session-persistence",
+        "--output-format",
+        "json",
+        "--json-schema",
+        ESQUEMA,
     ]
     .iter()
     .map(|s| s.to_string())
@@ -98,34 +107,53 @@ pub fn trabajo_para(r: &Recetario, item: &Item, home: &Path) -> Trabajo {
             None => n.clone(),
         })
         .collect();
-    let repo = item.fuente.as_ref().map(|f| f.repo.clone()).unwrap_or_else(|| "ninguno: buscalo en la web".into());
+    let repo = item
+        .fuente
+        .as_ref()
+        .map(|f| f.repo.clone())
+        .unwrap_or_else(|| "ninguno: buscalo en la web".into());
     let mut prompt = format!(
         "Sos un investigador de instaladores. Encontrá cómo se instala UNA cosa del setup de Claude Code de un usuario en Linux (Arch), leyendo la documentación oficial de su repositorio, y devolvé la receta en el formato JSON pedido.\n\nÍtem: {}\nTipo: {:?}\nRepo conocido: {repo}\nPista: {}\nPerfiles: {}\n",
         item.id,
         item.tipo,
         item.pista.as_deref().unwrap_or("ninguna"),
-        if perfiles.is_empty() { "ninguno (va una sola vez)".into() } else { perfiles.join(", ") },
+        if perfiles.is_empty() {
+            "ninguno (va una sola vez)".into()
+        } else {
+            perfiles.join(", ")
+        },
     );
     if let Some(cabeza) = cabeza_de_archivo(item, home) {
-        prompt.push_str(&format!("\nPrimeras líneas del archivo:\n```\n{cabeza}\n```\n"));
+        prompt.push_str(&format!(
+            "\nPrimeras líneas del archivo:\n```\n{cabeza}\n```\n"
+        ));
     }
     prompt.push('\n');
     prompt.push_str(REGLAS);
-    Trabajo { id: item.id.clone(), prompt }
+    Trabajo {
+        id: item.id.clone(),
+        prompt,
+    }
 }
 
 /// La pista de un archivo sin origen termina en su ruta (`…: ~/x`); su contenido orienta la búsqueda.
 fn cabeza_de_archivo(item: &Item, home: &Path) -> Option<String> {
     let ruta = expandir(item.pista.as_ref()?.rsplit_once(": ")?.1, home);
-    let archivo = if ruta.is_dir() { ruta.join("SKILL.md") } else { ruta };
+    let archivo = if ruta.is_dir() {
+        ruta.join("SKILL.md")
+    } else {
+        ruta
+    };
     let texto = std::fs::read_to_string(archivo).ok()?;
     Some(texto.lines().take(20).collect::<Vec<_>>().join("\n"))
 }
 
 pub fn investigar(t: &Trabajo, claude: &str, tope: Duration) -> Result<Receta> {
     let mut cmd = Command::new(claude);
-    cmd.args(argumentos(&t.prompt)).current_dir(std::env::temp_dir());
-    let salida = ejecutar(&mut cmd, tope, &mut |_| {}).with_context(|| format!("no pude ejecutar {claude}: ¿está instalado?"))?;
+    cmd.args(argumentos(&t.prompt))
+        .current_dir(std::env::temp_dir());
+    let salida = ejecutar(&mut cmd, tope, &mut |_| {})
+        .with_context(|| format!("no pude ejecutar {claude}: ¿está instalado?"))?;
     if salida.vencido {
         bail!("la investigación superó {} segundos", tope.as_secs_f32());
     }
@@ -146,11 +174,18 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
     if resultado.get("is_error").and_then(Value::as_bool) == Some(true)
         || resultado.get("subtype").and_then(Value::as_str) != Some("success")
     {
-        let detalle = resultado.get("result").and_then(Value::as_str).unwrap_or("sin detalle");
+        let detalle = resultado
+            .get("result")
+            .and_then(Value::as_str)
+            .unwrap_or("sin detalle");
         bail!("claude no pudo investigar: {detalle}");
     }
-    let estructurada = resultado.get("structured_output").cloned().ok_or_else(|| anyhow!("la respuesta no trae structured_output"))?;
-    let r: Respuesta = serde_json::from_value(estructurada).map_err(|e| anyhow!("la respuesta no cumple el formato: {e}"))?;
+    let estructurada = resultado
+        .get("structured_output")
+        .cloned()
+        .ok_or_else(|| anyhow!("la respuesta no trae structured_output"))?;
+    let r: Respuesta = serde_json::from_value(estructurada)
+        .map_err(|e| anyhow!("la respuesta no cumple el formato: {e}"))?;
     if r.pasos.iter().any(|p| p.cmd.trim().is_empty()) {
         bail!("la respuesta no cumple el formato: hay un paso sin comando");
     }
@@ -162,21 +197,36 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
         pasos: r
             .pasos
             .into_iter()
-            .map(|p| Paso { cmd: p.cmd, modo: p.modo, por_perfil: p.por_perfil, cita: Some(p.cita), nota: p.nota })
+            .map(|p| Paso {
+                cmd: p.cmd,
+                modo: p.modo,
+                por_perfil: p.por_perfil,
+                cita: Some(p.cita),
+                nota: p.nota,
+            })
             .collect(),
     })
 }
 
-pub fn en_paralelo(trabajos: Vec<Trabajo>, claude: String, tope: Duration, paralelo: usize) -> mpsc::Receiver<(String, Result<Receta>)> {
+pub fn en_paralelo(
+    trabajos: Vec<Trabajo>,
+    claude: String,
+    tope: Duration,
+    paralelo: usize,
+) -> mpsc::Receiver<(String, Result<Receta>)> {
     let (tx, rx) = mpsc::channel();
     let cola = Arc::new(Mutex::new(trabajos));
     for _ in 0..paralelo.max(1) {
         let (tx, cola, claude) = (tx.clone(), Arc::clone(&cola), claude.clone());
-        thread::spawn(move || loop {
-            let siguiente = cola.lock().unwrap_or_else(|e| e.into_inner()).pop();
-            let Some(t) = siguiente else { break };
-            let resultado = investigar(&t, &claude, tope);
-            if tx.send((t.id, resultado)).is_err() { break; }
+        thread::spawn(move || {
+            loop {
+                let siguiente = cola.lock().unwrap_or_else(|e| e.into_inner()).pop();
+                let Some(t) = siguiente else { break };
+                let resultado = investigar(&t, &claude, tope);
+                if tx.send((t.id, resultado)).is_err() {
+                    break;
+                }
+            }
         });
     }
     rx
@@ -192,13 +242,19 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         }
     };
     // Si Denis lo excluyó mientras se investigaba, gana su decisión.
-    if item.estado == Estado::Excluida { return; }
+    if item.estado == Estado::Excluida {
+        return;
+    }
     let repo = normalizar_url(&receta.repo);
     let via = match &item.fuente {
         Some(f) if normalizar_url(&f.repo).eq_ignore_ascii_case(&repo) => f.via,
         _ => Via::Busqueda,
     };
-    item.fuente = Some(Fuente { repo, via, doc: Some(receta.doc) });
+    item.fuente = Some(Fuente {
+        repo,
+        via,
+        doc: Some(receta.doc),
+    });
     item.pasos = receta.pasos;
     item.verificar = receta.verificar;
     item.estado = Estado::PorRevisar;
@@ -208,12 +264,19 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
     let mut sistema = Vec::new();
     for req in receta.requiere {
         if req.tipo == "sistema" {
-            sistema.push(PaqueteSistema { paquete: req.nombre, para: id.into() });
+            sistema.push(PaqueteSistema {
+                paquete: req.nombre,
+                para: id.into(),
+            });
             continue;
         }
         let rid = format!("{}:{}", req.tipo, req.nombre);
-        if rid == id { continue; }
-        if !item.requiere.contains(&rid) { item.requiere.push(rid.clone()); }
+        if rid == id {
+            continue;
+        }
+        if !item.requiere.contains(&rid) {
+            item.requiere.push(rid.clone());
+        }
         nuevos.push((rid, tipo_de(&req.tipo)));
     }
     for (rid, tipo) in nuevos {
@@ -225,7 +288,9 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         }
     }
     for s in sistema {
-        if !r.checklist.sistema.contains(&s) { r.checklist.sistema.push(s); }
+        if !r.checklist.sistema.contains(&s) {
+            r.checklist.sistema.push(s);
+        }
     }
 }
 

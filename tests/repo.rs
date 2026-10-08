@@ -10,7 +10,11 @@ fn no_versiona_datos_personales() {
             let texto = std::fs::read_to_string(&entrada).unwrap();
             // Partidos para que este mismo archivo no los contenga literalmente.
             for prohibido in ["/home/".to_string() + "denis", "flock".to_string() + "it"] {
-                assert!(!texto.contains(&prohibido), "{} contiene {prohibido}", entrada.display());
+                assert!(
+                    !texto.contains(&prohibido),
+                    "{} contiene {prohibido}",
+                    entrada.display()
+                );
             }
         }
     }
@@ -20,7 +24,11 @@ fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
     for e in std::fs::read_dir(dir).unwrap() {
         let p = e.unwrap().path();
-        if p.is_dir() { out.extend(walk(&p)) } else { out.push(p) }
+        if p.is_dir() {
+            out.extend(walk(&p))
+        } else {
+            out.push(p)
+        }
     }
     out
 }

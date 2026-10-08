@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -25,19 +25,41 @@ pub struct Perfil {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Tipo { Claude, Marketplace, Plugin, Skill, Import, Hook, Statusline, Herramienta }
+pub enum Tipo {
+    Claude,
+    Marketplace,
+    Plugin,
+    Skill,
+    Import,
+    Hook,
+    Statusline,
+    Herramienta,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Estado { Pendiente, PorRevisar, Aprobada, Excluida }
+pub enum Estado {
+    Pendiente,
+    PorRevisar,
+    Aprobada,
+    Excluida,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Via { Manual, Metadatos, Symlink, Busqueda }
+pub enum Via {
+    Manual,
+    Metadatos,
+    Symlink,
+    Busqueda,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Modo { Auto, Manual }
+pub enum Modo {
+    Auto,
+    Manual,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -89,7 +111,9 @@ pub struct Item {
     pub pasos: Vec<Paso>,
 }
 
-fn es_falso(b: &bool) -> bool { !*b }
+fn es_falso(b: &bool) -> bool {
+    !*b
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -110,30 +134,59 @@ impl Checklist {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Ajuste { pub perfil: String, pub clave: String, pub valor: String }
+pub struct Ajuste {
+    pub perfil: String,
+    pub clave: String,
+    pub valor: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PaqueteSistema { pub paquete: String, pub para: String }
+pub struct PaqueteSistema {
+    pub paquete: String,
+    pub para: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TituloClaudeMd { pub perfil: String, pub texto: String }
+pub struct TituloClaudeMd {
+    pub perfil: String,
+    pub texto: String,
+}
 
 impl Recetario {
     pub fn nuevo() -> Self {
-        Recetario { version: 1, perfiles: vec![], items: vec![], checklist: Checklist::default() }
+        Recetario {
+            version: 1,
+            perfiles: vec![],
+            items: vec![],
+            checklist: Checklist::default(),
+        }
     }
-    pub fn item(&self, id: &str) -> Option<&Item> { self.items.iter().find(|i| i.id == id) }
-    pub fn item_mut(&mut self, id: &str) -> Option<&mut Item> { self.items.iter_mut().find(|i| i.id == id) }
+    pub fn item(&self, id: &str) -> Option<&Item> {
+        self.items.iter().find(|i| i.id == id)
+    }
+    pub fn item_mut(&mut self, id: &str) -> Option<&mut Item> {
+        self.items.iter_mut().find(|i| i.id == id)
+    }
 }
 
 impl Item {
     pub fn nuevo(id: &str, tipo: Tipo) -> Self {
         Item {
-            id: id.into(), tipo, perfiles: vec![], estado: Estado::Pendiente, fuente: None,
-            pista: None, requiere: vec![], verificar: None, investigado: None, motivo: None,
-            error: None, ausente: false, pasos: vec![],
+            id: id.into(),
+            tipo,
+            perfiles: vec![],
+            estado: Estado::Pendiente,
+            fuente: None,
+            pista: None,
+            requiere: vec![],
+            verificar: None,
+            investigado: None,
+            motivo: None,
+            error: None,
+            ausente: false,
+            pasos: vec![],
         }
     }
 }
@@ -149,7 +202,11 @@ pub fn validar(r: &Recetario) -> Result<()> {
         if !ids.insert(item.id.as_str()) {
             bail!("el ítem {} está repetido", item.id);
         }
-        if let Some(p) = item.perfiles.iter().find(|p| !perfiles.contains(p.as_str())) {
+        if let Some(p) = item
+            .perfiles
+            .iter()
+            .find(|p| !perfiles.contains(p.as_str()))
+        {
             bail!("el ítem {} usa el perfil {p}, que no existe", item.id);
         }
         if item.motivo.is_some() && item.estado != Estado::Excluida {

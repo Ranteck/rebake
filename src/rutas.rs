@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn home() -> Result<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from).context("la variable HOME no está definida")
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .context("la variable HOME no está definida")
 }
 
 pub fn expandir(ruta: &str, home: &Path) -> PathBuf {
@@ -32,7 +34,10 @@ pub fn dir_estado(home: &Path) -> PathBuf {
 
 /// Fecha local no hace falta: `investigado` es informativo, y UTC evita depender de la zona.
 pub fn hoy() -> String {
-    let segundos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let segundos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let (a, m, d) = civil_desde_dias((segundos / 86_400) as i64);
     format!("{a:04}-{m:02}-{d:02}")
 }
