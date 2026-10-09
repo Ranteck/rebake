@@ -294,3 +294,38 @@ fn un_commit_fallido_se_hace_en_la_corrida_siguiente() {
     assert!(o.status.success(), "{}", texto(&o));
     assert_eq!(commits(&h, &bare), "2");
 }
+
+#[test]
+fn trae_lo_que_otro_equipo_subio() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    clonado(&h, &bare);
+    let otro = h.ruta().join("otro");
+    git(&h, h.ruta(), &["clone", "-q", url(&bare), url(&otro)]);
+    let aprobado = COOKBOOK.replace("estado = \"pendiente\"", "estado = \"aprobada\"");
+    fs::write(otro.join("cookbook.toml"), aprobado).unwrap();
+    git(&h, &otro, &["commit", "-q", "-am", "otro equipo"]);
+    git(&h, &otro, &["push", "-q", "origin", "HEAD"]);
+    let o = rebake(&h, &["instalar", "--dry-run"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    assert!(
+        String::from_utf8_lossy(&o.stdout).contains("plugin:a@b: simulado"),
+        "{}",
+        texto(&o)
+    );
+}
+
+#[test]
+fn sin_red_avisa_y_sigue_con_la_copia_local() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    clonado(&h, &bare);
+    fs::rename(&bare, h.ruta().join("apagado.git")).unwrap();
+    let o = rebake(&h, &["instalar", "--dry-run"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    assert!(
+        texto(&o).contains("sigo con la copia local"),
+        "{}",
+        texto(&o)
+    );
+}

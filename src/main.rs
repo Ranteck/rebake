@@ -99,6 +99,9 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
         .unwrap_or_else(|| rutas::archivo_por_defecto(home));
     // `clonar` crea el clon: no hay nada que traer antes ni que publicar después.
     let sincroniza = !matches!(cli.comando, Some(Comando::Clonar { .. })) && sincronizado(&ruta);
+    if sincroniza && let Err(e) = sincro::traer(&ruta) {
+        avisar(&e);
+    }
     let antes = if sincroniza {
         Some(archivo::leer(&ruta)?)
     } else {

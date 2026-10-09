@@ -197,3 +197,15 @@ fn rama(dir: &Path, nombre: &str) -> Result<Rama> {
     }
     Ok(estado)
 }
+
+/// Trae lo último del repo con avance rápido. Sin rama remota todavía no hay nada que traer.
+pub fn traer(ruta: &Path) -> Result<()> {
+    let (dir, nombre) = partes(ruta)?;
+    let estado = rama(dir, nombre)?;
+    if !estado.con_commits || estado.adelante.is_none() {
+        return Ok(());
+    }
+    git(dir, &["pull", "--ff-only", "--quiet"])
+        .context("no pude traer lo último del repo; sigo con la copia local")?;
+    Ok(())
+}
