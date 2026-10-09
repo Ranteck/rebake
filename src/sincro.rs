@@ -127,3 +127,73 @@ fn limpiar(texto: &str) -> String {
         .collect::<Vec<_>>()
         .join(" / ")
 }
+
+/// Si el cookbook está en la raíz de un clon hecho por `clonar`. Sin `.git` en esa carpeta no
+/// se ejecuta git: un cookbook suelto o enlazado desde otro repo no se toca.
+pub fn sincronizado(ruta: &Path) -> Result<bool> {
+    let (dir, _) = partes(ruta)?;
+    if !dir.join(".git").is_dir() {
+        return Ok(false);
+    }
+    let salida = correr_git(dir, &["config", "--local", "--get", MARCA])?;
+    Ok(salida.exito() && salida.texto.trim() == "true")
+}
+
+/// Commitea solo el cookbook si cambió y pushea lo que la rama tenga sin subir; `Ok(true)` si
+/// subió algo.
+pub fn publicar(ruta: &Path, mensaje: &str) -> Result<bool> {
+    let (dir, nombre) = partes(ruta)?;
+    if rama(dir, nombre)?.cookbook_cambiado {
+        git(dir, &["add", "--", nombre])?;
+        // Con la ruta, el commit lleva solo el cookbook aunque haya otras cosas en el índice.
+        git(dir, &["commit", "--quiet", "-m", mensaje, "--", nombre]).context(
+            "no pude commitear el cookbook; quedó guardado en disco y se commitea en la próxima \
+             corrida",
+        )?;
+    }
+    let estado = rama(dir, nombre)?;
+    if !estado.con_commits || estado.adelante == Some(0) {
+        return Ok(false);
+    }
+    git(
+        dir,
+        &["push", "--quiet", "--set-upstream", "origin", "HEAD"],
+    )
+    .context("el cookbook quedó commiteado en local y se pushea en la próxima corrida")?;
+    Ok(true)
+}
+
+/// Lo que dice `git status` de la rama y del cookbook, sin tocar la red.
+struct Rama {
+    con_commits: bool,
+    /// Commits sin subir; `None` si la rama todavía no tiene rama remota (repo recién creado o
+    /// un primer push que no salió), y entonces todo commit está pendiente.
+    adelante: Option<u32>,
+    cookbook_cambiado: bool,
+}
+
+fn rama(dir: &Path, nombre: &str) -> Result<Rama> {
+    let texto = git(dir, &["status", "--porcelain=v2", "--branch", "--", nombre])?;
+    let mut estado = Rama {
+        con_commits: true,
+        adelante: None,
+        cookbook_cambiado: false,
+    };
+    for linea in texto.lines() {
+        if linea == "# branch.oid (initial)" {
+            estado.con_commits = false;
+        } else if let Some(ab) = linea.strip_prefix("# branch.ab +") {
+            let n = ab.split_once(' ').map_or(ab, |(n, _)| n);
+            estado.adelante = Some(
+                n.parse()
+                    .with_context(|| format!("git status devolvió algo inesperado: {linea}"))?,
+            );
+        } else if ["1 ", "2 ", "u ", "? "]
+            .iter()
+            .any(|p| linea.starts_with(*p))
+        {
+            estado.cookbook_cambiado = true;
+        }
+    }
+    Ok(estado)
+}

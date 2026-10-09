@@ -43,6 +43,18 @@ enum Comando {
     RenombrarPerfil { viejo: String, nuevo: String },
 }
 
+impl Comando {
+    fn nombre(&self) -> &'static str {
+        match self {
+            Comando::Clonar { .. } => "clonar",
+            Comando::Escanear => "escanear",
+            Comando::Investigar { .. } => "investigar",
+            Comando::Instalar { .. } => "instalar",
+            Comando::RenombrarPerfil { .. } => "renombrar-perfil",
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let home = match rutas::home() {
@@ -85,18 +97,67 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
     let ruta = cli
         .archivo
         .unwrap_or_else(|| rutas::archivo_por_defecto(home));
-    let Some(comando) = cli.comando else {
-        rebake::tui::ejecutar(&ruta, home)?;
+    // `clonar` crea el clon: no hay nada que traer antes ni que publicar después.
+    let sincroniza = !matches!(cli.comando, Some(Comando::Clonar { .. })) && sincronizado(&ruta);
+    let antes = if sincroniza {
+        Some(archivo::leer(&ruta)?)
+    } else {
+        None
+    };
+    let nombre = cli.comando.as_ref().map(Comando::nombre);
+    let resultado = ejecutar_comando(cli.comando, &ruta, home);
+    // También si el comando falló: lo que llegó a guardar no se pierde.
+    if let Some(antes) = &antes {
+        publicar(&ruta, nombre, antes);
+    }
+    resultado
+}
+
+/// Si no se puede saber si el clon se sincroniza, el comando sigue sin tocar git.
+fn sincronizado(ruta: &Path) -> bool {
+    sincro::sincronizado(ruta).unwrap_or_else(|e| {
+        avisar(&e.context("no pude ver si el cookbook está en un clon de rebake"));
+        false
+    })
+}
+
+fn publicar(ruta: &Path, comando: Option<&str>, antes: &rebake::modelo::Recetario) {
+    let despues = match archivo::leer(ruta) {
+        Ok(r) => r,
+        Err(e) => {
+            avisar(&e.context("no pude leer el cookbook para publicarlo"));
+            return;
+        }
+    };
+    match sincro::publicar(ruta, &servicio::mensaje_commit(comando, antes, &despues)) {
+        Ok(true) => {
+            tracing::info!(accion = "publicar", "cookbook publicado en el repo");
+            eprintln!("cookbook publicado en el repo");
+        }
+        Ok(false) => {}
+        Err(e) => avisar(&e),
+    }
+}
+
+/// Un fallo de git no frena el comando: el cookbook ya quedó en disco.
+fn avisar(e: &anyhow::Error) {
+    tracing::warn!(error = %format!("{e:#}"), "sincronización con el repo");
+    eprintln!("aviso: {e:#}");
+}
+
+fn ejecutar_comando(comando: Option<Comando>, ruta: &Path, home: &Path) -> Result<bool> {
+    let Some(comando) = comando else {
+        rebake::tui::ejecutar(ruta, home)?;
         return Ok(true);
     };
     match comando {
-        Comando::Clonar { url } => clonar(&url, &ruta, home),
+        Comando::Clonar { url } => clonar(&url, ruta, home),
         Comando::Escanear => {
-            let mut r = archivo::leer(&ruta)?;
+            let mut r = archivo::leer(ruta)?;
             let pacman = PacmanReal;
             let entorno = Entorno::real(&pacman)?;
             let resumen = servicio::escanear(&mut r, &entorno)?;
-            archivo::guardar(&ruta, &r)?;
+            archivo::guardar(ruta, &r)?;
             for a in &resumen.avisos {
                 eprintln!("aviso: {a}");
             }
@@ -114,12 +175,12 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
             );
             Ok(true)
         }
-        Comando::Investigar { ids } => investigar(&mut archivo::leer(&ruta)?, &ruta, &ids, home),
-        Comando::Instalar { dry_run, si } => instalar(&archivo::leer(&ruta)?, home, dry_run, si),
+        Comando::Investigar { ids } => investigar(&mut archivo::leer(ruta)?, ruta, &ids, home),
+        Comando::Instalar { dry_run, si } => instalar(&archivo::leer(ruta)?, home, dry_run, si),
         Comando::RenombrarPerfil { viejo, nuevo } => {
-            let mut r = archivo::leer(&ruta)?;
+            let mut r = archivo::leer(ruta)?;
             acciones::renombrar_perfil(&mut r, &viejo, &nuevo)?;
-            archivo::guardar(&ruta, &r)?;
+            archivo::guardar(ruta, &r)?;
             println!("perfil {viejo} → {nuevo}");
             Ok(true)
         }
