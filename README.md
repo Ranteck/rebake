@@ -31,6 +31,7 @@ Para usarlo hacen falta `git` y, para investigar recetas, Claude Code.
 ## Uso
 
 ```sh
+rebake clonar <url>      # una vez: trae tu cookbook de su repo git y lo sincroniza
 rebake escanear          # mira esta PC y agrega lo nuevo al cookbook
 rebake                   # abre la TUI para revisar, investigar y aprobar recetas
 rebake investigar        # investiga las recetas pendientes sin abrir la TUI
@@ -40,14 +41,38 @@ rebake instalar          # en la PC nueva: vuelve a hornear todo
 
 El cookbook vive en tu carpeta de Documentos: `~/Documentos/rebake/cookbook.toml`
 (`~/Documents/…` en un sistema en inglés), o donde indique `--archivo`. Tiene tus ajustes
-personales, así que si lo versionás, que sea en un repo **privado**, y enlazalo:
+personales, así que si lo versionás, que sea en un repo **privado**.
+
+### Cookbook en un repo
+
+Con el cookbook en la raíz de un repo git (puede estar vacío), pasale la URL una vez:
+
+```sh
+rebake clonar https://github.com/vos/mi-cookbook
+```
+
+Lo clona en `~/Documentos/rebake/` y desde ahí cada comando trae lo último antes de empezar
+y, si el cookbook cambió, hace un commit solo de ese archivo y lo pushea. Usa tu `git` y tus
+credenciales: para un repo privado en GitHub, `gh auth login` y `gh auth setup-git`, o una
+clave ssh. Si algo de git falla, rebake avisa y sigue: el cookbook queda en disco y lo
+pendiente se sube en la corrida siguiente. Los conflictos entre dos PCs los resolvés vos con
+git en esa carpeta.
+
+En una PC nueva:
+
+```sh
+curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | sh
+rebake clonar <url-de-tu-cookbook>
+rebake instalar
+```
+
+Si preferís manejar git a mano, enlazá el archivo; rebake escribe a través del enlace, lo
+conserva y no toca git:
 
 ```sh
 mkdir -p ~/Documentos/rebake
 ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 ```
-
-`rebake` escribe a través del enlace y lo conserva.
 
 ### Teclas de la TUI
 

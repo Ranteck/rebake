@@ -1,6 +1,6 @@
 [package]
 name = "rebake"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Rebake your Claude Code setup on any machine from a cookbook of install recipes"
 license = "MIT"

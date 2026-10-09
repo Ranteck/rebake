@@ -7,6 +7,8 @@ Estado: aceptado
 > La instalación se distribuye como binario en GitHub Releases con `install.sh` (ver README).
 > Desde v0.2.0 el cookbook va por defecto a la carpeta Documentos del sistema
 > (`~/Documentos/rebake/cookbook.toml`), pedido de Denis; REQ-8 decía `~/.config/…`.
+> Desde v0.3.0 `rebake clonar <url>` clona el cookbook de su repo y lo sincroniza en cada
+> comando (ver `cookbook-remoto/`).
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;
