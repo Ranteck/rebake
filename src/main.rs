@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use rebake::escaner::{Entorno, PacmanReal};
 use rebake::instalador::{self, Evento, Opciones, Resultado};
 use rebake::investigador::{self, aplicar, en_paralelo};
-use rebake::{acciones, archivo, rutas, servicio};
+use rebake::{acciones, archivo, rutas, servicio, sincro};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -24,6 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Comando {
+    /// Clona el repo git de tu cookbook en su carpeta; desde ahí cada comando lo sincroniza
+    Clonar { url: String },
     /// Escanea esta PC y agrega lo nuevo al cookbook
     Escanear,
     /// Investiga con claude -p los ítems pendientes (o los ids indicados)
@@ -87,9 +89,10 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
         rebake::tui::ejecutar(&ruta, home)?;
         return Ok(true);
     };
-    let mut r = archivo::leer(&ruta)?;
     match comando {
+        Comando::Clonar { url } => clonar(&url, &ruta, home),
         Comando::Escanear => {
+            let mut r = archivo::leer(&ruta)?;
             let pacman = PacmanReal;
             let entorno = Entorno::real(&pacman)?;
             let resumen = servicio::escanear(&mut r, &entorno)?;
@@ -111,15 +114,28 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
             );
             Ok(true)
         }
-        Comando::Investigar { ids } => investigar(&mut r, &ruta, &ids, home),
-        Comando::Instalar { dry_run, si } => instalar(&r, home, dry_run, si),
+        Comando::Investigar { ids } => investigar(&mut archivo::leer(&ruta)?, &ruta, &ids, home),
+        Comando::Instalar { dry_run, si } => instalar(&archivo::leer(&ruta)?, home, dry_run, si),
         Comando::RenombrarPerfil { viejo, nuevo } => {
+            let mut r = archivo::leer(&ruta)?;
             acciones::renombrar_perfil(&mut r, &viejo, &nuevo)?;
             archivo::guardar(&ruta, &r)?;
             println!("perfil {viejo} → {nuevo}");
             Ok(true)
         }
     }
+}
+
+fn clonar(url: &str, ruta: &Path, home: &Path) -> Result<bool> {
+    let r = sincro::clonar(url, ruta)?;
+    let carpeta = ruta.parent().unwrap_or(ruta);
+    tracing::info!(comando = "clonar", items = r.items.len());
+    println!(
+        "clonado en {} ({})",
+        rutas::contraer(carpeta, home),
+        servicio::cantidad(r.items.len(), "receta", "recetas")
+    );
+    Ok(true)
 }
 
 fn investigar(
