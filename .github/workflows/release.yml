@@ -1,0 +1,55 @@
+name: release
+
+# Un tag v* compila el binario estático para Linux x86_64 y lo publica con install.sh.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: El tag coincide con la versión de Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "$TAG" != "v$version" ]; then
+            echo "El tag $TAG no coincide con la versión v$version de Cargo.toml" >&2
+            exit 1
+          fi
+
+      - name: Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup toolchain install stable --profile minimal
+          rustup target add "$TARGET"
+
+      - name: Tests
+        run: cargo test --locked
+
+      - name: Compilar
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Empaquetar
+        run: |
+          mkdir -p dist staging
+          cp "target/$TARGET/release/rebake" LICENSE README.md staging/
+          tar -czf "dist/rebake-$TARGET.tar.gz" -C staging rebake LICENSE README.md
+          (cd dist && sha256sum "rebake-$TARGET.tar.gz" > "rebake-$TARGET.tar.gz.sha256")
+          cp install.sh dist/
+
+      # Borrador primero: mientras se suben los archivos, latest/download sigue apuntando
+      # al release anterior y nadie baja uno incompleto.
+      - name: Publicar
+        run: |
+          gh release create "$TAG" dist/* --draft --title "$TAG" --generate-notes --repo "$GITHUB_REPOSITORY"
+          gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"

@@ -14,11 +14,19 @@ memorias, historial ni credenciales, ni instala paquetes del sistema.
 
 ## Instalar
 
-Requiere Rust (en Arch: `sudo pacman -S rust`), `git` y Claude Code para investigar.
+En Linux x86_64, sin necesidad de Rust:
 
 ```sh
-cargo install --git https://github.com/Ranteck/rebake
+curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | sh
 ```
+
+Baja el binario del último release, verifica su checksum y lo deja en `~/.local/bin`. Para otra
+carpeta usá `REBAKE_INSTALL_DIR`; para una versión fija, `REBAKE_VERSION=v0.1.0`. Volver a
+correrlo actualiza.
+
+Con Rust instalado también se puede compilar: `cargo install --git https://github.com/Ranteck/rebake`.
+
+Para usarlo hacen falta `git` y, para investigar recetas, Claude Code.
 
 ## Uso
 
