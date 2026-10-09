@@ -5,6 +5,8 @@ Estado: aceptado
 > `~/.config/rebake/cookbook.toml` (ver `intent.md`, `## Cambios`). Este documento conserva
 > los nombres originales como registro.
 > La instalación se distribuye como binario en GitHub Releases con `install.sh` (ver README).
+> Desde v0.2.0 el cookbook va por defecto a la carpeta Documentos del sistema
+> (`~/Documentos/rebake/cookbook.toml`), pedido de Denis; REQ-8 decía `~/.config/…`.
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;

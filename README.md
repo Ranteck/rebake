@@ -38,12 +38,13 @@ rebake instalar --dry-run
 rebake instalar          # en la PC nueva: vuelve a hornear todo
 ```
 
-El cookbook vive en `~/.config/rebake/cookbook.toml` (o donde indique `--archivo`).
-Tiene tus ajustes personales, así que guardalo en un repo **privado** y enlazalo:
+El cookbook vive en tu carpeta de Documentos: `~/Documentos/rebake/cookbook.toml`
+(`~/Documents/…` en un sistema en inglés), o donde indique `--archivo`. Tiene tus ajustes
+personales, así que si lo versionás, que sea en un repo **privado**, y enlazalo:
 
 ```sh
-mkdir -p ~/.config/rebake
-ln -s ~/mi-repo-privado/cookbook.toml ~/.config/rebake/cookbook.toml
+mkdir -p ~/Documentos/rebake
+ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 ```
 
 `rebake` escribe a través del enlace y lo conserva.

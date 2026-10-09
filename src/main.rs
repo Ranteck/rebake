@@ -15,7 +15,7 @@ use std::process::ExitCode;
     about = "Vuelve a hornear tu setup de Claude Code desde un cookbook de recetas de instalación"
 )]
 struct Cli {
-    /// Cookbook a usar (por defecto ~/.config/rebake/cookbook.toml)
+    /// Cookbook a usar (por defecto ~/Documentos/rebake/cookbook.toml, la carpeta Documentos de tu sistema)
     #[arg(long, global = true)]
     archivo: Option<PathBuf>,
     #[command(subcommand)]

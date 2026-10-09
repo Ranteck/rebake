@@ -35,7 +35,7 @@ fn escanear_crea_recetario() {
     );
     let o = recetario(&h, &["escanear"], None);
     assert!(o.status.success(), "{}", texto(&o));
-    let r = archivo::leer(&h.ruta().join(".config/rebake/cookbook.toml")).unwrap();
+    let r = archivo::leer(&h.ruta().join("Documents/rebake/cookbook.toml")).unwrap();
     assert_eq!(r.perfiles[0].dir, "~/.claude");
     assert!(r.item("plugin:codex@openai-codex").is_some());
     assert!(r.checklist.ajustes.iter().any(|a| a.clave == "theme"));
@@ -59,7 +59,7 @@ fn de_punta_a_punta_con_claude_falso() {
         format!("#!/bin/sh\ncat <<'FIN'\n{RESPUESTA}\nFIN\n").as_bytes(),
     );
     let claude = claude.to_str().unwrap();
-    let ruta = h.ruta().join(".config/rebake/cookbook.toml");
+    let ruta = h.ruta().join("Documents/rebake/cookbook.toml");
     let id = "import:HOUSE-RULES.md";
 
     assert!(recetario(&h, &["escanear"], None).status.success());

@@ -24,8 +24,28 @@ pub fn contraer(ruta: &Path, home: &Path) -> String {
     }
 }
 
+/// El cookbook es un archivo que se abre y se versiona: va a la carpeta Documentos del sistema.
 pub fn archivo_por_defecto(home: &Path) -> PathBuf {
-    home.join(".config/rebake/cookbook.toml")
+    dir_documentos(home).join("rebake/cookbook.toml")
+}
+
+/// Carpeta Documentos según xdg-user-dirs (`~/Documentos` en un sistema en español).
+pub fn dir_documentos(home: &Path) -> PathBuf {
+    let configurada = std::fs::read_to_string(home.join(".config/user-dirs.dirs"))
+        .ok()
+        .and_then(|texto| {
+            texto.lines().find_map(|linea| {
+                let valor = linea.trim().strip_prefix("XDG_DOCUMENTS_DIR=")?;
+                let valor = valor.trim_matches('"');
+                match valor.strip_prefix("$HOME") {
+                    Some(resto) => Some(home.join(resto.trim_start_matches('/'))),
+                    None if valor.starts_with('/') => Some(PathBuf::from(valor)),
+                    None => None,
+                }
+            })
+        });
+    // Sin user-dirs.dirs (o sin esa línea), ~/Documents es el valor por defecto del propio estándar.
+    configurada.unwrap_or_else(|| home.join("Documents"))
 }
 
 pub fn dir_estado(home: &Path) -> PathBuf {

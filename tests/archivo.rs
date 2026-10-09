@@ -77,11 +77,26 @@ fn guardar_a_traves_de_symlink_conserva_el_enlace() {
 }
 
 #[test]
-fn ruta_por_defecto_en_config() {
-    let home = std::path::Path::new("/home/ejemplo");
+fn ruta_por_defecto_en_documentos_del_sistema() {
+    let home = tempfile::tempdir().unwrap();
+    fs::create_dir_all(home.path().join(".config")).unwrap();
+    fs::write(
+        home.path().join(".config/user-dirs.dirs"),
+        "# generado por xdg-user-dirs-update\nXDG_DESKTOP_DIR=\"$HOME/Escritorio\"\nXDG_DOCUMENTS_DIR=\"$HOME/Documentos\"\n",
+    )
+    .unwrap();
     assert_eq!(
-        rebake::rutas::archivo_por_defecto(home),
-        home.join(".config/rebake/cookbook.toml")
+        rebake::rutas::archivo_por_defecto(home.path()),
+        home.path().join("Documentos/rebake/cookbook.toml")
+    );
+}
+
+#[test]
+fn sin_user_dirs_usa_documents() {
+    let home = tempfile::tempdir().unwrap();
+    assert_eq!(
+        rebake::rutas::archivo_por_defecto(home.path()),
+        home.path().join("Documents/rebake/cookbook.toml")
     );
 }
 
