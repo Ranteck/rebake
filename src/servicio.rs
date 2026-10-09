@@ -77,3 +77,44 @@ pub fn texto_checklist(r: &Recetario) -> String {
     }
     s
 }
+
+/// Resumen para el commit del repo del cookbook: ítems nuevos y cuántos pasaron a cada estado.
+pub fn mensaje_commit(comando: Option<&str>, antes: &Recetario, despues: &Recetario) -> String {
+    let nuevos = despues
+        .items
+        .iter()
+        .filter(|i| antes.item(&i.id).is_none())
+        .count();
+    let mut partes = Vec::new();
+    if nuevos > 0 {
+        partes.push(cantidad(nuevos, "nuevo", "nuevos"));
+    }
+    for (estado, singular, plural) in [
+        (Estado::PorRevisar, "por revisar", "por revisar"),
+        (Estado::Aprobada, "aprobada", "aprobadas"),
+        (Estado::Excluida, "excluida", "excluidas"),
+        (Estado::Pendiente, "pendiente", "pendientes"),
+    ] {
+        let n = despues
+            .items
+            .iter()
+            .filter(|i| i.estado == estado && antes.item(&i.id).is_some_and(|a| a.estado != estado))
+            .count();
+        if n > 0 {
+            partes.push(cantidad(n, singular, plural));
+        }
+    }
+    let prefijo = match comando {
+        Some(c) => format!("rebake {c}"),
+        None => "rebake".to_string(),
+    };
+    if partes.is_empty() {
+        format!("{prefijo}: actualiza el cookbook")
+    } else {
+        format!("{prefijo}: {}", partes.join(", "))
+    }
+}
+
+pub fn cantidad(n: usize, singular: &str, plural: &str) -> String {
+    format!("{n} {}", if n == 1 { singular } else { plural })
+}
