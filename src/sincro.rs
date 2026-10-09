@@ -105,24 +105,11 @@ fn correr_git(dir: &Path, args: &[&str]) -> Result<Salida> {
     Ok(salida)
 }
 
-/// La salida de git puede repetir la URL del remoto con usuario y token: se quitan antes de
-/// `ocultar`, que no reconoce una URL seguida de `:`.
+/// La salida de git puede repetir la URL del remoto con usuario y token.
 fn limpiar(texto: &str) -> String {
     texto
         .lines()
-        .map(|linea| {
-            let sin_usuario: Vec<String> = linea
-                .split(' ')
-                .map(|p| {
-                    if p.contains("://") {
-                        sin_credenciales_url(p)
-                    } else {
-                        p.to_string()
-                    }
-                })
-                .collect();
-            ocultar(&sin_usuario.join(" "))
-        })
+        .map(ocultar)
         .filter(|l| !l.trim().is_empty())
         .collect::<Vec<_>>()
         .join(" / ")

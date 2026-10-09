@@ -49,3 +49,21 @@ fn ocultar_webhooks_flags_y_cabeceras_pegadas() {
     let pegada2 = ocultar("curl -H X-Api-Key:SECRETO3 x");
     assert!(!pegada2.contains("SECRETO3"), "{pegada2}");
 }
+
+#[test]
+fn una_url_no_se_toma_por_nombre_de_clave() {
+    let git = ocultar(
+        "fatal: unable to access 'https://x-access-token:ghp_abcdefghijkl@github.com/a/b/': error 403",
+    );
+    assert!(
+        !git.contains("ghp_") && !git.contains("x-access-token"),
+        "{git}"
+    );
+    assert!(
+        git.contains("https://github.com") && git.contains("error 403"),
+        "{git}"
+    );
+    let consulta = ocultar("curl https://yo:clave1@host/auth?x=1");
+    assert!(!consulta.contains("clave1"), "{consulta}");
+    assert!(consulta.contains("https://host"), "{consulta}");
+}

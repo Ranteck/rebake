@@ -81,7 +81,7 @@ pub fn ocultar(texto: &str) -> String {
                 && !limpia.contains('=')
                 && clave_sensible(limpia.trim_start_matches('-'));
             if es_esquema_de_auth(limpia)
-                || limpia.strip_suffix(':').is_some_and(clave_sensible)
+                || (!limpia.contains("://") && limpia.strip_suffix(':').is_some_and(clave_sensible))
                 || flag_sensible
             {
                 ocultar_siguiente = true;
@@ -100,6 +100,7 @@ pub fn ocultar(texto: &str) -> String {
                 return parte.replacen(limpia, &format!("{nombre}:{OCULTO}"), 1);
             }
             if let Some((nombre, valor)) = limpia.split_once('=')
+                && !nombre.contains("://")
                 && clave_sensible(nombre)
                 && !valor.is_empty()
             {
