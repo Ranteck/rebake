@@ -67,3 +67,48 @@ fn una_url_no_se_toma_por_nombre_de_clave() {
     assert!(!consulta.contains("clave1"), "{consulta}");
     assert!(consulta.contains("https://host"), "{consulta}");
 }
+
+#[test]
+fn ocultar_cada_par_y_usuario_clave() {
+    assert_eq!(
+        ocultar("curl -d \"user=me&token=CLAVE1\" https://api.example.com/hook"),
+        format!("curl -d \"user=me&token={OCULTO}\" https://api.example.com")
+    );
+    assert_eq!(
+        ocultar("export A=1;TOKEN=CLAVE2"),
+        format!("export A=1;TOKEN={OCULTO}")
+    );
+    assert_eq!(
+        ocultar("curl -u yo:CLAVE3 https://api.example.com"),
+        format!("curl -u yo:{OCULTO} https://api.example.com")
+    );
+    assert_eq!(
+        ocultar("curl --user=yo:CLAVE4 https://api.example.com"),
+        format!("curl --user=yo:{OCULTO} https://api.example.com")
+    );
+    assert_eq!(
+        ocultar("GH=ghp_abcdefghijklmnop gh api user"),
+        format!("GH={OCULTO} gh api user")
+    );
+    assert_eq!(
+        ocultar("curl -d cb=https://x.example&api_key=CLAVE5"),
+        "curl -d cb=https://x.example"
+    );
+    assert_eq!(
+        ocultar("curl -d a=1&token=CLAVE6&cb=https://h/p"),
+        format!("curl -d a=1&token={OCULTO}&cb=https://h")
+    );
+}
+
+#[test]
+fn ocultar_no_rompe_lo_que_no_es_secreto() {
+    for igual in [
+        "docker run -u 1000:1000 imagen",
+        "sort -u archivo",
+        "curl -u yo https://h",
+        "curl -d user=me&page=2",
+    ] {
+        assert_eq!(ocultar(igual), igual);
+    }
+    assert_eq!(ocultar("curl https://h/p?a=1&sig=FIRMA"), "curl https://h");
+}

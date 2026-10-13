@@ -59,9 +59,29 @@ fn es_esquema_de_auth(palabra: &str) -> bool {
     palabra.eq_ignore_ascii_case("bearer") || palabra.eq_ignore_ascii_case("basic")
 }
 
+/// Qué hacer con la palabra que viene después de la que se acaba de leer.
+enum Siguiente {
+    Nada,
+    Secreto,
+    UsuarioClave,
+}
+
+/// `usuario:clave` sin la clave. Un par de números es usuario y grupo (`docker run -u 1000:1000`).
+fn ocultar_usuario_clave(texto: &str) -> Option<String> {
+    let (usuario, clave) = texto.split_once(':')?;
+    let numero = |t: &str| t.bytes().all(|b| b.is_ascii_digit());
+    if usuario.is_empty() || clave.is_empty() || texto.contains("://") {
+        return None;
+    }
+    if numero(usuario) && numero(clave) {
+        return None;
+    }
+    Some(format!("{usuario}:{OCULTO}"))
+}
+
 /// Oculta secretos dentro de un texto libre (un comando de hook, un valor de ajuste).
 pub fn ocultar(texto: &str) -> String {
-    let mut ocultar_siguiente = false;
+    let mut siguiente = Siguiente::Nada;
     texto
         .split(' ')
         .map(|parte| {
@@ -69,12 +89,29 @@ pub fn ocultar(texto: &str) -> String {
             if limpia.is_empty() {
                 return parte.to_string();
             }
-            if ocultar_siguiente {
-                if es_esquema_de_auth(limpia) {
+            match std::mem::replace(&mut siguiente, Siguiente::Nada) {
+                Siguiente::Secreto if es_esquema_de_auth(limpia) => {
+                    siguiente = Siguiente::Secreto;
                     return parte.to_string();
                 }
-                ocultar_siguiente = false;
-                return parte.replacen(limpia, OCULTO, 1);
+                Siguiente::Secreto => return parte.replacen(limpia, OCULTO, 1),
+                Siguiente::UsuarioClave => {
+                    if let Some(oculta) = ocultar_usuario_clave(limpia) {
+                        return parte.replacen(limpia, &oculta, 1);
+                    }
+                }
+                Siguiente::Nada => {}
+            }
+            // `-u usuario:clave` y `--user usuario:clave` (curl).
+            if limpia == "-u" || limpia == "--user" {
+                siguiente = Siguiente::UsuarioClave;
+                return parte.to_string();
+            }
+            if let Some(oculta) = limpia
+                .strip_prefix("--user=")
+                .and_then(ocultar_usuario_clave)
+            {
+                return parte.replacen(limpia, &format!("--user={oculta}"), 1);
             }
             // `Bearer X`, `Authorization: X` y `--token X`: el secreto es la palabra siguiente.
             let flag_sensible = limpia.starts_with('-')
@@ -84,7 +121,7 @@ pub fn ocultar(texto: &str) -> String {
                 || (!limpia.contains("://") && limpia.strip_suffix(':').is_some_and(clave_sensible))
                 || flag_sensible
             {
-                ocultar_siguiente = true;
+                siguiente = Siguiente::Secreto;
                 return parte.to_string();
             }
             // Cabecera pegada en una sola palabra: `X-Api-Key:valor`, `Authorization:Bearer`.
@@ -94,29 +131,57 @@ pub fn ocultar(texto: &str) -> String {
                 && !valor.is_empty()
             {
                 if es_esquema_de_auth(valor) {
-                    ocultar_siguiente = true;
+                    siguiente = Siguiente::Secreto;
                     return parte.to_string();
                 }
                 return parte.replacen(limpia, &format!("{nombre}:{OCULTO}"), 1);
             }
-            if let Some((nombre, valor)) = limpia.split_once('=')
-                && !nombre.contains("://")
-                && clave_sensible(nombre)
-                && !valor.is_empty()
-            {
-                return parte.replacen(limpia, &format!("{nombre}={OCULTO}"), 1);
-            }
-            if parece_secreto(limpia) {
-                return parte.replacen(limpia, OCULTO, 1);
-            }
-            // En texto libre una URL puede llevar el secreto en la ruta (webhooks): basta el host.
-            if limpia.contains("://") {
-                return parte.replacen(limpia, &solo_host(limpia), 1);
-            }
-            parte.to_string()
+            parte.replacen(limpia, &ocultar_palabra(limpia), 1)
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Una palabra puede encadenar pares (`a=1&token=x`, `A=1;TOKEN=x`) y terminar en una URL.
+fn ocultar_palabra(palabra: &str) -> String {
+    // Desde la URL no se separa: ahí `&` es parte de la consulta, que se descarta entera.
+    let corte = palabra.find("://").map_or(palabra.len(), |url| {
+        palabra[..url].rfind(['&', ';']).map_or(0, |sep| sep + 1)
+    });
+    let (pares, url) = palabra.split_at(corte);
+    let mut salida: String = pares.split_inclusive(['&', ';']).map(ocultar_par).collect();
+    if !url.is_empty() {
+        salida.push_str(&ocultar_url(url));
+    }
+    salida
+}
+
+/// `trozo` es un par `nombre=valor` (o texto suelto), con su separador final si lo trae.
+fn ocultar_par(trozo: &str) -> String {
+    let par = trozo.trim_end_matches(['&', ';']);
+    let separador = &trozo[par.len()..];
+    if let Some((nombre, valor)) = par.split_once('=')
+        && !valor.is_empty()
+        && (clave_sensible(nombre) || parece_secreto(valor))
+    {
+        return format!("{nombre}={OCULTO}{separador}");
+    }
+    if parece_secreto(par) {
+        return format!("{OCULTO}{separador}");
+    }
+    trozo.to_string()
+}
+
+fn ocultar_url(url: &str) -> String {
+    if let Some((nombre, valor)) = url.split_once('=')
+        && !nombre.contains("://")
+        && clave_sensible(nombre)
+        && !valor.is_empty()
+    {
+        return format!("{nombre}={OCULTO}");
+    }
+    // En texto libre una URL puede llevar el secreto en la ruta (webhooks): basta el host.
+    solo_host(url)
 }
 
 fn solo_host(url: &str) -> String {
@@ -124,6 +189,10 @@ fn solo_host(url: &str) -> String {
     let Some((esquema, resto)) = sin_credenciales.split_once("://") else {
         return sin_credenciales;
     };
-    let host = resto.split(['/', '?', '#']).next().unwrap_or_default();
+    // `&` y `;` no van en un host: lo que sigue son otros pares pegados a la URL.
+    let host = resto
+        .split(['/', '?', '#', '&', ';'])
+        .next()
+        .unwrap_or_default();
     format!("{esquema}://{host}")
 }
