@@ -24,6 +24,18 @@ const PREFIJOS: [&str; 10] = [
     "AKIA",
 ];
 
+/// Herramientas donde `-p` lleva la clave. En el resto es un puerto (`ssh -p2222`), así que
+/// fuera de esta lista no se toca.
+const CLAVE_EN_P: [&str; 7] = [
+    "mysql",
+    "mysqldump",
+    "mysqladmin",
+    "mariadb",
+    "mariadb-dump",
+    "sshpass",
+    "7z",
+];
+
 pub fn clave_sensible(clave: &str) -> bool {
     let clave = clave.to_lowercase();
     SENSIBLES.iter().any(|s| clave.contains(s))
@@ -64,6 +76,14 @@ enum Siguiente {
     Nada,
     Secreto,
     UsuarioClave,
+    /// El secreto abrió una comilla y sigue en las palabras siguientes, hasta la que la cierra.
+    HastaComilla(char),
+}
+
+/// La comilla con la que empieza `valor`, si no se cierra en la misma palabra.
+fn comilla_abierta(valor: &str) -> Option<char> {
+    let comilla = valor.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+    (valor.len() == 1 || !valor.ends_with(comilla)).then_some(comilla)
 }
 
 /// `usuario:clave` sin la clave. Un par de números es usuario y grupo (`docker run -u 1000:1000`).
@@ -82,36 +102,69 @@ fn ocultar_usuario_clave(texto: &str) -> Option<String> {
 /// Oculta secretos dentro de un texto libre (un comando de hook, un valor de ajuste).
 pub fn ocultar(texto: &str) -> String {
     let mut siguiente = Siguiente::Nada;
+    let mut clave_en_p: Option<&str> = None;
     texto
         .split(' ')
-        .map(|parte| {
+        .filter_map(|parte| {
             let limpia = parte.trim_matches(|c| c == '"' || c == '\'');
+            if let Siguiente::HastaComilla(comilla) = siguiente {
+                if parte.contains(comilla) {
+                    siguiente = Siguiente::Nada;
+                }
+                return None;
+            }
             if limpia.is_empty() {
-                return parte.to_string();
+                return Some(parte.to_string());
             }
             match std::mem::replace(&mut siguiente, Siguiente::Nada) {
                 Siguiente::Secreto if es_esquema_de_auth(limpia) => {
                     siguiente = Siguiente::Secreto;
-                    return parte.to_string();
+                    return Some(parte.to_string());
                 }
-                Siguiente::Secreto => return parte.replacen(limpia, OCULTO, 1),
+                Siguiente::Secreto => {
+                    return Some(match comilla_abierta(parte) {
+                        Some(comilla) => {
+                            siguiente = Siguiente::HastaComilla(comilla);
+                            OCULTO.to_string()
+                        }
+                        None => parte.replacen(limpia, OCULTO, 1),
+                    });
+                }
                 Siguiente::UsuarioClave => {
                     if let Some(oculta) = ocultar_usuario_clave(limpia) {
-                        return parte.replacen(limpia, &oculta, 1);
+                        return Some(parte.replacen(limpia, &oculta, 1));
                     }
                 }
-                Siguiente::Nada => {}
+                Siguiente::Nada | Siguiente::HastaComilla(_) => {}
+            }
+            let binario = limpia.rsplit('/').next().unwrap_or(limpia);
+            if let Some(herramienta) = CLAVE_EN_P.iter().find(|h| **h == binario) {
+                clave_en_p = Some(herramienta);
+            }
+            if let Some(herramienta) = clave_en_p
+                && let Some(clave) = limpia.strip_prefix("-p")
+            {
+                // Una sola vez: en `sshpass -p clave ssh -p 2222` el segundo `-p` es un puerto.
+                clave_en_p = None;
+                if !clave.is_empty() {
+                    return Some(parte.replacen(limpia, &format!("-p{OCULTO}"), 1));
+                }
+                // En mysql `-p` suelto pide la clave por teclado y lo que sigue es la base.
+                if herramienta == "sshpass" {
+                    siguiente = Siguiente::Secreto;
+                }
+                return Some(parte.to_string());
             }
             // `-u usuario:clave` y `--user usuario:clave` (curl).
             if limpia == "-u" || limpia == "--user" {
                 siguiente = Siguiente::UsuarioClave;
-                return parte.to_string();
+                return Some(parte.to_string());
             }
             if let Some(oculta) = limpia
                 .strip_prefix("--user=")
                 .and_then(ocultar_usuario_clave)
             {
-                return parte.replacen(limpia, &format!("--user={oculta}"), 1);
+                return Some(parte.replacen(limpia, &format!("--user={oculta}"), 1));
             }
             // `Bearer X`, `Authorization: X` y `--token X`: el secreto es la palabra siguiente.
             let flag_sensible = limpia.starts_with('-')
@@ -122,7 +175,7 @@ pub fn ocultar(texto: &str) -> String {
                 || flag_sensible
             {
                 siguiente = Siguiente::Secreto;
-                return parte.to_string();
+                return Some(parte.to_string());
             }
             // Cabecera pegada en una sola palabra: `X-Api-Key:valor`, `Authorization:Bearer`.
             if !limpia.contains("://")
@@ -132,11 +185,22 @@ pub fn ocultar(texto: &str) -> String {
             {
                 if es_esquema_de_auth(valor) {
                     siguiente = Siguiente::Secreto;
-                    return parte.to_string();
+                    return Some(parte.to_string());
                 }
-                return parte.replacen(limpia, &format!("{nombre}:{OCULTO}"), 1);
+                return Some(parte.replacen(limpia, &format!("{nombre}:{OCULTO}"), 1));
             }
-            parte.replacen(limpia, &ocultar_palabra(limpia), 1)
+            let oculta = ocultar_palabra(limpia);
+            // `TOKEN="abc def"`: el valor oculto sigue en las palabras siguientes.
+            if oculta.ends_with(OCULTO)
+                && let Some(comilla) = parte
+                    .rsplit(['&', ';'])
+                    .next()
+                    .and_then(|par| par.split_once('='))
+                    .and_then(|(_, valor)| comilla_abierta(valor))
+            {
+                siguiente = Siguiente::HastaComilla(comilla);
+            }
+            Some(parte.replacen(limpia, &oculta, 1))
         })
         .collect::<Vec<_>>()
         .join(" ")

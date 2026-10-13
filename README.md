@@ -111,6 +111,10 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 - En el cookbook se ocultan como `‹oculto›` las variables de `env`, las claves que contienen
   `token`, `secret`, `key`, `password`, `auth`, `credential`, `cookie` o `header`, los valores
   con forma de token y las credenciales o rutas de las URLs.
+  En los comandos también la clave de `-u usuario:clave` y la de `-p` en `mysql`, `mariadb`,
+  `sshpass` y `7z`.
+- Ese filtro va por patrones y no reconoce cualquier secreto: cuando agregues un hook con una
+  credencial en el comando, mirá el diff del cookbook.
 - Instalar ejecuta comandos de terceros (a veces `curl … | sh`): revisá la cita antes de
   aprobar.
 

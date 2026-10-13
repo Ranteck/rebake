@@ -112,3 +112,44 @@ fn ocultar_no_rompe_lo_que_no_es_secreto() {
     }
     assert_eq!(ocultar("curl https://h/p?a=1&sig=FIRMA"), "curl https://h");
 }
+
+#[test]
+fn ocultar_secretos_entre_comillas_y_clave_pegada_a_p() {
+    assert_eq!(
+        ocultar("TOKEN=\"abc def\" correr"),
+        format!("TOKEN={OCULTO} correr")
+    );
+    assert_eq!(
+        ocultar("notificar --token \"abc def\" x"),
+        format!("notificar --token {OCULTO} x")
+    );
+    assert_eq!(
+        ocultar("mysql -pCLAVE1 -h db"),
+        format!("mysql -p{OCULTO} -h db")
+    );
+    assert_eq!(
+        ocultar("/usr/bin/7z a -pCLAVE2 x.7z"),
+        format!("/usr/bin/7z a -p{OCULTO} x.7z")
+    );
+    assert_eq!(
+        ocultar("sshpass -p CLAVE3 ssh -p 2222 host"),
+        format!("sshpass -p {OCULTO} ssh -p 2222 host")
+    );
+}
+
+#[test]
+fn ocultar_no_toca_puertos_ni_texto_entre_comillas() {
+    for igual in [
+        "ssh -p2222 host",
+        "docker run -p 80:80 imagen",
+        "echo \"hola mundo\"",
+        "mysql -u root -p base",
+    ] {
+        assert_eq!(ocultar(igual), igual);
+    }
+    let cerrada = ocultar("TOKEN=\"abc\" correr");
+    assert!(
+        !cerrada.contains("abc") && cerrada.ends_with(" correr"),
+        "{cerrada}"
+    );
+}
