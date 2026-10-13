@@ -103,6 +103,7 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
         avisar(&e);
     }
     let antes = if sincroniza {
+        sincro::exigir_archivo(&ruta)?;
         Some(archivo::leer(&ruta)?)
     } else {
         None

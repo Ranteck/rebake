@@ -329,3 +329,41 @@ fn sin_red_avisa_y_sigue_con_la_copia_local() {
         texto(&o)
     );
 }
+
+/// Reemplaza el cookbook del repo por un enlace que, ya clonado, apunta fuera del clon.
+fn subir_enlace(h: &HomeFalso, bare: &Path) {
+    let otro = h.ruta().join("otro");
+    git(h, h.ruta(), &["clone", "-q", url(bare), url(&otro)]);
+    let enlace = otro.join("cookbook.toml");
+    if enlace.exists() {
+        fs::remove_file(&enlace).unwrap();
+    }
+    std::os::unix::fs::symlink("../../fuera/plantado.toml", &enlace).unwrap();
+    git(h, &otro, &["add", "cookbook.toml"]);
+    git(h, &otro, &["commit", "-q", "-m", "enlace"]);
+    git(h, &otro, &["push", "-q", "origin", "HEAD"]);
+}
+
+#[test]
+fn clonar_un_cookbook_que_es_un_enlace_no_deja_nada() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, None);
+    subir_enlace(&h, &bare);
+    let o = rebake(&h, &["clonar", url(&bare)]);
+    assert!(!o.status.success(), "{}", texto(&o));
+    assert!(texto(&o).contains("enlace"), "{}", texto(&o));
+    let documentos: Vec<_> = fs::read_dir(h.ruta().join("Documents")).unwrap().collect();
+    assert!(documentos.is_empty(), "{documentos:?}");
+}
+
+#[test]
+fn un_enlace_que_llega_por_pull_frena_el_comando() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    clonado(&h, &bare);
+    subir_enlace(&h, &bare);
+    let o = rebake(&h, &["escanear"]);
+    assert!(!o.status.success(), "{}", texto(&o));
+    assert!(texto(&o).contains("enlace"), "{}", texto(&o));
+    assert!(!h.ruta().join("fuera").exists());
+}

@@ -1,6 +1,10 @@
 # Spec: cookbook desde un repo (desde cookbook-remoto/intent.md 2026-10-08)
 Estado: aceptado
 
+> Nota (2026-10-13): desde v0.3.3 el cookbook de un clon de rebake tiene que ser un archivo
+> común; un enlace se rechaza (escenarios nuevos en Clonar y Sincronizar, bajo REQ-3). Sale de
+> la revisión de seguridad: a través de un enlace se escribía fuera del clon y nada se publicaba.
+
 ## Requisitos
 - REQ-1 MUST: `rebake clonar <url>` clona el repo en la carpeta del cookbook (la de
   `~/Documentos/rebake/cookbook.toml`, o la de `--archivo`); si falla no deja un clon a medias.
@@ -48,6 +52,8 @@ Estado: aceptado
   falla con línea y columna y `~/Documentos/rebake` no existe
 - GIVEN un repo vacío — WHEN `rebake clonar <url>` y después `rebake escanear` — THEN el repo
   remoto recibe un commit que crea `cookbook.toml`
+- GIVEN un repo cuyo `cookbook.toml` es un enlace — WHEN `rebake clonar <url>` — THEN falla
+  diciendo que es un enlace y `~/Documentos/rebake` no existe
 
 ### Sincronizar (REQ-4 a REQ-7)
 - GIVEN un clon marcado y otro equipo que pusheó un cambio — WHEN `rebake` — THEN la TUI
@@ -57,6 +63,8 @@ Estado: aceptado
 - GIVEN un clon marcado — WHEN `rebake instalar --dry-run` — THEN no hay commits nuevos
 - GIVEN un cookbook enlazado a un repo de dotfiles — WHEN `rebake escanear` — THEN ese repo no
   tiene commits nuevos ni recibe push
+- GIVEN un clon marcado y otro equipo que reemplazó `cookbook.toml` por un enlace — WHEN
+  `rebake escanear` — THEN falla diciendo que es un enlace y no escribe fuera del clon
 
 ### Fallos (REQ-8, REQ-9)
 - GIVEN el remoto inaccesible — WHEN `rebake renombrar-perfil a b` — THEN sale con 0, avisa

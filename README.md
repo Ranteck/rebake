@@ -58,6 +58,9 @@ clave ssh. Si algo de git falla, rebake avisa y sigue: el cookbook queda en disc
 pendiente se sube en la corrida siguiente. Los conflictos entre dos PCs los resolvés vos con
 git en esa carpeta.
 
+En ese repo el cookbook tiene que ser un archivo común: si es un enlace, rebake se niega a
+usarlo para no escribir fuera del clon.
+
 En una PC nueva:
 
 ```sh

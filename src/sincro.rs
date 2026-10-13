@@ -59,7 +59,7 @@ fn clonar_en(url: &str, padre: &Path, carpeta: &str, nombre: &str) -> Result<Rec
     let clon = padre.join(carpeta);
     let ruta = clon.join(nombre);
     // Un repo recién creado no tiene cookbook: se arranca vacío y el primer guardado lo sube.
-    let r = if ruta.exists() {
+    let r = if exigir_archivo(&ruta)? {
         let texto = fs::read_to_string(&ruta)
             .with_context(|| format!("no pude leer {}", ruta.display()))?;
         archivo::parsear(&texto, nombre).context("el cookbook del repo no es válido")?
@@ -68,6 +68,25 @@ fn clonar_en(url: &str, padre: &Path, carpeta: &str, nombre: &str) -> Result<Rec
     };
     git(&clon, &["config", MARCA, "true"])?;
     Ok(r)
+}
+
+/// En un clon de rebake el cookbook es un archivo común: a través de un enlace se escribiría
+/// fuera del repo y git no vería el cambio. `Ok(false)` si todavía no hay cookbook.
+pub fn exigir_archivo(ruta: &Path) -> Result<bool> {
+    let nombre = ruta
+        .file_name()
+        .unwrap_or(ruta.as_os_str())
+        .to_string_lossy();
+    match fs::symlink_metadata(ruta) {
+        Ok(m) if m.is_file() => Ok(true),
+        Ok(m) if m.file_type().is_symlink() => bail!(
+            "{nombre} es un enlace en el repo del cookbook y rebake no lo sigue: reemplazalo \
+             por el archivo"
+        ),
+        Ok(_) => bail!("{nombre} no es un archivo en el repo del cookbook"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e).with_context(|| format!("no pude leer {}", ruta.display())),
+    }
 }
 
 /// La carpeta del cookbook (la del clon) y el nombre del archivo dentro de ella.
