@@ -12,14 +12,15 @@ plugins cuyo comando rebake ya conoce: una corrida de Claude por cada una es cuo
    - marketplace con repo: `claude plugin marketplace add <repo>`;
    - plugin: `claude plugin install <nombre>@<marketplace>`;
    - skill instalada con skills.sh: `npx skills add <dueño/repo> --skill <nombre>`.
+   Si falta `npx` o el marketplace del plugin, la receta lo avisa al instalar.
 2. Quedan "por revisar", como las investigadas.
-3. Claude se usa solo para lo que no tiene forma fija (hooks, imports, statusline, herramientas,
-   skills sin lock).
+3. Claude queda para lo que no tiene forma fija (hooks, statusline, herramientas).
 4. La receta directa dice de dónde salió y trae su comprobación, para que `c` diga si ya está
    instalada.
 5. Lo que investiga Claude corre con Sonnet, cambiable con `REBAKE_MODELO`.
-6. Sin origen conocido, la pantalla pide el link al investigar, en vez de buscar en la web un
-   repo "parecido". Sin link no se investiga y no se instala.
+6. Sin origen conocido, la pantalla pide el link. Si Denis no lo sabe, puede pedir que lo busque
+   en la web, y la receta dice que su origen fue buscado. Sin link ni búsqueda no se investiga y
+   no se instala.
 
 ## Usuarios y sistemas afectados
 Denis y su cookbook; el paso "investigar" de rebake; Claude Code y skills.sh.
@@ -41,3 +42,5 @@ Ninguna.
 ## Cambios
 - 2026-10-14: comprobación (punto 4), Sonnet (punto 5), link pedido sin origen (punto 6) y sin
   lotes. Decisión de Denis tras probar tres modelos: dos inventaron el repo de la statusline.
+- 2026-10-14: aviso si falta `npx` o el marketplace (punto 1) y búsqueda web a pedido cuando no
+  se sabe el link (punto 6). Decisión de Denis.
