@@ -5,11 +5,12 @@ use anyhow::{Result, bail};
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
 pub const TOPE: Duration = Duration::from_secs(10 * 60);
+pub const TOPE_COMPROBACION: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Resultado {
@@ -18,6 +19,15 @@ pub enum Resultado {
     Simulado,
     Fallo(String),
     Bloqueado(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Presencia {
+    Instalada,
+    /// Perfiles donde falta; vacío si la receta no va por perfil.
+    Falta(Vec<String>),
+    SinComprobacion,
+    NoSePudo(String),
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +138,77 @@ fn abrir_log(op: &Opciones) -> Option<File> {
     }
 }
 
+fn perfiles_de(r: &Recetario, item: &Item, home: &Path) -> Vec<(String, PathBuf)> {
+    item.perfiles
+        .iter()
+        .filter_map(|n| r.perfiles.iter().find(|p| &p.nombre == n))
+        .map(|p| (p.nombre.clone(), expandir(&p.dir, home)))
+        .collect()
+}
+
+fn comando(cmd: &str, dir: Option<&PathBuf>) -> Command {
+    let mut c = Command::new("sh");
+    c.arg("-c").arg(cmd);
+    match dir {
+        Some(d) => {
+            c.env("CLAUDE_CONFIG_DIR", d);
+        }
+        None => {
+            c.env_remove("CLAUDE_CONFIG_DIR");
+        }
+    }
+    c
+}
+
+/// Corre `verificar` de cada id, por perfil, sin instalar. Llama a `emitir` una vez por id.
+pub fn comprobar(
+    r: &Recetario,
+    ids: &[String],
+    home: &Path,
+    tope: Duration,
+    emitir: &mut dyn FnMut(String, Presencia),
+) {
+    for id in ids {
+        let Some(item) = r.item(id) else { continue };
+        let presencia = match &item.verificar {
+            None => Presencia::SinComprobacion,
+            Some(v) => presencia_de(v, &perfiles_de(r, item, home), tope),
+        };
+        emitir(id.clone(), presencia);
+    }
+}
+
+fn presencia_de(verificar: &str, perfiles: &[(String, PathBuf)], tope: Duration) -> Presencia {
+    let esta = |dir: Option<&PathBuf>| -> Result<bool, String> {
+        let salida = ejecutar(&mut comando(verificar, dir), tope, &mut |_| {})
+            .map_err(|e| format!("no pude ejecutar `{verificar}`: {e}"))?;
+        if salida.vencido {
+            return Err(format!("`{verificar}` superó {} segundos", tope.as_secs()));
+        }
+        Ok(salida.exito())
+    };
+    let mut faltan = Vec::new();
+    if perfiles.is_empty() {
+        match esta(None) {
+            Ok(true) => {}
+            Ok(false) => return Presencia::Falta(faltan),
+            Err(m) => return Presencia::NoSePudo(m),
+        }
+    }
+    for (nombre, dir) in perfiles {
+        match esta(Some(dir)) {
+            Ok(true) => {}
+            Ok(false) => faltan.push(nombre.clone()),
+            Err(m) => return Presencia::NoSePudo(m),
+        }
+    }
+    if faltan.is_empty() {
+        Presencia::Instalada
+    } else {
+        Presencia::Falta(faltan)
+    }
+}
+
 fn instalar_item(
     r: &Recetario,
     item: &Item,
@@ -135,12 +216,7 @@ fn instalar_item(
     log: &mut Option<File>,
     emitir: &mut dyn FnMut(Evento),
 ) -> Resultado {
-    let perfiles: Vec<(String, PathBuf)> = item
-        .perfiles
-        .iter()
-        .filter_map(|n| r.perfiles.iter().find(|p| &p.nombre == n))
-        .map(|p| (p.nombre.clone(), expandir(&p.dir, &op.home)))
-        .collect();
+    let perfiles = perfiles_de(r, item, &op.home);
     let autos: Vec<_> = item.pasos.iter().filter(|p| p.modo == Modo::Auto).collect();
     if op.dry_run {
         for paso in &autos {
@@ -158,16 +234,7 @@ fn instalar_item(
         return Resultado::Simulado;
     }
     let mut correr = |cmd: &str, dir: Option<&PathBuf>| -> Result<(), String> {
-        let mut c = Command::new("sh");
-        c.arg("-c").arg(cmd);
-        match dir {
-            Some(d) => {
-                c.env("CLAUDE_CONFIG_DIR", d);
-            }
-            None => {
-                c.env_remove("CLAUDE_CONFIG_DIR");
-            }
-        }
+        let mut c = comando(cmd, dir);
         if let Some(f) = log.as_mut() {
             // Un log que no se puede escribir no frena la instalación.
             let _ = writeln!(f, "== {} $ {cmd}", item.id);

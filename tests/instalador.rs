@@ -167,3 +167,82 @@ fn dry_run_no_ejecuta() {
             .any(|e| matches!(e, Evento::Linea(_, t) if t.contains("touch")))
     );
 }
+
+fn presencias(r: &Recetario, home: &Path, tope: Duration) -> Vec<(String, Presencia)> {
+    let ids = planificar(r).unwrap();
+    let mut salida = Vec::new();
+    comprobar(r, &ids, home, tope, &mut |id, p| salida.push((id, p)));
+    salida
+}
+
+#[test]
+fn comprobar_dice_en_que_perfil_falta_y_no_instala() {
+    let dir = tempfile::tempdir().unwrap();
+    let (p1, p2) = (dir.path().join("uno"), dir.path().join("dos"));
+    fs::create_dir_all(&p1).unwrap();
+    fs::create_dir_all(&p2).unwrap();
+    fs::write(p1.join("listo"), "").unwrap();
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        Perfil {
+            nombre: "uno".into(),
+            dir: p1.display().to_string(),
+        },
+        Perfil {
+            nombre: "dos".into(),
+            dir: p2.display().to_string(),
+        },
+    ];
+    let mut item = aprobado(
+        "x",
+        &[],
+        vec![auto("touch \"$CLAUDE_CONFIG_DIR/instalado\"", true)],
+    );
+    item.perfiles = vec!["uno".into(), "dos".into()];
+    item.verificar = Some("test -f \"$CLAUDE_CONFIG_DIR/listo\"".into());
+    r.items.push(item);
+
+    let p = presencias(&r, dir.path(), Duration::from_secs(10));
+    assert_eq!(
+        p,
+        vec![("x".to_string(), Presencia::Falta(vec!["dos".into()]))]
+    );
+    assert!(!p1.join("instalado").exists() && !p2.join("instalado").exists());
+}
+
+#[test]
+fn comprobar_instalada_y_sin_comprobacion() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = Recetario::nuevo();
+    let mut a = aprobado("a", &[], vec![auto("true", false)]);
+    a.verificar = Some("true".into());
+    let b = aprobado("b", &[], vec![auto("true", false)]);
+    let mut c = aprobado("c", &[], vec![auto("true", false)]);
+    c.verificar = Some("false".into());
+    r.items = vec![a, b, c];
+
+    let p = presencias(&r, dir.path(), Duration::from_secs(10));
+    assert_eq!(
+        p,
+        vec![
+            ("a".to_string(), Presencia::Instalada),
+            ("b".to_string(), Presencia::SinComprobacion),
+            ("c".to_string(), Presencia::Falta(vec![])),
+        ]
+    );
+}
+
+#[test]
+fn una_comprobacion_colgada_no_frena_a_las_demas() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = Recetario::nuevo();
+    let mut a = aprobado("a", &[], vec![auto("true", false)]);
+    a.verificar = Some("sleep 30".into());
+    let mut b = aprobado("b", &[], vec![auto("true", false)]);
+    b.verificar = Some("true".into());
+    r.items = vec![a, b];
+
+    let p = presencias(&r, dir.path(), Duration::from_secs(1));
+    assert!(matches!(p[0].1, Presencia::NoSePudo(_)), "{:?}", p[0]);
+    assert_eq!(p[1], ("b".to_string(), Presencia::Instalada));
+}
