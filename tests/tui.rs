@@ -111,14 +111,55 @@ fn aprobar_pendiente_muestra_error_y_no_guarda() {
     );
 }
 
+fn con_fuente(id: &str) -> Item {
+    let mut i = Item::nuevo(id, Tipo::Plugin);
+    i.fuente = Some(Fuente {
+        repo: "https://github.com/ejemplo/repo".into(),
+        via: Via::Metadatos,
+        doc: None,
+    });
+    i
+}
+
 #[test]
-fn investigar_todo_pide_solo_pendientes() {
-    let mut app = App::nueva(recetario());
+fn investigar_todo_pide_solo_pendientes_con_fuente_y_avisa_las_sin_origen() {
+    let mut r = recetario();
+    let mut por_revisar = con_fuente("plugin:revisar@x");
+    por_revisar.estado = Estado::PorRevisar;
+    r.items
+        .extend([por_revisar, con_fuente("plugin:pendiente@x")]);
+    let mut app = App::nueva(r);
     assert_eq!(
         tecla(&mut app, KeyCode::Char('I')),
+        Efecto::Investigar(vec!["plugin:pendiente@x".into()])
+    );
+    assert!(app.investigando.contains("plugin:pendiente@x"));
+    assert!(app.mensaje.as_deref().unwrap().contains("1 sin origen"));
+}
+
+#[test]
+fn i_sobre_una_receta_sin_origen_pide_el_link_y_esc_no_cambia_nada() {
+    let mut app = App::nueva(recetario());
+    app.filtro = "statusline".into();
+    assert_eq!(tecla(&mut app, KeyCode::Char('i')), Efecto::Nada);
+    assert!(app.investigando.is_empty());
+    assert!(pantalla(&app).contains("Link del repo"));
+    assert_eq!(tecla(&mut app, KeyCode::Esc), Efecto::Nada);
+    let x = app.recetario.item("statusline:statusline.sh").unwrap();
+    assert_eq!(x.estado, Estado::Pendiente);
+    assert!(x.fuente.is_none());
+    assert!(app.investigando.is_empty());
+}
+
+#[test]
+fn enter_vacio_en_el_pedido_del_link_investiga_ese_item() {
+    let mut app = App::nueva(recetario());
+    app.filtro = "statusline".into();
+    tecla(&mut app, KeyCode::Char('r'));
+    assert_eq!(
+        tecla(&mut app, KeyCode::Enter),
         Efecto::Investigar(vec!["statusline:statusline.sh".into()])
     );
-    assert!(app.investigando.contains("statusline:statusline.sh"));
 }
 
 #[test]

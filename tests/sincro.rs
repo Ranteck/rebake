@@ -240,7 +240,7 @@ fn lo_guardado_se_publica_aunque_el_comando_falle() {
     let claude = h.binario("bin/claude-roto", b"#!/bin/sh\nexit 1\n");
     let o = rebake_con(
         &h,
-        &["investigar"],
+        &["investigar", "plugin:a@b"],
         &[("REBAKE_CLAUDE", claude.to_str().unwrap())],
     );
     assert!(!o.status.success(), "{}", texto(&o));

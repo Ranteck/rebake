@@ -31,7 +31,7 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
         return Ok(r
             .items
             .iter()
-            .filter(|i| i.estado == Estado::Pendiente)
+            .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_some())
             .map(|i| trabajo_para(r, i, home))
             .collect());
     }
@@ -41,6 +41,15 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
             Some(i) if i.estado == Estado::Excluida => bail!("{id} está excluido"),
             Some(i) => Ok(trabajo_para(r, i, home)),
         })
+        .collect()
+}
+
+/// Pendientes sin fuente: investigarlos en lote sería buscar a ciegas, así que se piden a mano.
+pub fn sin_origen(r: &Recetario) -> Vec<String> {
+    r.items
+        .iter()
+        .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_none())
+        .map(|i| i.id.clone())
         .collect()
 }
 

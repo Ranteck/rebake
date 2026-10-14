@@ -3,7 +3,7 @@ use crate::checklist;
 use crate::instalador::{self, Evento, Presencia, Resultado};
 use crate::investigador::{Receta, aplicar};
 use crate::modelo::{Estado, Item, Recetario};
-use crate::servicio::Novedad;
+use crate::servicio::{self, Novedad};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use std::collections::{HashMap, HashSet};
 
@@ -338,16 +338,31 @@ impl App {
                     }
                 };
             }
-            (KeyCode::Char('i' | 'r'), Some(id)) => return self.investigar(vec![id]),
+            (KeyCode::Char('i' | 'r'), Some(id)) => {
+                if self.recetario.item(&id).is_some_and(|i| i.fuente.is_none()) {
+                    self.modo = Modo::Escribiendo {
+                        para: Entrada::Link { id },
+                        texto: String::new(),
+                    };
+                } else {
+                    return self.investigar(vec![id]);
+                }
+            }
             (KeyCode::Char('I'), _) => {
                 let ids = self
                     .recetario
                     .items
                     .iter()
-                    .filter(|i| i.estado == Estado::Pendiente)
+                    .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_some())
                     .map(|i| i.id.clone())
                     .collect();
-                return self.investigar(ids);
+                let efecto = self.investigar(ids);
+                let sin_origen = servicio::sin_origen(&self.recetario).len();
+                if sin_origen > 0 {
+                    // Pisa el aviso de investigar: es lo único que el usuario tiene que hacer a mano.
+                    self.avisar(&format!("{sin_origen} sin origen: investigalas con `i`"));
+                }
+                return efecto;
             }
             _ => {}
         }
@@ -402,6 +417,9 @@ impl App {
                     return Efecto::Nada;
                 };
                 let id = id.clone();
+                if matches!(para, Entrada::Link { .. }) && texto.trim().is_empty() {
+                    return self.investigar(vec![id]);
+                }
                 let resultado = if matches!(para, Entrada::Motivo { .. }) {
                     acciones::excluir(&mut self.recetario, &id, &texto).map(|_| Efecto::Guardar)
                 } else {

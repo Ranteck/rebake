@@ -89,3 +89,41 @@ fn de_punta_a_punta_con_claude_falso() {
         texto(&o)
     );
 }
+
+#[test]
+fn investigar_en_lote_salta_las_sin_origen_y_las_lista() {
+    let h = HomeFalso::nuevo();
+    let ruta = h.ruta().join("Documents/rebake/cookbook.toml");
+    let mut r = rebake::modelo::Recetario::nuevo();
+    for (id, fuente) in [("a", true), ("b", true), ("huerfana", false)] {
+        let mut i = rebake::modelo::Item::nuevo(id, rebake::modelo::Tipo::Plugin);
+        if fuente {
+            i.fuente = Some(rebake::modelo::Fuente {
+                repo: "https://github.com/ejemplo/repo".into(),
+                via: rebake::modelo::Via::Metadatos,
+                doc: None,
+            });
+        }
+        r.items.push(i);
+    }
+    std::fs::create_dir_all(ruta.parent().unwrap()).unwrap();
+    archivo::guardar(&ruta, &r).unwrap();
+    let llamadas = h.ruta().join("llamadas");
+    let claude = h.binario(
+        "bin/claude-falso",
+        format!(
+            "#!/bin/sh\necho x >> {}\ncat <<'FIN'\n{RESPUESTA}\nFIN\n",
+            llamadas.display()
+        )
+        .as_bytes(),
+    );
+    let o = recetario(&h, &["investigar"], Some(claude.to_str().unwrap()));
+    assert!(o.status.success(), "{}", texto(&o));
+    assert_eq!(
+        std::fs::read_to_string(&llamadas).unwrap().lines().count(),
+        2
+    );
+    let salida = String::from_utf8_lossy(&o.stdout);
+    assert!(salida.contains("1 sin origen"), "{salida}");
+    assert!(salida.contains("  huerfana"), "{salida}");
+}

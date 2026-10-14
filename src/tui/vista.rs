@@ -79,7 +79,7 @@ fn nombre_via(v: Via) -> &'static str {
         Via::Manual => "manual",
         Via::Metadatos => "metadatos",
         Via::Symlink => "symlink",
-        Via::Busqueda => "búsqueda",
+        Via::Busqueda => "origen buscado en la web",
     }
 }
 
@@ -436,7 +436,11 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
                 Entrada::Motivo { .. } => "Motivo para excluir",
                 Entrada::Filtro => "Filtro",
             };
-            format!(" {etiqueta}: {texto}_   (Enter confirma, Esc cancela)")
+            let ayuda = match para {
+                Entrada::Link { .. } => "Enter vacío lo busca en la web, Esc cancela",
+                _ => "Enter confirma, Esc cancela",
+            };
+            format!(" {etiqueta}: {texto}_   ({ayuda})")
         }
         _ => format!(" {}", app.mensaje.clone().unwrap_or_default()),
     };

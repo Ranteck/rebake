@@ -92,3 +92,21 @@ fn sin_cambios_no_hay_novedades() {
     r.items = vec![aprobada("a", "uno")];
     assert!(servicio::novedades(&r, &r.clone()).is_empty());
 }
+
+#[test]
+fn sin_origen_lista_pendientes_sin_fuente_y_trabajos_sin_ids_las_excluye() {
+    let mut r = con(&[
+        ("a", Estado::Pendiente),
+        ("b", Estado::Pendiente),
+        ("c", Estado::PorRevisar),
+    ]);
+    r.items[1].fuente = Some(rebake::modelo::Fuente {
+        repo: "https://github.com/ejemplo/repo".into(),
+        via: rebake::modelo::Via::Metadatos,
+        doc: None,
+    });
+    assert_eq!(servicio::sin_origen(&r), vec!["a".to_string()]);
+    let t = servicio::trabajos(&r, &[], std::path::Path::new("/tmp")).unwrap();
+    assert_eq!(t.len(), 1);
+    assert_eq!(t[0].id, "b");
+}

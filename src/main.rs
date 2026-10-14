@@ -287,6 +287,18 @@ fn investigar(
         archivo::guardar(ruta, r)?;
     }
     println!("{ok} por revisar, {fallidos} con error");
+    if ids.is_empty() {
+        let sin_origen = servicio::sin_origen(r);
+        if !sin_origen.is_empty() {
+            println!(
+                "{} sin origen: investigalas con `i` en la pantalla o con `rebake investigar <id>`",
+                sin_origen.len()
+            );
+            for id in sin_origen {
+                println!("  {id}");
+            }
+        }
+    }
     Ok(fallidos == 0)
 }
 
