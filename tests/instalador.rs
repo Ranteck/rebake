@@ -246,3 +246,54 @@ fn una_comprobacion_colgada_no_frena_a_las_demas() {
     assert!(matches!(p[0].1, Presencia::NoSePudo(_)), "{:?}", p[0]);
     assert_eq!(p[1], ("b".to_string(), Presencia::Instalada));
 }
+
+#[test]
+fn el_perfil_por_defecto_no_exporta_claude_config_dir() {
+    // Claude Code usa `~/.claude.json` sin la variable y `~/.claude/.claude.json` con ella.
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let traza = home.join("traza");
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        Perfil {
+            nombre: "claude".into(),
+            dir: "~/.claude".into(),
+        },
+        Perfil {
+            nombre: "personal".into(),
+            dir: "~/.claude-personal".into(),
+        },
+    ];
+    let cmd = format!(
+        "echo \"$CLAUDE_CONFIG_DIR|$(sh -c 'echo $CLAUDE_CONFIG_DIR')\" >> '{}'",
+        traza.display()
+    );
+    let mut item = aprobado("herramienta:x", &[], vec![auto(&cmd, true)]);
+    item.perfiles = vec!["claude".into(), "personal".into()];
+    item.verificar = Some(format!(
+        "[ \"$CLAUDE_CONFIG_DIR\" = '{h}/.claude' ] && [ -z \"$(sh -c 'echo $CLAUDE_CONFIG_DIR')\" ] \
+         || [ \"$(sh -c 'echo $CLAUDE_CONFIG_DIR')\" = '{h}/.claude-personal' ]",
+        h = home.display()
+    ));
+    r.items.push(item);
+
+    let mut presencia = None;
+    comprobar(
+        &r,
+        &["herramienta:x".into()],
+        home,
+        Duration::from_secs(10),
+        &mut |_, p| presencia = Some(p),
+    );
+    assert_eq!(presencia, Some(Presencia::Instalada));
+
+    // La comprobación dio instalada: se saltea. Sin ella, corre el paso en los dos perfiles.
+    r.items[0].verificar = None;
+    let (res, _) = correr(&r, home, false);
+    assert_eq!(res[0].1, Resultado::Ok);
+    let h = home.display();
+    assert_eq!(
+        fs::read_to_string(&traza).unwrap(),
+        format!("{h}/.claude|\n{h}/.claude-personal|{h}/.claude-personal\n")
+    );
+}

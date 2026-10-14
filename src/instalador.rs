@@ -146,15 +146,22 @@ fn perfiles_de(r: &Recetario, item: &Item, home: &Path) -> Vec<(String, PathBuf)
         .collect()
 }
 
-fn comando(cmd: &str, dir: Option<&PathBuf>) -> Command {
+fn comando(cmd: &str, dir: Option<&PathBuf>, home: &Path) -> Command {
     let mut c = Command::new("sh");
-    c.arg("-c").arg(cmd);
+    c.env_remove("CLAUDE_CONFIG_DIR");
     match dir {
+        // Claude Code lee `~/.claude.json` sin la variable y `~/.claude/.claude.json` con ella:
+        // el perfil por defecto la ve solo la receta, no los programas que corre.
+        Some(d) if *d == home.join(".claude") => {
+            let ruta = d.display().to_string().replace('\'', "'\\''");
+            c.arg("-c")
+                .arg(format!("CLAUDE_CONFIG_DIR='{ruta}'\n{cmd}"));
+        }
         Some(d) => {
-            c.env("CLAUDE_CONFIG_DIR", d);
+            c.arg("-c").arg(cmd).env("CLAUDE_CONFIG_DIR", d);
         }
         None => {
-            c.env_remove("CLAUDE_CONFIG_DIR");
+            c.arg("-c").arg(cmd);
         }
     }
     c
@@ -172,15 +179,20 @@ pub fn comprobar(
         let Some(item) = r.item(id) else { continue };
         let presencia = match &item.verificar {
             None => Presencia::SinComprobacion,
-            Some(v) => presencia_de(v, &perfiles_de(r, item, home), tope),
+            Some(v) => presencia_de(v, &perfiles_de(r, item, home), home, tope),
         };
         emitir(id.clone(), presencia);
     }
 }
 
-fn presencia_de(verificar: &str, perfiles: &[(String, PathBuf)], tope: Duration) -> Presencia {
+fn presencia_de(
+    verificar: &str,
+    perfiles: &[(String, PathBuf)],
+    home: &Path,
+    tope: Duration,
+) -> Presencia {
     let esta = |dir: Option<&PathBuf>| -> Result<bool, String> {
-        let salida = ejecutar(&mut comando(verificar, dir), tope, &mut |_| {})
+        let salida = ejecutar(&mut comando(verificar, dir, home), tope, &mut |_| {})
             .map_err(|e| format!("no pude ejecutar `{verificar}`: {e}"))?;
         if salida.vencido {
             return Err(format!("`{verificar}` superó {} segundos", tope.as_secs()));
@@ -234,7 +246,7 @@ fn instalar_item(
         return Resultado::Simulado;
     }
     let mut correr = |cmd: &str, dir: Option<&PathBuf>| -> Result<(), String> {
-        let mut c = comando(cmd, dir);
+        let mut c = comando(cmd, dir, &op.home);
         if let Some(f) = log.as_mut() {
             // Un log que no se puede escribir no frena la instalación.
             let _ = writeln!(f, "== {} $ {cmd}", item.id);
