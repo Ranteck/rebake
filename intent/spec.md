@@ -16,6 +16,9 @@ Estado: aceptado
 > (ver `recetas-directas/`).
 > Desde v0.6.1 rebake revisa en segundo plano si hay una versión publicada más nueva; la
 > pantalla la ofrece con `U` (ver `auto-actualizar/`).
+> Desde v0.6.2 Claude Code es requisito de rebake, no una receta: REQ-2 ya no lo escanea y lo
+> de Claude no lleva `requiere = ["claude"]` (sin Claude instalado y logueado rebake no puede
+> investigar ni instalar). Pedido de Denis.
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;

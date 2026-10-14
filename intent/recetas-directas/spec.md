@@ -60,3 +60,8 @@ Investigar escribe, sin `claude -p`, un paso por perfil (Origen de REQ-1 a REQ-3
 - Verificado: `npx skills add -g` respeta `CLAUDE_CONFIG_DIR`.
 - Enter vacío lanza una búsqueda paga, aunque el resultado queda por revisar.
 - El spec raíz describe la búsqueda web automática: va una nota fechada, como en v0.4.0.
+
+## Cambios
+- 2026-10-14 (v0.6.2): REQ-10 también se cumple en la cabecera, que muestra fijo
+  "○ N pendientes (M sin origen)"; el aviso de `I` queda corto y ya no se repite al cerrar el
+  lote. Aprobado.

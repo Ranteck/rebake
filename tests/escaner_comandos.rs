@@ -79,13 +79,15 @@ fn hook_crea_herramienta_con_url_del_binario() {
 }
 
 #[test]
-fn claude_siempre_esta() {
+fn claude_code_es_requisito_y_no_receta() {
     let h = HomeFalso::nuevo();
     h.escribir(".claude/settings.json", "{}");
+    h.escribir(".claude/skills/propia/SKILL.md", "x");
     let pacman = PacmanFalso(vec![]);
     let e = escanear(&entorno(&h, &pacman), &[perfil("laburo", "~/.claude")]);
-    let c = e.hallazgos.iter().find(|x| x.id == "claude").unwrap();
-    assert_eq!(c.tipo, Tipo::Claude);
+    assert!(e.hallazgos.iter().all(|x| x.tipo != Tipo::Claude));
+    assert!(e.hallazgos.iter().any(|x| x.id == "skill:propia"));
+    assert!(e.hallazgos.iter().all(|x| x.requiere.is_empty()));
 }
 
 #[test]

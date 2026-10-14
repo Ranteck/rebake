@@ -1,7 +1,7 @@
 use super::app::{App, Entrada, Modo, Pestana};
 use crate::instalador::{self, Presencia, Resultado};
 use crate::modelo::{Estado, Item, Modo as ModoPaso, Tipo, Via};
-use crate::servicio::Novedad;
+use crate::servicio::{self, Novedad};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -33,6 +33,11 @@ fn texto_cabecera(app: &App) -> String {
     let r = &app.recetario;
     let contar = |e: Estado| r.items.iter().filter(|i| i.estado == e).count();
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
+    // Fijo acá y no en los avisos: el próximo aviso lo pisaría y es lo que queda a mano.
+    let sin_origen = match servicio::sin_origen(r).len() {
+        0 => String::new(),
+        n => format!(" ({n} sin origen)"),
+    };
     let aviso = app
         .version_nueva
         .as_ref()
@@ -44,11 +49,12 @@ fn texto_cabecera(app: &App) -> String {
         });
     // Adelante: en una terminal angosta se corta el final de la línea, no el aviso.
     format!(
-        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} pendientes  ✗ {} excluidas",
+        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} pendientes{}  ✗ {} excluidas",
         perfiles.join(" + "),
         contar(Estado::Aprobada),
         contar(Estado::PorRevisar),
         contar(Estado::Pendiente),
+        sin_origen,
         contar(Estado::Excluida)
     )
 }

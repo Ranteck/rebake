@@ -12,7 +12,6 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
         let visible =
             crate::secretos::ocultar(&comando).replace(&*entorno.home.to_string_lossy(), "~");
         let mut h = Hallazgo::nuevo(&format!("hook:{visible}"), Tipo::Hook, Some(perfil));
-        h.requiere = vec!["claude".into()];
         // Las asignaciones iniciales (`VAR=valor cmd`) no son el binario y pueden traer secretos.
         let binario = palabras(&comando, &entorno.home)
             .into_iter()
@@ -122,7 +121,6 @@ fn statusline(entorno: &Entorno, perfil: &str, comando: &str, salida: &mut Escan
             Tipo::Statusline,
             Some(perfil),
         );
-        h.requiere = vec!["claude".into()];
         if let Some(t) = &tool {
             h.requiere.push(t.id.clone());
         }

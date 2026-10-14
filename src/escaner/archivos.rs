@@ -48,7 +48,6 @@ fn skills(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
         }
         let ruta = carpeta.join(&nombre);
         let mut h = Hallazgo::nuevo(&format!("skill:{nombre}"), Tipo::Skill, Some(perfil));
-        h.requiere = vec!["claude".into()];
         if !asignar_origen(&mut h, &ruta, entorno) {
             match fuente_del_lock(lock.as_ref(), &nombre) {
                 Some(repo) => {
@@ -105,7 +104,6 @@ fn imports(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
             continue;
         }
         let mut h = Hallazgo::nuevo(&format!("import:{nombre}"), Tipo::Import, Some(perfil));
-        h.requiere = vec!["claude".into()];
         let archivo = dir.join(nombre);
         if !asignar_origen(&mut h, &archivo, entorno) {
             h.pista = Some(format!(

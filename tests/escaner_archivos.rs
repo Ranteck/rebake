@@ -136,7 +136,7 @@ fn import_symlink_resuelve_repo() {
         hallazgo(&e, "import:RTK.md").pista.as_deref(),
         Some("archivo sin origen conocido: ~/.claude/RTK.md")
     );
-    assert_eq!(hallazgo(&e, "import:RTK.md").requiere, ["claude"]);
+    assert!(hallazgo(&e, "import:RTK.md").requiere.is_empty());
 }
 
 #[test]

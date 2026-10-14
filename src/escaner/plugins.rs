@@ -18,7 +18,6 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
                 Tipo::Marketplace,
                 Some(perfil),
             );
-            h.requiere = vec!["claude".into()];
             asignar(
                 &mut h,
                 repo.clone(),

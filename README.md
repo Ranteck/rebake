@@ -14,6 +14,8 @@ memorias, historial ni credenciales, ni instala paquetes del sistema.
 
 ## Instalar
 
+Requisito: Claude Code instalado y logueado; rebake lo usa para investigar e instalar.
+
 En Linux x86_64, sin necesidad de Rust:
 
 ```sh

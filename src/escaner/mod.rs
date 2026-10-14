@@ -84,9 +84,6 @@ pub struct Escaneo {
 
 pub fn escanear(entorno: &Entorno, perfiles: &[Perfil]) -> Escaneo {
     let mut salida = Escaneo::default();
-    let mut claude = Hallazgo::nuevo("claude", Tipo::Claude, None);
-    claude.pista = Some("Claude Code CLI".into());
-    salida.hallazgos.push(claude);
     for perfil in perfiles {
         let dir = rutas::expandir(&perfil.dir, &entorno.home);
         plugins::detectar(entorno, &perfil.nombre, &dir, &mut salida);
