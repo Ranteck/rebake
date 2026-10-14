@@ -108,7 +108,7 @@ impl App {
         instalador::planificar(&self.recetario).unwrap_or_default()
     }
 
-    /// Lo que `P` instala: del plan, lo marcado que no está comprobado como instalado.
+    /// Lo que `p` instala: del plan, lo marcado que no está comprobado como instalado.
     pub fn a_instalar(&self) -> Vec<String> {
         self.plan()
             .into_iter()
@@ -189,7 +189,9 @@ impl App {
                 self.modo = Modo::ConfirmarSalida;
             }
             KeyCode::Char('q') => return Efecto::Salir,
-            KeyCode::Char('P') if self.instalando => self.avisar("ya hay una instalación en curso"),
+            KeyCode::Char('p' | 'P') if self.instalando => {
+                self.avisar("ya hay una instalación en curso")
+            }
             KeyCode::Char('u' | 'U') if self.instalando => {
                 self.avisar("esperá que termine la instalación para actualizar")
             }
@@ -201,7 +203,8 @@ impl App {
             KeyCode::Char('2') => self.pestana = Pestana::Checklist,
             KeyCode::Char('3') => self.pestana = Pestana::Instalacion,
             KeyCode::Char('s') => return Efecto::Escanear,
-            KeyCode::Char('P') => {
+            // Sin depender de Shift: la mayúscula queda por costumbre, el pie muestra la minúscula.
+            KeyCode::Char('p' | 'P') => {
                 let n = self.a_instalar().len();
                 if let Err(e) = instalador::planificar(&self.recetario) {
                     self.avisar(&format!("{e:#}"));
@@ -359,7 +362,7 @@ impl App {
                     return self.investigar(vec![id]);
                 }
             }
-            (KeyCode::Char('I'), _) => {
+            (KeyCode::Char('t' | 'I'), _) => {
                 let ids = self
                     .recetario
                     .items

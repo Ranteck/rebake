@@ -563,7 +563,7 @@ fn el_siguiente_paso_aparece_hasta_que_hay_una_receta() {
     r.items = vec![con_fuente("plugin:a@x"), con_fuente("plugin:b@x")];
     let p = pantalla(&App::nueva(r.clone()));
     assert!(
-        p.contains("Siguiente: `I` arma 2 recetas (las que tienen origen)"),
+        p.contains("Siguiente: `t` arma 2 recetas (las que tienen origen)"),
         "{p}"
     );
     r.items[1].estado = Estado::PorRevisar;
@@ -623,7 +623,7 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
             "{pie:?}"
         );
         assert!(
-            pie[1].contains("Todas:") && pie[1].contains(" I  investigar todas"),
+            pie[1].contains("Todas:") && pie[1].contains(" t  investigar todas"),
             "{pie:?}"
         );
     }
@@ -636,4 +636,23 @@ fn el_mensaje_va_en_su_propia_linea() {
     let pie = pie(&app);
     assert!(pie[2].contains("todavía no tiene receta"), "{pie:?}");
     assert!(!pie[0].contains("todavía") && !pie[1].contains("todavía"));
+}
+
+#[test]
+fn ninguna_tecla_depende_de_shift() {
+    for (minuscula, mayuscula) in [('t', 'I'), ('p', 'P')] {
+        let mut r = recetario();
+        r.items.push(con_fuente("plugin:pendiente@x"));
+        let (mut a, mut b) = (App::nueva(r.clone()), App::nueva(r));
+        assert_eq!(
+            tecla(&mut a, KeyCode::Char(minuscula)),
+            tecla(&mut b, KeyCode::Char(mayuscula)),
+            "{minuscula} / {mayuscula}"
+        );
+        assert_eq!(a.mensaje, b.mensaje, "{minuscula} / {mayuscula}");
+        assert_eq!(a.modo, b.modo, "{minuscula} / {mayuscula}");
+    }
+    let pie = pie(&App::nueva(recetario()));
+    assert!(pie[1].contains(" t  investigar todas"), "{pie:?}");
+    assert!(pie[1].contains(" p  instalar"), "{pie:?}");
 }

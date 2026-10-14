@@ -76,7 +76,7 @@ rebake <url-de-tu-cookbook>
 ```
 
 Abre la pestaña Instalación con las recetas aprobadas, todas marcadas. `c` comprueba cuáles ya
-están en esta PC, espacio saca las que no querés y `P` instala el resto. Lo que desmarcás vale
+están en esta PC, espacio saca las que no querés y `p` instala el resto. Lo que desmarcás vale
 solo para esa instalación: no se guarda en el cookbook. Las recetas que llegaron o cambiaron en
 el repo desde la última vez aparecen como `nueva` o `cambió`; `rebake instalar` las lista igual
 antes de pedir confirmación. Si ya tenés un clon de otra URL, rebake avisa y no toca nada.
@@ -94,17 +94,19 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 | Tecla | Acción |
 |---|---|
 | `s` | escanear |
-| `i` / `I` | investigar la receta (sin origen, pide el link) / todas las sin receta con origen |
+| `i` / `t` | investigar la receta (sin origen, pide el link) / todas las sin receta con origen |
 | `a` | aprobar (solo una receta investigada o editada) |
 | `x` | excluir, con motivo |
 | `l` | pegar el link del repo cuando no se encontró |
 | `e` | editar la receta en `$EDITOR` |
 | `r` | reinvestigar |
-| `P` | instalar lo marcado en Instalación (al abrir, todo lo aprobado) |
+| `p` | instalar lo marcado en Instalación (al abrir, todo lo aprobado) |
 | `/` | filtrar |
 | `u` | actualizar rebake cuando la cabecera avisa que hay una versión nueva |
 | `1` `2` `3` | Recetas, Checklist, Instalación |
 | `q` | salir |
+
+Ninguna tecla depende de Shift: `I`, `P` y `U` siguen andando como `t`, `p` y `u`.
 
 En la pestaña Instalación:
 

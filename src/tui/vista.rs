@@ -9,14 +9,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 const TECLAS_TODAS: [(&str, &str); 5] = [
-    ("I", "investigar todas"),
+    ("t", "investigar todas"),
     ("s", "escanear"),
     ("/", "filtrar"),
-    ("P", "instalar"),
+    ("p", "instalar"),
     ("q", "salir"),
 ];
 const TECLAS_INSTALACION: &str =
-    "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  P instalar  q salir";
+    "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  p instalar  q salir";
 const TECLAS_RESULTADOS: &str = "Esc volver al plan  q salir";
 
 pub fn dibujar(f: &mut Frame, app: &App) {
@@ -508,7 +508,7 @@ fn siguiente_paso(app: &App) -> String {
         .count()
     {
         0 => String::new(),
-        n => format!("Siguiente: `I` arma {n} recetas (las que tienen origen)"),
+        n => format!("Siguiente: `t` arma {n} recetas (las que tienen origen)"),
     }
 }
 
