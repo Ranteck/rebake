@@ -91,6 +91,25 @@ fn synced_no_aparece() {
 }
 
 #[test]
+fn las_copias_de_backup_no_aparecen() {
+    let h = HomeFalso::nuevo();
+    h.escribir(
+        ".claude/skills/graph-engineer.backup-20260730-171339/SKILL.md",
+        "x",
+    );
+    h.escribir(".claude/skills/vieja.bak/SKILL.md", "x");
+    h.escribir(".claude/skills/graph-engineer/SKILL.md", "x");
+    let e = escanear_laburo(&h);
+    let skills: Vec<&str> = e
+        .hallazgos
+        .iter()
+        .map(|x| x.id.as_str())
+        .filter(|id| id.starts_with("skill:"))
+        .collect();
+    assert_eq!(skills, ["skill:graph-engineer"]);
+}
+
+#[test]
 fn import_symlink_resuelve_repo() {
     let h = HomeFalso::nuevo();
     let repo = h.repo_git(

@@ -38,6 +38,14 @@ fn skills(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
         if nombre == "synced" || nombre.starts_with('.') {
             continue;
         }
+        // Una copia de backup no se instala: la skill real ya tiene su receta.
+        if [".backup", ".bak", ".old"]
+            .iter()
+            .any(|c| nombre.contains(c))
+            || nombre.ends_with('~')
+        {
+            continue;
+        }
         let ruta = carpeta.join(&nombre);
         let mut h = Hallazgo::nuevo(&format!("skill:{nombre}"), Tipo::Skill, Some(perfil));
         h.requiere = vec!["claude".into()];
