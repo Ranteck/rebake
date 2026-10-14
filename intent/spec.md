@@ -14,6 +14,8 @@ Estado: aceptado
 > Desde v0.5.0 marketplaces, plugins y skills de skills.sh tienen receta directa, sin
 > `claude -p`; sin origen se pide el link y la búsqueda web de REQ-4 corre solo a pedido
 > (ver `recetas-directas/`).
+> Desde v0.6.0, al abrir la pantalla rebake ofrece actualizarse si hay una versión publicada
+> más nueva (ver `auto-actualizar/`).
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;
