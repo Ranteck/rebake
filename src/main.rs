@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+use rebake::actualizar;
 use rebake::escaner::{Entorno, PacmanReal};
 use rebake::instalador::{self, Evento, Opciones, Resultado};
 use rebake::investigador::{self, aplicar, en_paralelo};
@@ -70,6 +71,7 @@ fn main() -> ExitCode {
         }
     };
     let _guardia = iniciar_logs(&home);
+    revisar_version(cli.comando.is_some());
     match correr(cli, &home) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
@@ -78,6 +80,31 @@ fn main() -> ExitCode {
             eprintln!("rebake: {e:#}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Con subcomando solo avisa; en la pantalla pregunta. Nada de esto frena el arranque.
+fn revisar_version(hay_subcomando: bool) {
+    let propia = env!("CARGO_PKG_VERSION");
+    let base = actualizar::base();
+    let Some(nueva) = actualizar::version_nueva(propia, &base) else {
+        return;
+    };
+    if hay_subcomando {
+        tracing::info!(propia, nueva = %nueva, "hay una versión nueva");
+        eprintln!("hay rebake {nueva} (tenés {propia}): abrí `rebake` para actualizar");
+        return;
+    }
+    let acepto = confirmar(&format!(
+        "Hay rebake {nueva} (tenés {propia}). ¿Actualizar? [s/N] "
+    ))
+    .unwrap_or(false);
+    tracing::info!(propia, nueva = %nueva, acepto, "hay una versión nueva");
+    if !acepto {
+        return;
+    }
+    if let Err(e) = actualizar::actualizar(&nueva, &base) {
+        eprintln!("rebake: {e:#}\nno se actualizó");
     }
 }
 

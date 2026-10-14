@@ -1,4 +1,5 @@
 pub mod acciones;
+pub mod actualizar;
 pub mod archivo;
 pub mod checklist;
 pub mod escaner;
