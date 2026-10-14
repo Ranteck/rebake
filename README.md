@@ -88,7 +88,7 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 | Tecla | Acción |
 |---|---|
 | `s` | escanear |
-| `i` / `I` | investigar la receta / todas las pendientes |
+| `i` / `I` | investigar la receta (sin origen, pide el link) / todas las pendientes con origen |
 | `a` | aprobar (solo una receta investigada o editada) |
 | `x` | excluir, con motivo |
 | `l` | pegar el link del repo cuando no se encontró |
@@ -111,13 +111,17 @@ En la pestaña Instalación:
 
 ## Cómo arma cada receta
 
-1. Busca el repo de origen: el link que pegaste, después los metadatos locales (catálogo del
-   marketplace, symlink a un repo git, lock de skills.sh, URL dentro del binario) y, si no hay
-   pista, la web.
-2. `claude -p --restricted` lee la documentación de instalación de ese repo, sin poder
-   ejecutar comandos ni escribir archivos, y devuelve los pasos con la **cita** literal de la
-   doc de la que sale cada comando.
-3. Vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
+1. Busca el repo de origen: el link que pegaste o los metadatos locales (catálogo del
+   marketplace, symlink a un repo git, lock de skills.sh, URL dentro del binario).
+2. Si es un marketplace, un plugin o una skill de skills.sh, escribe la receta sola con su
+   instalador oficial (`claude plugin marketplace add`, `claude plugin install`,
+   `npx skills add`), sin Claude. La receta avisa al instalar si falta `npx` o el marketplace.
+3. Para el resto, `claude -p --restricted` (con Sonnet; `REBAKE_MODELO` lo cambia) lee la
+   documentación de instalación de ese repo, sin poder ejecutar comandos ni escribir archivos,
+   y devuelve los pasos con la **cita** literal de la doc de la que sale cada comando.
+4. Sin origen conocido no investiga sola: `i` te pide el link, y con Enter vacío lo busca en la
+   web (la receta dice "origen buscado en la web").
+5. Vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
 
 ## Seguridad
 

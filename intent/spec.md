@@ -11,6 +11,9 @@ Estado: aceptado
 > comando (ver `cookbook-remoto/`).
 > Desde v0.4.0 `rebake <url>` abre la pestaña Instalación, donde se comprueba qué está instalado
 > y se elige qué instalar (ver `elegir-que-instalar/`).
+> Desde v0.5.0 marketplaces, plugins y skills de skills.sh tienen receta directa, sin
+> `claude -p`; sin origen se pide el link y la búsqueda web de REQ-4 corre solo a pedido
+> (ver `recetas-directas/`).
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;
