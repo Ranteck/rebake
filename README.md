@@ -31,7 +31,8 @@ Para usarlo hacen falta `git` y, para investigar recetas, Claude Code.
 ## Uso
 
 ```sh
-rebake clonar <url>      # una vez: trae tu cookbook de su repo git y lo sincroniza
+rebake <url>             # trae tu cookbook de su repo git y abre la pantalla en Instalación
+rebake clonar <url>      # lo mismo sin abrir la pantalla (para scripts)
 rebake escanear          # mira esta PC y agrega lo nuevo al cookbook
 rebake                   # abre la TUI para revisar, investigar y aprobar recetas
 rebake investigar        # investiga las recetas pendientes sin abrir la TUI
@@ -65,9 +66,14 @@ En una PC nueva:
 
 ```sh
 curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | sh
-rebake clonar <url-de-tu-cookbook>
-rebake instalar
+rebake <url-de-tu-cookbook>
 ```
+
+Abre la pestaña Instalación con las recetas aprobadas, todas marcadas. `c` comprueba cuáles ya
+están en esta PC, espacio saca las que no querés y `P` instala el resto. Lo que desmarcás vale
+solo para esa instalación: no se guarda en el cookbook. Las recetas que llegaron o cambiaron en
+el repo desde la última vez aparecen como `nueva` o `cambió`; `rebake instalar` las lista igual
+antes de pedir confirmación. Si ya tenés un clon de otra URL, rebake avisa y no toca nada.
 
 Si preferís manejar git a mano, enlazá el archivo; rebake escribe a través del enlace, lo
 conserva y no toca git:
@@ -88,10 +94,20 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 | `l` | pegar el link del repo cuando no se encontró |
 | `e` | editar la receta en `$EDITOR` |
 | `r` | reinvestigar |
-| `P` | instalar lo aprobado |
+| `P` | instalar lo marcado en Instalación (al abrir, todo lo aprobado) |
 | `/` | filtrar |
 | `1` `2` `3` | Recetas, Checklist, Instalación |
 | `q` | salir |
+
+En la pestaña Instalación:
+
+| Tecla | Acción |
+|---|---|
+| `↑` `↓` | moverse; el panel derecho muestra los comandos y la comprobación de la receta |
+| espacio | marcar o desmarcar (arrastra a las recetas que dependen de ella) |
+| `t` | marcar todas o ninguna |
+| `c` | comprobar qué está instalado en cada perfil |
+| `Esc` | volver de los resultados al plan |
 
 ## Cómo arma cada receta
 
@@ -117,6 +133,10 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
   credencial en el comando, mirá el diff del cookbook.
 - Instalar ejecuta comandos de terceros (a veces `curl … | sh`): revisá la cita antes de
   aprobar.
+- Abrir un cookbook no ejecuta nada suyo. Lo primero que corre son las comprobaciones, cuando
+  apretás `c`, y cada una se puede leer antes en el panel de la receta.
+- Quien puede escribir en el repo de tu cookbook decide qué instala rebake en tus PCs: mantenelo
+  privado y con doble factor.
 
 ## Licencia
 

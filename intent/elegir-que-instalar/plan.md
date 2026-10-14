@@ -51,6 +51,8 @@ No se crea ningún archivo de código.
 | `la_url_de_otro_clon_falla_sin_tocar_nada` | `tests/sincro.rs` | REQ-3 |
 | `una_carpeta_que_no_es_clon_no_se_pisa` | `tests/sincro.rs` | REQ-3 |
 | `url_y_subcomando_juntos_se_rechazan` | `tests/sincro.rs` | REQ-1 |
+| `un_comando_mal_escrito_no_se_toma_por_url` (agregado en la revisión) | `tests/sincro.rs` | REQ-1 |
+| `c_no_lanza_otra_comprobacion_si_hay_una_corriendo`, `un_ciclo_en_requiere_se_informa_al_instalar`, `instalar_actualiza_lo_comprobado` (agregados en la revisión) | `tests/tui.rs` | REQ-5, REQ-8, REQ-9 |
 | `con_url_abre_en_instalacion_y_sin_url_en_recetas` | `tests/tui.rs` | REQ-1, REQ-2 |
 | `instalacion_lista_las_aprobadas_marcadas` | `tests/tui.rs` | REQ-4 |
 | `t_marca_todas_o_ninguna` | `tests/tui.rs` | REQ-4 |
@@ -740,7 +742,7 @@ fn instalar_lista_sin_marcas_si_no_hubo_cambios() {
 ## Prueba
 
 1. `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --locked`: se
-   esperan 141 tests (116 de hoy más 25), corridos por un `verificador` sobre la rama integrada.
+   esperan 145 tests (116 de hoy, 25 del plan y 4 agregados en la revisión), corridos por un `verificador` sobre la rama integrada.
 2. A mano, con un HOME falso y un repo bare local, dentro de un pseudo-terminal:
    `rebake <url>` abre en Instalación (REQ-1); `c` cambia las filas (REQ-9); desmarcar una y `P`
    instala el resto (REQ-5); el cookbook del clon queda sin cambios en `git status` (REQ-6).

@@ -9,6 +9,8 @@ Estado: aceptado
 > (`~/Documentos/rebake/cookbook.toml`), pedido de Denis; REQ-8 decía `~/.config/…`.
 > Desde v0.3.0 `rebake clonar <url>` clona el cookbook de su repo y lo sincroniza en cada
 > comando (ver `cookbook-remoto/`).
+> Desde v0.4.0 `rebake <url>` abre la pestaña Instalación, donde se comprueba qué está instalado
+> y se elige qué instalar (ver `elegir-que-instalar/`).
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;
