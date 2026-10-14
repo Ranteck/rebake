@@ -24,9 +24,10 @@ Baja el binario del último release, verifica su checksum y lo deja en `~/.local
 carpeta usá `REBAKE_INSTALL_DIR`; para una versión fija, `REBAKE_VERSION=v0.1.0`. Volver a
 correrlo actualiza.
 
-Desde v0.6.0 rebake se fija solo: al abrir la pantalla, si hay una versión publicada más nueva,
-pregunta si actualizar (con el mismo `install.sh`, checksum incluido) y se vuelve a abrir con
-ella. Los comandos solo avisan en una línea. Sin red arranca igual.
+Desde v0.6.1 rebake se fija solo, por debajo y sin demorar el arranque: si hay una versión
+publicada más nueva, la cabecera de la pantalla lo dice y `U` la instala (con el mismo
+`install.sh`, checksum incluido) y vuelve a abrir la pantalla con ella. Los comandos solo avisan
+en una línea si la revisión respondió antes de terminar. Sin red no pasa nada.
 
 Con Rust instalado también se puede compilar: `cargo install --git https://github.com/Ranteck/rebake`.
 
