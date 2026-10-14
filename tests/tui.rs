@@ -138,6 +138,29 @@ fn investigar_todo_pide_solo_pendientes_con_fuente_y_avisa_las_sin_origen() {
 }
 
 #[test]
+fn el_aviso_de_sin_origen_queda_al_terminar_el_lote() {
+    use rebake::investigador::Receta;
+    let mut r = recetario();
+    r.items.push(con_fuente("plugin:pendiente@x"));
+    let mut app = App::nueva(r);
+    tecla(&mut app, KeyCode::Char('I'));
+    let receta = Receta {
+        repo: "https://github.com/ejemplo/repo".into(),
+        doc: "receta directa".into(),
+        pasos: vec![],
+        requiere: vec![],
+        verificar: None,
+    };
+    app.registrar_investigacion("plugin:pendiente@x", Ok(receta), "2026-10-14");
+    let mensaje = app.mensaje.as_deref().unwrap();
+    assert!(
+        mensaje.contains("plugin:pendiente@x → por revisar"),
+        "{mensaje}"
+    );
+    assert!(mensaje.contains("1 sin origen"), "{mensaje}");
+}
+
+#[test]
 fn i_sobre_una_receta_sin_origen_pide_el_link_y_esc_no_cambia_nada() {
     let mut app = App::nueva(recetario());
     app.filtro = "statusline".into();

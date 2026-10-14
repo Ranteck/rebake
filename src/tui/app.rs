@@ -483,7 +483,7 @@ impl App {
         hoy: &str,
     ) {
         self.investigando.remove(id);
-        let texto = match &resultado {
+        let mut texto = match &resultado {
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),
         };
@@ -492,6 +492,11 @@ impl App {
         // Un requisito nuevo reordena la lista: la selección sigue al mismo ítem.
         if let Some(pos) = elegido.and_then(|e| self.visibles().iter().position(|i| i.id == e)) {
             self.seleccion = pos;
+        }
+        // Cada resultado pisa el aviso anterior: al cerrar el lote se repite lo que queda a mano.
+        let sin_origen = servicio::sin_origen(&self.recetario).len();
+        if self.investigando.is_empty() && sin_origen > 0 {
+            texto.push_str(&format!(" · {sin_origen} sin origen: investigalas con `i`"));
         }
         self.avisar(&texto);
     }
