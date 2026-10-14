@@ -5,7 +5,7 @@ use crate::investigador::{Trabajo, trabajo_para};
 use crate::modelo::{Estado, Recetario};
 use crate::perfiles;
 use anyhow::{Result, bail};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::Path;
 
@@ -113,6 +113,30 @@ pub fn mensaje_commit(comando: Option<&str>, antes: &Recetario, despues: &Receta
     } else {
         format!("{prefijo}: {}", partes.join(", "))
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Novedad {
+    Nueva,
+    Cambio,
+}
+
+/// Recetas aprobadas de `despues` que no estaban aprobadas en `antes`, o que cambiaron.
+pub fn novedades(antes: &Recetario, despues: &Recetario) -> HashMap<String, Novedad> {
+    despues
+        .items
+        .iter()
+        .filter(|i| i.estado == Estado::Aprobada)
+        .filter_map(|i| {
+            let novedad = match antes.item(&i.id) {
+                Some(a) if a.estado == Estado::Aprobada => {
+                    (a.pasos != i.pasos || a.verificar != i.verificar).then_some(Novedad::Cambio)?
+                }
+                _ => Novedad::Nueva,
+            };
+            Some((i.id.clone(), novedad))
+        })
+        .collect()
 }
 
 pub fn cantidad(n: usize, singular: &str, plural: &str) -> String {

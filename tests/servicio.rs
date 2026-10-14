@@ -1,5 +1,5 @@
-use rebake::modelo::{Estado, Item, Recetario, Tipo};
-use rebake::servicio::mensaje_commit;
+use rebake::modelo::{Estado, Item, Modo, Paso, Recetario, Tipo};
+use rebake::servicio::{self, Novedad, mensaje_commit};
 
 fn con(items: &[(&str, Estado)]) -> Recetario {
     let mut r = Recetario::nuevo();
@@ -42,4 +42,53 @@ fn sin_nuevos_ni_estados_dice_que_actualiza() {
         mensaje_commit(Some("renombrar-perfil"), &r, &r),
         "rebake renombrar-perfil: actualiza el cookbook"
     );
+}
+
+fn aprobada(id: &str, cmd: &str) -> Item {
+    let mut i = Item::nuevo(id, Tipo::Plugin);
+    i.estado = Estado::Aprobada;
+    i.pasos = vec![Paso {
+        cmd: cmd.into(),
+        modo: Modo::Auto,
+        por_perfil: false,
+        cita: None,
+        nota: None,
+    }];
+    i
+}
+
+#[test]
+fn novedades_marca_nuevas_y_cambiadas() {
+    let mut antes = Recetario::nuevo();
+    antes.items = vec![
+        aprobada("igual", "uno"),
+        aprobada("otro-comando", "uno"),
+        Item::nuevo("recien-aprobada", Tipo::Plugin),
+        aprobada("otra-comprobacion", "uno"),
+    ];
+    let mut despues = Recetario::nuevo();
+    let mut comprobacion = aprobada("otra-comprobacion", "uno");
+    comprobacion.verificar = Some("true".into());
+    despues.items = vec![
+        aprobada("igual", "uno"),
+        aprobada("otro-comando", "dos"),
+        aprobada("recien-aprobada", "uno"),
+        comprobacion,
+        aprobada("llego", "uno"),
+        Item::nuevo("llego-pendiente", Tipo::Plugin),
+    ];
+
+    let n = servicio::novedades(&antes, &despues);
+    assert_eq!(n.get("otro-comando"), Some(&Novedad::Cambio));
+    assert_eq!(n.get("otra-comprobacion"), Some(&Novedad::Cambio));
+    assert_eq!(n.get("recien-aprobada"), Some(&Novedad::Nueva));
+    assert_eq!(n.get("llego"), Some(&Novedad::Nueva));
+    assert_eq!(n.len(), 4, "{n:?}");
+}
+
+#[test]
+fn sin_cambios_no_hay_novedades() {
+    let mut r = Recetario::nuevo();
+    r.items = vec![aprobada("a", "uno")];
+    assert!(servicio::novedades(&r, &r.clone()).is_empty());
 }
