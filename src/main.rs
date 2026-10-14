@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use rebake::escaner::{Entorno, PacmanReal};
 use rebake::instalador::{self, Evento, Opciones, Resultado};
 use rebake::investigador::{self, aplicar, en_paralelo};
+use rebake::secretos::sin_credenciales_url;
 use rebake::{acciones, archivo, rutas, servicio, sincro};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -18,6 +19,8 @@ struct Cli {
     /// Cookbook a usar (por defecto ~/Documentos/rebake/cookbook.toml, la carpeta Documentos de tu sistema)
     #[arg(long, global = true)]
     archivo: Option<PathBuf>,
+    /// URL del repo de tu cookbook: lo clona la primera vez y abre la pantalla en Instalación
+    url: Option<String>,
     #[command(subcommand)]
     comando: Option<Comando>,
 }
@@ -98,7 +101,31 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
         .archivo
         .unwrap_or_else(|| rutas::archivo_por_defecto(home));
     // `clonar` crea el clon: no hay nada que traer antes ni que publicar después.
-    let sincroniza = !matches!(cli.comando, Some(Comando::Clonar { .. })) && sincronizado(&ruta);
+    let mut sincroniza =
+        !matches!(cli.comando, Some(Comando::Clonar { .. })) && sincronizado(&ruta);
+    if let Some(url) = &cli.url {
+        if cli.comando.is_some() {
+            bail!("pasá la URL o un comando, no los dos");
+        }
+        // Una palabra suelta es un comando mal escrito, no un repo para clonar.
+        if !url.contains(['/', ':']) {
+            bail!("`{url}` no es un comando ni la URL de un repo: mirá `rebake --help`");
+        }
+        if sincroniza {
+            let origen = sincro::origen(&ruta)?;
+            if !sincro::misma_url(&origen, url) {
+                bail!(
+                    "ya hay un clon de {} en {}: movelo o usá --archivo",
+                    sin_credenciales_url(&origen),
+                    ruta.parent().unwrap_or(&ruta).display()
+                );
+            }
+        } else {
+            let r = sincro::clonar(url, &ruta)?;
+            tracing::info!(comando = "clonar", items = r.items.len());
+            sincroniza = true;
+        }
+    }
     if sincroniza && let Err(e) = sincro::traer(&ruta) {
         avisar(&e);
     }

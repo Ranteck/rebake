@@ -367,3 +367,88 @@ fn un_enlace_que_llega_por_pull_frena_el_comando() {
     assert!(texto(&o).contains("enlace"), "{}", texto(&o));
     assert!(!h.ruta().join("fuera").exists());
 }
+
+const SIN_PANTALLA: &str = "no pude abrir la pantalla";
+
+fn origen_del_clon(h: &HomeFalso) -> String {
+    git(h, &carpeta(h), &["config", "--get", "remote.origin.url"])
+}
+
+#[test]
+fn la_url_sin_clon_clona_y_llega_a_la_pantalla() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    let o = rebake(&h, &[url(&bare)]);
+    assert!(texto(&o).contains(SIN_PANTALLA), "{}", texto(&o));
+    assert_eq!(
+        git(
+            &h,
+            &carpeta(&h),
+            &["config", "--local", "--get", "rebake.sincronizar"]
+        ),
+        "true"
+    );
+}
+
+#[test]
+fn la_url_del_mismo_clon_trae_lo_ultimo() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    clonado(&h, &bare);
+    let otro = h.ruta().join("otro");
+    git(&h, h.ruta(), &["clone", "-q", url(&bare), url(&otro)]);
+    let aprobado = COOKBOOK.replace("estado = \"pendiente\"", "estado = \"aprobada\"");
+    fs::write(otro.join("cookbook.toml"), aprobado).unwrap();
+    git(&h, &otro, &["commit", "-q", "-am", "otro equipo"]);
+    git(&h, &otro, &["push", "-q", "origin", "HEAD"]);
+
+    let o = rebake(&h, &[url(&bare)]);
+    assert!(texto(&o).contains(SIN_PANTALLA), "{}", texto(&o));
+    let local = fs::read_to_string(carpeta(&h).join("cookbook.toml")).unwrap();
+    assert!(local.contains("aprobada"), "{local}");
+}
+
+#[test]
+fn la_url_de_otro_clon_falla_sin_tocar_nada() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    clonado(&h, &bare);
+    let ajeno = h.ruta().join("ajeno.git");
+    git(&h, h.ruta(), &["init", "-q", "--bare", url(&ajeno)]);
+
+    let o = rebake(&h, &[url(&ajeno)]);
+    assert!(!o.status.success(), "{}", texto(&o));
+    assert!(texto(&o).contains("remoto.git"), "{}", texto(&o));
+    assert!(!texto(&o).contains(SIN_PANTALLA), "{}", texto(&o));
+    assert_eq!(origen_del_clon(&h), url(&bare));
+}
+
+#[test]
+fn una_carpeta_que_no_es_clon_no_se_pisa() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    let suelto = h.escribir("Documents/rebake/cookbook.toml", "version = 1\n");
+    let o = rebake(&h, &[url(&bare)]);
+    assert!(!o.status.success(), "{}", texto(&o));
+    assert!(texto(&o).contains("no está vacía"), "{}", texto(&o));
+    assert_eq!(fs::read_to_string(&suelto).unwrap(), "version = 1\n");
+}
+
+#[test]
+fn url_y_subcomando_juntos_se_rechazan() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    let o = rebake(&h, &[url(&bare), "escanear"]);
+    assert!(!o.status.success(), "{}", texto(&o));
+    assert!(texto(&o).contains("no los dos"), "{}", texto(&o));
+    assert!(!carpeta(&h).exists());
+}
+
+#[test]
+fn un_comando_mal_escrito_no_se_toma_por_url() {
+    let h = HomeFalso::nuevo();
+    let o = rebake(&h, &["instlar"]);
+    assert!(!o.status.success(), "{}", texto(&o));
+    assert!(texto(&o).contains("no es un comando"), "{}", texto(&o));
+    assert!(!carpeta(&h).exists());
+}

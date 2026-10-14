@@ -5,10 +5,11 @@ use crate::escaner::{Entorno, PacmanReal};
 use crate::instalador::{self, Evento, Opciones};
 use crate::investigador::{self, Receta};
 use crate::{acciones, archivo, rutas, servicio};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use app::{App, Efecto, Pestana};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc;
@@ -20,6 +21,10 @@ type Investigado = (String, Result<Receta>);
 pub fn ejecutar(ruta: &Path, home: &Path) -> Result<()> {
     let recetario = archivo::leer(ruta)?;
     let mut app = App::nueva(recetario);
+    // Sin esta guarda, `ratatui::init()` toma /dev/tty aunque la salida esté capturada.
+    if !std::io::stdout().is_terminal() {
+        bail!("no pude abrir la pantalla: la salida no es una terminal");
+    }
     let mut terminal = ratatui::init();
     let resultado = bucle(&mut terminal, &mut app, ruta, home);
     ratatui::restore();

@@ -145,6 +145,24 @@ pub fn sincronizado(ruta: &Path) -> Result<bool> {
     Ok(salida.exito() && salida.texto.trim() == "true")
 }
 
+/// URL de `origin` del clon donde está el cookbook.
+pub fn origen(ruta: &Path) -> Result<String> {
+    let (dir, _) = partes(ruta)?;
+    Ok(git(dir, &["config", "--get", "remote.origin.url"])?
+        .trim()
+        .to_string())
+}
+
+/// Misma URL salvo credenciales, barra final y `.git`.
+pub fn misma_url(a: &str, b: &str) -> bool {
+    fn normal(url: &str) -> String {
+        let url = sin_credenciales_url(url);
+        let url = url.trim_end_matches('/');
+        url.strip_suffix(".git").unwrap_or(url).to_string()
+    }
+    normal(a) == normal(b)
+}
+
 /// Commitea solo el cookbook si cambió y pushea lo que la rama tenga sin subir; `Ok(true)` si
 /// subió algo.
 pub fn publicar(ruta: &Path, mensaje: &str) -> Result<bool> {
