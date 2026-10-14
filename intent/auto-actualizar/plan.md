@@ -1,72 +1,66 @@
-# Plan: rebake se actualiza solo (desde spec.md 2026-10-14 e intent.md 2026-10-14)
+# Plan: revisión en segundo plano (desde spec.md 2026-10-14, enmendado, e intent.md 2026-10-14)
 Estado: aceptado
 
+La versión anterior de este plan (pregunta antes de abrir) salió en v0.6.0 y queda en git.
+
 ## Archivos que cambian
-- Nuevos: `src/actualizar.rs` y `tests/actualizar.rs`.
-- Existentes (verificados): `src/lib.rs` (suma el módulo), `src/main.rs`, `README.md` (sección
-  de instalación, línea 25: "correrlo actualiza") e `intent/spec.md` (nota "Desde v0.6.0").
+Todos existen (verificado): `src/actualizar.rs`, `src/main.rs`, `src/tui/mod.rs`,
+`src/tui/app.rs`, `src/tui/vista.rs`, `tests/actualizar.rs`, `tests/tui.rs`, `README.md` e
+`intent/spec.md` (nota "Desde v0.6.0"). No se crean archivos.
 
 ## Diseño
-- **No se reescribe la descarga.** El `install.sh` ya baja, verifica el checksum y reemplaza el
-  binario sin dejarlo a medias (`mv` sobre un temporal), y ya tiene tests de checksum
-  (`tests/instalar_sh.rs`). Actualizar es correr el `install.sh` de la versión nueva, que se
-  publica junto con cada release, con `REBAKE_VERSION=vX.Y.Z` (exactamente la que se ofreció) y
-  `REBAKE_INSTALL_DIR` en la carpeta del binario que está corriendo. Sin dependencias nuevas.
-- **Versión publicada:** `curl` con tope de 2 segundos sobre `<base>/latest`, que redirige a
-  `…/tag/vX.Y.Z`; se toma el número de la URL final. La base es `REBAKE_BASE_URL` (la misma
-  variable del `install.sh`), por defecto el repo en GitHub. Si `curl` falta, falla, tarda o la
-  URL no termina en una versión, el resultado es "no sé" y no se muestra nada (REQ-8).
-- **Comparación:** las versiones se parten en tres números y se comparan como tuplas; lo que no
-  se pueda leer cuenta como "no sé" (REQ-1, REQ-2).
-- **Dónde corre:** en `main`, después de `Cli::parse`. `--version` y `--help` terminan dentro del
-  parse, así que nunca consultan (REQ-9).
-  - Sin subcomando (la pantalla): pregunta por stderr y lee una línea de stdin; solo "s" o "si"
-    actualiza. Con éxito, reemplaza el proceso por el binario nuevo con los mismos argumentos
-    (`exec`), así la pantalla abre con la versión nueva (REQ-3, REQ-4, REQ-6). Si el
-    `install.sh` falla, muestra su salida, dice
-    "no se actualizó" y sigue con la versión actual (REQ-5).
-  - Con subcomando: una línea por stderr y sigue (REQ-7).
+- **Revisión:** `actualizar` suma una función que corre `version_nueva` en un hilo y devuelve
+  el receptor de un canal. `main` la lanza después de `Cli::parse` (`--version` y `--help`
+  siguen sin consultar, REQ-9) y no espera.
+- **Subcomandos (REQ-7):** al terminar `correr`, `try_recv`; si ya llegó una versión nueva, la
+  línea del aviso por stderr. Si no llegó, nada.
+- **Pantalla (REQ-3):** `Arranque` suma el receptor, opcional para que los tests lo sigan
+  armando con `Default`. El bucle de `tui/mod.rs` lo lee con `try_recv`, como los canales de
+  investigar y comprobar, y guarda la versión en `App`. La cabecera la muestra fija.
+- **`U` (REQ-4 a REQ-6):** `App::tecla` devuelve `Efecto::Actualizar(version)` solo con versión
+  nueva y sin instalación en curso; si no, avisa "rebake está al día" o que espere la
+  instalación. El bucle hace como `editar` con el editor: `ratatui::restore`, escribe
+  "actualizando a X…", corre el `install.sh` y:
+  - con éxito, `exec` del binario nuevo con los mismos argumentos: la pantalla vuelve en X;
+  - con error, `ratatui::init` y el aviso dice "no se actualizó: <por qué>".
+- **Se parte `actualizar::actualizar`:** `instalar(version, base, binario)` corre el
+  `install.sh` sobre la ruta recibida (`current_exe` en uso real, una copia en los tests) y
+  `reabrir(binario)` hace el `exec`. Así el reemplazo se prueba sin terminal.
+- **Se borra** la pregunta `[s/N]` de `main` (`revisar_version`).
+- El cookbook se guarda en disco en cada cambio; lo publica en git el proceso nuevo al cerrar,
+  porque `sincro::publicar` mira el estado de git (verificado en `src/sincro.rs:168`).
 
 ## Tests a escribir
-Todos en `tests/actualizar.rs`. Copian el binario compilado a una carpeta temporal como
-`rebake` (el test reemplaza esa copia, nunca el de `target/`) y usan un servidor HTTP local de
-pocas líneas sobre `TcpListener`: `/latest` redirige a `/tag/vX`, y `/download/vX/` sirve el
-`install.sh` del repo y un release falso armado como en `tests/instalar_sh.rs`, con un `rebake`
-que imprime su versión.
+Los cuatro tests de `tests/actualizar.rs` que contestan `[s/N]` por stdin quedan viejos por la
+enmienda: ya no hay pregunta. Su intención pasa a tests sobre `instalar` con la copia.
 
 | Test (comportamiento observable) | REQ |
 | --- | --- |
-| Comparación: 0.5.10 > 0.5.9, igual no es nueva, "v0.6.0" se lee, "latest" no | REQ-1, REQ-2 |
-| Publicada igual a la propia: `rebake escanear` no imprime aviso | REQ-2 |
-| Publicada 99.0.0: `rebake escanear` imprime la línea del aviso, no lee stdin y termina bien | REQ-7 |
-| Sin subcomando, publicada 99.0.0, stdin "s": la copia queda reemplazada y la salida dice "rebake 99.0.0" (el `exec` corrió la nueva) | REQ-3, REQ-4 |
-| Sin subcomando, stdin vacío: la pregunta aparece y la copia no cambió (byte a byte) | REQ-3, REQ-6 |
-| Sin subcomando, checksum malo, stdin "s": dice "no se actualizó", la copia no cambió | REQ-5 |
-| Carpeta de la copia sin permiso de escritura, stdin "s": dice "no se actualizó" y la ruta, la copia no cambió | REQ-5 |
-| Puerto cerrado: sin aviso. Servidor que acepta y no responde: termina en menos de 3 s, sin aviso | REQ-8 |
-| `rebake --version` con un servidor que anota pedidos: ningún pedido | REQ-9 |
-
-Sin terminal la pantalla no abre; los tests miran solo la pregunta y el binario.
+| Siguen: comparación, publicada igual sin aviso, puerto cerrado, `--version` sin pedidos | REQ-1, REQ-2, REQ-8, REQ-9 |
+| `instalar` con publicada 99.0.0: la copia queda reemplazada y corre como "rebake 99.0.0" | REQ-4 |
+| `instalar` con checksum malo: error que lo dice; la copia no cambió | REQ-5 |
+| `instalar` en una carpeta sin permiso: error con la ruta; la copia no cambió | REQ-5 |
+| `rebake investigar <id>` con un `claude` falso (`REBAKE_CLAUDE`) que duerme 1 s y publicada 99.0.0: sale la línea del aviso | REQ-7 |
+| Servidor que acepta y no responde: `rebake escanear` termina en menos de 1 s, sin aviso | REQ-7, REQ-8 |
+| `tests/tui.rs`: con versión nueva, la cabecera muestra el aviso y `U` devuelve `Actualizar` | REQ-3, REQ-4 |
+| `tests/tui.rs`: `U` sin versión avisa "rebake está al día"; con instalación en curso no actualiza | REQ-6 |
 
 ## Orden de trabajo
-Rama `feat/auto-actualizar` desde `main`.
-1. **T1 (ejecutor):** `src/actualizar.rs`, `lib.rs`, `main.rs` y `tests/actualizar.rs`, tests
-   primero. REQ-1 a REQ-9.
-2. **T2 (mecánico, después de T1):** README y nota en `intent/spec.md`.
-3. **Verificador:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
-   `cargo test --locked`.
-4. Prueba real (abajo) y tu OK para publicar v0.6.0.
+1. **T1 (ejecutor):** código y tests, tests primero, en un worktree desde
+   `feat/actualizar-en-segundo-plano`.
+2. **T2 (yo):** README y nota del spec raíz.
+3. **Verificación:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+   `cargo test --locked`, y `tests/actualizar.rs` cinco veces seguidas (usa hilos y red local).
+4. Prueba real y tu OK para publicar v0.6.1.
 
 ## Riesgos
-- `install.sh` escribe siempre `<carpeta>/rebake`: si el binario se llama distinto (renombrado a
-  mano), se instala al lado y el `exec` corre el viejo. Se detecta comparando el nombre y en
-  ese caso solo avisa, sin actualizar.
-- Si GitHub cambia la redirección de `/latest`, rebake deja de avisar, sin romperse.
-- La primera release con esto (v0.6.0) no puede probar su propio salto: lo prueba la siguiente.
+- Con `exec`, el proceso viejo no publica el cookbook al salir; lo hace el nuevo al cerrar. Si
+  el nuevo falla antes, el commit queda para la próxima corrida, como hoy si git falla.
+- La v0.6.0 instalada pregunta `[s/N]` al abrir: esa pregunta va a ofrecer la v0.6.1, y desde
+  ahí rige la tecla.
 
 ## Prueba
-- Tests: 158 más unos 10.
-- Real, en una carpeta temporal: instalar v0.5.3 con `REBAKE_VERSION=v0.5.3` y el binario
-  nuevo compilado con versión 0.5.2 apuntando a GitHub: pregunta "Hay rebake 0.5.3 (tenés
-  0.5.2)", con "s" se reemplaza y abre la pantalla en 0.5.3 (REQ-3, REQ-4). Sin red (`unshare`
-  o base inválida): arranca sin aviso (REQ-8).
+- Antes de publicar, una copia marcada 0.5.0 contra la v0.6.0 real de GitHub: la pantalla abre
+  enseguida, la cabecera muestra "rebake 0.6.0 disponible (tenés 0.5.0): U actualiza", `U` la
+  reemplaza y vuelve la pantalla (la v0.6.0 pregunta `[s/N]`; se contesta "n").
+- Arranque de un subcomando con GitHub: igual que sin red (~0,01 s).
