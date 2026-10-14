@@ -19,6 +19,8 @@ Estado: aceptado
 > Desde v0.6.2 Claude Code es requisito de rebake, no una receta: REQ-2 ya no lo escanea y lo
 > de Claude no lleva `requiere = ["claude"]` (sin Claude instalado y logueado rebake no puede
 > investigar ni instalar). Pedido de Denis.
+> Desde v0.6.3 la pantalla muestra el estado `pendiente` como "sin receta" (el TOML no cambia),
+> el detalle dice qué falta en cada estado y el pie sugiere el siguiente paso. Pedido de Denis.
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;

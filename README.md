@@ -94,7 +94,7 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 | Tecla | Acción |
 |---|---|
 | `s` | escanear |
-| `i` / `I` | investigar la receta (sin origen, pide el link) / todas las pendientes con origen |
+| `i` / `I` | investigar la receta (sin origen, pide el link) / todas las sin receta con origen |
 | `a` | aprobar (solo una receta investigada o editada) |
 | `x` | excluir, con motivo |
 | `l` | pegar el link del repo cuando no se encontró |

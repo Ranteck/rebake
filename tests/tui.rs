@@ -510,3 +510,62 @@ fn u_con_instalacion_en_curso_no_actualiza() {
     assert_eq!(tecla(&mut app, KeyCode::Char('U')), Efecto::Nada);
     assert!(app.mensaje.unwrap().contains("esperá"));
 }
+
+fn con_un_item(item: Item) -> App {
+    let mut r = Recetario::nuevo();
+    r.items = vec![item];
+    App::nueva(r)
+}
+
+#[test]
+fn sin_origen_va_contra_el_borde_del_panel() {
+    let p = pantalla(&App::nueva(recetario()));
+    let linea = p.lines().find(|l| l.contains("statusline.sh")).unwrap();
+    assert!(linea.contains("sin origen│"), "{linea}");
+}
+
+#[test]
+fn el_detalle_dice_que_falta_en_cada_estado() {
+    let mut sin_origen = Item::nuevo("statusline:s.sh", Tipo::Statusline);
+    sin_origen.pista = Some("archivo sin origen conocido: ~/.claude/s.sh".into());
+    let mut por_revisar = con_fuente("plugin:b@x");
+    por_revisar.estado = Estado::PorRevisar;
+    let mut aprobada = con_fuente("plugin:c@x");
+    aprobada.estado = Estado::Aprobada;
+    let mut excluida = con_fuente("plugin:d@x");
+    excluida.estado = Estado::Excluida;
+    for (item, texto) in [
+        (
+            con_fuente("plugin:a@x"),
+            "todavía no hay receta: `i` la arma",
+        ),
+        (sin_origen, "no sé de qué repo viene: `i` te pide el link"),
+        (por_revisar, "revisá los pasos y la cita, y `a` la aprueba"),
+        (aprobada, "en una PC nueva se instala con esto"),
+        (excluida, "No se instala"),
+    ] {
+        let p = pantalla(&con_un_item(item));
+        assert!(p.contains(texto), "falta «{texto}» en:\n{p}");
+    }
+}
+
+#[test]
+fn la_cabecera_y_el_detalle_dicen_sin_receta() {
+    let p = pantalla(&con_un_item(con_fuente("plugin:a@x")));
+    assert!(p.contains("○ 1 sin receta"), "{p}");
+    assert!(p.contains("Estado: sin receta"), "{p}");
+    assert!(!p.contains("pendiente"), "{p}");
+}
+
+#[test]
+fn el_siguiente_paso_aparece_hasta_que_hay_una_receta() {
+    let mut r = Recetario::nuevo();
+    r.items = vec![con_fuente("plugin:a@x"), con_fuente("plugin:b@x")];
+    let p = pantalla(&App::nueva(r.clone()));
+    assert!(
+        p.contains("Siguiente: `I` arma 2 recetas (las que tienen origen)"),
+        "{p}"
+    );
+    r.items[1].estado = Estado::PorRevisar;
+    assert!(!pantalla(&App::nueva(r)).contains("Siguiente:"));
+}

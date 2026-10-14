@@ -49,7 +49,7 @@ fn texto_cabecera(app: &App) -> String {
         });
     // Adelante: en una terminal angosta se corta el final de la línea, no el aviso.
     format!(
-        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} pendientes{}  ✗ {} excluidas",
+        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} sin receta{}  ✗ {} excluidas",
         perfiles.join(" + "),
         contar(Estado::Aprobada),
         contar(Estado::PorRevisar),
@@ -85,7 +85,7 @@ fn nombre_estado(e: Estado) -> &'static str {
     match e {
         Estado::Aprobada => "aprobada",
         Estado::PorRevisar => "por revisar",
-        Estado::Pendiente => "pendiente",
+        Estado::Pendiente => "sin receta",
         Estado::Excluida => "excluida",
     }
 }
@@ -116,7 +116,12 @@ fn recetas(f: &mut Frame, app: &App, area: Rect) {
         if n == app.seleccion {
             linea_sel = lineas.len();
         }
-        lineas.push(linea_item(app, item, n == app.seleccion));
+        lineas.push(linea_item(
+            app,
+            item,
+            n == app.seleccion,
+            izq.width.saturating_sub(2),
+        ));
     }
     let alto = izq.height.saturating_sub(2) as usize;
     let desde = linea_sel.saturating_sub(alto.saturating_sub(1));
@@ -141,7 +146,7 @@ fn recetas(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-fn linea_item(app: &App, item: &Item, seleccionado: bool) -> Line<'static> {
+fn linea_item(app: &App, item: &Item, seleccionado: bool, ancho: u16) -> Line<'static> {
     let nombre = item
         .id
         .split_once(':')
@@ -154,12 +159,12 @@ fn linea_item(app: &App, item: &Item, seleccionado: bool) -> Line<'static> {
         simbolo(item.estado)
     };
     let extra = match (item.estado, &item.motivo, &item.pista, &item.error) {
-        (Estado::Excluida, Some(m), _, _) => format!("  {m}"),
-        (_, _, _, Some(_)) => "  error".into(),
+        (Estado::Excluida, Some(m), _, _) => m.clone(),
+        (_, _, _, Some(_)) => "error".into(),
         (Estado::Pendiente, _, Some(p), _) if p.starts_with("repo local sin remoto") => {
-            "  sin remoto".into()
+            "sin remoto".into()
         }
-        (Estado::Pendiente, _, Some(p), _) if p.contains("sin origen") => "  sin origen".into(),
+        (Estado::Pendiente, _, Some(p), _) if p.contains("sin origen") => "sin origen".into(),
         _ => String::new(),
     };
     let ausente = if item.ausente { "  (ausente)" } else { "" };
@@ -171,14 +176,40 @@ fn linea_item(app: &App, item: &Item, seleccionado: bool) -> Line<'static> {
         estilo = estilo.add_modifier(Modifier::REVERSED);
     }
     let flecha = if seleccionado { "▶" } else { " " };
+    let izquierda = format!("{flecha}{marca} {nombre}");
+    let derecha = format!("{extra}{ausente}");
+    // Contra el borde se lee como una columna de estado; si no entra, queda pegada al nombre.
+    // shortcut: cuenta caracteres, no ancho en pantalla; un emoji en el nombre la corre uno o dos.
+    let ocupado = izquierda.chars().count() + derecha.trim_start().chars().count();
+    let relleno = if derecha.is_empty() {
+        0
+    } else {
+        (ancho as usize).saturating_sub(ocupado).max(2)
+    };
     Line::from(Span::styled(
-        format!("{flecha}{marca} {nombre}{extra}{ausente}"),
+        format!("{izquierda}{}{}", " ".repeat(relleno), derecha.trim_start()),
         estilo,
     ))
 }
 
+fn que_falta(item: &Item) -> &'static str {
+    match item.estado {
+        Estado::Pendiente if item.fuente.is_none() => {
+            "Esta PC lo tiene, pero no sé de qué repo viene: `i` te pide el link."
+        }
+        Estado::Pendiente => "Esta PC lo tiene, pero todavía no hay receta: `i` la arma.",
+        Estado::PorRevisar => "Hay receta: revisá los pasos y la cita, y `a` la aprueba.",
+        Estado::Aprobada => "Lista: en una PC nueva se instala con esto (pestaña 3).",
+        Estado::Excluida => "No se instala.",
+    }
+}
+
 fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
-    let mut l = vec![Line::from(format!(
+    let mut l = vec![Line::from(Span::styled(
+        que_falta(item),
+        Style::default().add_modifier(Modifier::BOLD),
+    ))];
+    l.push(Line::from(format!(
         "Estado: {}   Perfiles: {}",
         nombre_estado(item.estado),
         if item.perfiles.is_empty() {
@@ -186,7 +217,7 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
         } else {
             item.perfiles.join(", ")
         }
-    ))];
+    )));
     match &item.fuente {
         Some(f) => {
             l.push(Line::from(format!(
@@ -422,6 +453,25 @@ fn instalacion(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+/// Con todo sin receta la pantalla no dice por dónde empezar.
+fn siguiente_paso(app: &App) -> String {
+    let items = &app.recetario.items;
+    if items
+        .iter()
+        .any(|i| matches!(i.estado, Estado::PorRevisar | Estado::Aprobada))
+    {
+        return String::new();
+    }
+    match items
+        .iter()
+        .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_some())
+        .count()
+    {
+        0 => String::new(),
+        n => format!("Siguiente: `I` arma {n} recetas (las que tienen origen)"),
+    }
+}
+
 fn lineas_pie(app: &App) -> Vec<Line<'static>> {
     let pestanas = [
         (Pestana::Recetas, "[1]Recetas"),
@@ -458,7 +508,10 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             };
             format!(" {etiqueta}: {texto}_   ({ayuda})")
         }
-        _ => format!(" {}", app.mensaje.clone().unwrap_or_default()),
+        _ => format!(
+            " {}",
+            app.mensaje.clone().unwrap_or_else(|| siguiente_paso(app))
+        ),
     };
     vec![Line::from(spans), Line::from(segunda)]
 }
