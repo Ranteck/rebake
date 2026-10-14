@@ -14,7 +14,8 @@ memorias, historial ni credenciales, ni instala paquetes del sistema.
 
 ## Instalar
 
-Requisito: Claude Code instalado y logueado; rebake lo usa para investigar e instalar.
+Requisitos: Claude Code instalado y logueado (rebake lo usa para investigar e instalar), `git`
+y `curl`.
 
 En Linux x86_64, sin necesidad de Rust:
 
@@ -32,8 +33,6 @@ publicada más nueva, la cabecera de la pantalla lo dice y `U` la instala (con e
 en una línea si la revisión respondió antes de terminar. Sin red no pasa nada.
 
 Con Rust instalado también se puede compilar: `cargo install --git https://github.com/Ranteck/rebake`.
-
-Para usarlo hacen falta `git` y, para investigar recetas, Claude Code.
 
 ## Uso
 
@@ -103,6 +102,7 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 | `r` | reinvestigar |
 | `P` | instalar lo marcado en Instalación (al abrir, todo lo aprobado) |
 | `/` | filtrar |
+| `U` | actualizar rebake cuando la cabecera avisa que hay una versión nueva |
 | `1` `2` `3` | Recetas, Checklist, Instalación |
 | `q` | salir |
 
@@ -126,8 +126,9 @@ En la pestaña Instalación:
 3. Para el resto, `claude -p --restricted` (con Sonnet; `REBAKE_MODELO` lo cambia) lee la
    documentación de instalación de ese repo, sin poder ejecutar comandos ni escribir archivos,
    y devuelve los pasos con la **cita** literal de la doc de la que sale cada comando.
-4. Sin origen conocido no investiga sola: `i` te pide el link, y con Enter vacío lo busca en la
-   web (la receta dice "origen buscado en la web").
+4. Sin origen conocido no investiga sola: la cabecera muestra cuántas quedan sin origen, `i`
+   te pide el link, y con Enter vacío lo busca en la web (la receta dice "origen buscado en la
+   web").
 5. Vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
 
 ## Seguridad
