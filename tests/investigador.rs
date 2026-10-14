@@ -43,12 +43,13 @@ fn trabajo() -> Trabajo {
     Trabajo {
         id: ID.into(),
         prompt: "x".into(),
+        directa: None,
     }
 }
 
 #[test]
 fn argumentos_sin_bash() {
-    let a = argumentos("investigá");
+    let a = argumentos("investigá", "sonnet");
     for flag in [
         "-p",
         "--restricted",
@@ -61,6 +62,17 @@ fn argumentos_sin_bash() {
     let tools = a.iter().position(|x| x == "--tools").unwrap();
     assert_eq!(a[tools + 1], "WebSearch,WebFetch");
     assert!(a.iter().all(|x| !x.contains("Bash")));
+    let m = a.iter().position(|x| x == "--model").unwrap();
+    assert_eq!(a[m + 1], "sonnet");
+}
+
+#[test]
+fn argumentos_respetan_el_modelo() {
+    assert!(
+        argumentos("x", "opus")
+            .windows(2)
+            .any(|w| w == ["--model", "opus"])
+    );
 }
 
 #[test]
@@ -191,6 +203,7 @@ fn en_paralelo_devuelve_todos() {
         .map(|i| Trabajo {
             id: format!("skill:s{i}"),
             prompt: "x".into(),
+            directa: None,
         })
         .collect();
     let rx = en_paralelo(trabajos, claude, Duration::from_secs(10), 2);
@@ -207,7 +220,7 @@ fn en_paralelo_devuelve_todos() {
 
 #[test]
 fn argumentos_preaprueban_la_web() {
-    let a = argumentos("investigá");
+    let a = argumentos("investigá", "sonnet");
     let i = a
         .iter()
         .position(|x| x == "--allowedTools")
@@ -305,4 +318,141 @@ fn el_prompt_no_lleva_secretos_de_los_archivos() {
         "{}",
         t.prompt
     );
+}
+
+fn item_con(id: &str, tipo: Tipo, repo: Option<&str>, via: Via) -> Item {
+    let mut item = Item::nuevo(id, tipo);
+    item.fuente = repo.map(|r| Fuente {
+        repo: r.into(),
+        via,
+        doc: None,
+    });
+    item
+}
+
+fn directa(item: &Item) -> Option<Receta> {
+    trabajo_para(&Recetario::nuevo(), item, std::path::Path::new("/nada")).directa
+}
+
+#[test]
+fn marketplace_con_repo_es_directa_y_no_ejecuta_claude() {
+    let item = item_con(
+        "marketplace:claude-plugins-official",
+        Tipo::Marketplace,
+        Some("https://github.com/anthropics/claude-plugins-official"),
+        Via::Metadatos,
+    );
+    let t = trabajo_para(&Recetario::nuevo(), &item, std::path::Path::new("/nada"));
+    let receta = t.directa.clone().expect("tiene que ser directa");
+    assert_eq!(
+        receta.repo,
+        "https://github.com/anthropics/claude-plugins-official"
+    );
+    assert_eq!(receta.pasos.len(), 1);
+    let p = &receta.pasos[0];
+    assert_eq!(
+        p.cmd,
+        "claude plugin marketplace add https://github.com/anthropics/claude-plugins-official"
+    );
+    assert!(p.por_perfil && p.modo == Modo::Auto && p.cita.is_none());
+    assert_eq!(
+        receta.verificar.as_deref(),
+        Some("claude plugin marketplace list | grep -qF -- 'claude-plugins-official'")
+    );
+    let h = HomeFalso::nuevo();
+    let falso = h
+        .binario("bin/claude", b"#!/bin/sh\nexit 1\n")
+        .display()
+        .to_string();
+    assert_eq!(
+        investigar(&t, &falso, Duration::from_secs(10)).unwrap(),
+        receta
+    );
+}
+
+#[test]
+fn plugin_directo_guarda_el_marketplace() {
+    let item = item_con(
+        "plugin:amd-skills@claude-plugins-official",
+        Tipo::Plugin,
+        Some("https://github.com/anthropics/claude-plugins-official"),
+        Via::Metadatos,
+    );
+    let receta = directa(&item).unwrap();
+    let m = "claude-plugins-official";
+    assert_eq!(
+        receta.pasos[0].cmd,
+        format!(
+            "claude plugin marketplace list | grep -qF -- '{m}' || {{ echo 'falta el marketplace {m}: aprobá marketplace:{m}' >&2; exit 1; }}; claude plugin install amd-skills@{m}"
+        )
+    );
+    assert_eq!(
+        receta.verificar.as_deref(),
+        Some("claude plugin list | grep -qF -- 'amd-skills@claude-plugins-official'")
+    );
+}
+
+#[test]
+fn skill_de_metadatos_es_directa_con_npx() {
+    let item = item_con(
+        "skill:pragmatic-programmer",
+        Tipo::Skill,
+        Some("https://github.com/wondelai/skills"),
+        Via::Metadatos,
+    );
+    let receta = directa(&item).unwrap();
+    let p = &receta.pasos[0];
+    assert_eq!(
+        p.cmd,
+        "command -v npx >/dev/null || { echo 'falta npx: instalá Node.js' >&2; exit 1; }; npx -y skills add https://github.com/wondelai/skills --skill pragmatic-programmer -g -a claude-code -y"
+    );
+    assert!(p.nota.as_deref().unwrap().starts_with("receta directa"));
+    assert_eq!(
+        receta.verificar.as_deref(),
+        Some("test -f \"$CLAUDE_CONFIG_DIR/skills/pragmatic-programmer/SKILL.md\"")
+    );
+}
+
+#[test]
+fn los_demas_casos_no_son_directos() {
+    let repo = Some("https://github.com/a/b");
+    for item in [
+        item_con("skill:x", Tipo::Skill, repo, Via::Symlink),
+        item_con("herramienta:x", Tipo::Herramienta, repo, Via::Metadatos),
+        item_con("skill:x", Tipo::Skill, None, Via::Metadatos),
+        item_con("plugin:x;rm@m", Tipo::Plugin, repo, Via::Metadatos),
+        item_con("plugin:x@m y", Tipo::Plugin, repo, Via::Metadatos),
+        item_con("marketplace:", Tipo::Marketplace, repo, Via::Metadatos),
+        item_con(
+            "marketplace:m",
+            Tipo::Marketplace,
+            Some("https://github.com/a/$(id)"),
+            Via::Metadatos,
+        ),
+        item_con(
+            "marketplace:m",
+            Tipo::Marketplace,
+            Some("git@github.com:a/b"),
+            Via::Metadatos,
+        ),
+    ] {
+        assert!(directa(&item).is_none(), "{}", item.id);
+    }
+}
+
+#[test]
+fn aplicar_directa_conserva_la_via() {
+    let mut r = Recetario::nuevo();
+    let item = item_con(
+        "skill:pragmatic-programmer",
+        Tipo::Skill,
+        Some("https://github.com/wondelai/skills"),
+        Via::Metadatos,
+    );
+    r.items.push(item.clone());
+    let t = trabajo_para(&r, &item, std::path::Path::new("/nada"));
+    aplicar(&mut r, &item.id, Ok(t.directa.unwrap()), "2026-10-14");
+    let x = r.item(&item.id).unwrap();
+    assert_eq!(x.estado, Estado::PorRevisar);
+    assert_eq!(x.fuente.as_ref().unwrap().via, Via::Metadatos);
 }

@@ -35,6 +35,7 @@ const REGLAS: &str = "Reglas:
 pub struct Trabajo {
     pub id: String,
     pub prompt: String,
+    pub directa: Option<Receta>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -79,10 +80,16 @@ pub fn binario_claude() -> String {
     std::env::var("REBAKE_CLAUDE").unwrap_or_else(|_| "claude".into())
 }
 
-pub fn argumentos(prompt: &str) -> Vec<String> {
+pub fn modelo() -> String {
+    std::env::var("REBAKE_MODELO").unwrap_or_else(|_| "sonnet".into())
+}
+
+pub fn argumentos(prompt: &str, modelo: &str) -> Vec<String> {
     [
         "-p",
         prompt,
+        "--model",
+        modelo,
         "--restricted",
         "--strict-mcp-config",
         "--tools",
@@ -135,7 +142,86 @@ pub fn trabajo_para(r: &Recetario, item: &Item, home: &Path) -> Trabajo {
     Trabajo {
         id: item.id.clone(),
         prompt,
+        directa: receta_directa(item),
     }
+}
+
+fn es_identificador(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+// Estos valores terminan en `sh -c`: lista blanca estricta en vez de buscar metacaracteres.
+fn es_repo_seguro(s: &str) -> bool {
+    s.starts_with("https://")
+        && s.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '.' | '_' | '-' | '/' | ':' | '~' | '%' | '+' | '=' | '@')
+        })
+}
+
+/// Lo que tiene instalador conocido no necesita a Claude; si algo no es seguro, se investiga.
+fn receta_directa(item: &Item) -> Option<Receta> {
+    let fuente = item.fuente.as_ref()?;
+    let repo = fuente.repo.as_str();
+    if !es_repo_seguro(repo) {
+        return None;
+    }
+    let (doc, cmd, verificar) = match item.tipo {
+        Tipo::Marketplace => {
+            let nombre = item.id.strip_prefix("marketplace:")?;
+            if !es_identificador(nombre) {
+                return None;
+            }
+            (
+                "receta directa: instalador de plugins de Claude Code",
+                format!("claude plugin marketplace add {repo}"),
+                format!("claude plugin marketplace list | grep -qF -- '{nombre}'"),
+            )
+        }
+        Tipo::Plugin => {
+            let completo = item.id.strip_prefix("plugin:")?;
+            let (nombre, mercado) = completo.split_once('@')?;
+            if !es_identificador(nombre) || !es_identificador(mercado) {
+                return None;
+            }
+            (
+                "receta directa: instalador de plugins de Claude Code",
+                format!(
+                    "claude plugin marketplace list | grep -qF -- '{mercado}' || {{ echo 'falta el marketplace {mercado}: aprobá marketplace:{mercado}' >&2; exit 1; }}; claude plugin install {completo}"
+                ),
+                format!("claude plugin list | grep -qF -- '{completo}'"),
+            )
+        }
+        Tipo::Skill if fuente.via == Via::Metadatos => {
+            let nombre = item.id.strip_prefix("skill:")?;
+            if !es_identificador(nombre) {
+                return None;
+            }
+            (
+                "receta directa: instalador de skills.sh",
+                format!(
+                    "command -v npx >/dev/null || {{ echo 'falta npx: instalá Node.js' >&2; exit 1; }}; npx -y skills add {repo} --skill {nombre} -g -a claude-code -y"
+                ),
+                format!("test -f \"$CLAUDE_CONFIG_DIR/skills/{nombre}/SKILL.md\""),
+            )
+        }
+        _ => return None,
+    };
+    Some(Receta {
+        repo: repo.into(),
+        doc: doc.into(),
+        pasos: vec![Paso {
+            cmd,
+            modo: Modo::Auto,
+            por_perfil: true,
+            cita: None,
+            nota: Some(doc.into()),
+        }],
+        requiere: vec![],
+        verificar: Some(verificar),
+    })
 }
 
 /// La pista de un archivo sin origen termina en su ruta (`…: ~/x`); su contenido orienta la búsqueda.
@@ -160,8 +246,11 @@ fn cabeza_de_archivo(item: &Item, home: &Path) -> Option<String> {
 }
 
 pub fn investigar(t: &Trabajo, claude: &str, tope: Duration) -> Result<Receta> {
+    if let Some(directa) = &t.directa {
+        return Ok(directa.clone());
+    }
     let mut cmd = Command::new(claude);
-    cmd.args(argumentos(&t.prompt))
+    cmd.args(argumentos(&t.prompt, &modelo()))
         .current_dir(std::env::temp_dir());
     let salida = ejecutar(&mut cmd, tope, &mut |_| {})
         .with_context(|| format!("no pude ejecutar {claude}: ¿está instalado?"))?;
