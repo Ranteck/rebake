@@ -49,13 +49,17 @@ fn texto_cabecera(app: &App) -> String {
         });
     // Adelante: en una terminal angosta se corta el final de la línea, no el aviso.
     format!(
-        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} sin receta{}  ✗ {} excluidas",
+        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} sin receta{}  ✗ {} excluidas{}",
         perfiles.join(" + "),
         contar(Estado::Aprobada),
         contar(Estado::PorRevisar),
         contar(Estado::Pendiente),
         sin_origen,
-        contar(Estado::Excluida)
+        contar(Estado::Excluida),
+        match app.investigando.len() {
+            0 => String::new(),
+            n => format!("  … {n} investigando"),
+        }
     )
 }
 
@@ -154,7 +158,7 @@ fn linea_item(app: &App, item: &Item, seleccionado: bool, ancho: u16) -> Line<'s
         .unwrap_or(&item.id)
         .to_string();
     let marca = if app.investigando.contains(&item.id) {
-        "⟳"
+        "…"
     } else {
         simbolo(item.estado)
     };
@@ -192,7 +196,10 @@ fn linea_item(app: &App, item: &Item, seleccionado: bool, ancho: u16) -> Line<'s
     ))
 }
 
-fn que_falta(item: &Item) -> &'static str {
+fn que_falta(app: &App, item: &Item) -> &'static str {
+    if app.investigando.contains(&item.id) {
+        return "Armando la receta…";
+    }
     match item.estado {
         Estado::Pendiente if item.fuente.is_none() => {
             "Esta PC lo tiene, pero no sé de qué repo viene: `i` te pide el link."
@@ -206,7 +213,7 @@ fn que_falta(item: &Item) -> &'static str {
 
 fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
     let mut l = vec![Line::from(Span::styled(
-        que_falta(item),
+        que_falta(app, item),
         Style::default().add_modifier(Modifier::BOLD),
     ))];
     l.push(Line::from(format!(
@@ -249,9 +256,6 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
         if let Some(v) = valor {
             l.push(Line::from(format!("{etiqueta}: {v}")));
         }
-    }
-    if app.investigando.contains(&item.id) {
-        l.push(Line::from("Investigando…"));
     }
     if !item.pasos.is_empty() {
         l.push(Line::from(""));

@@ -456,3 +456,42 @@ fn aplicar_directa_conserva_la_via() {
     assert_eq!(x.estado, Estado::PorRevisar);
     assert_eq!(x.fuente.as_ref().unwrap().via, Via::Metadatos);
 }
+
+#[test]
+fn las_directas_salen_antes_que_las_que_esperan_a_claude() {
+    let h = HomeFalso::nuevo();
+    let claude = h
+        .binario(
+            "bin/claude",
+            format!(
+                "#!/bin/sh\nsleep 1\ncat <<'FIN'\n{}\nFIN\n",
+                VALIDA.replace('\n', "")
+            )
+            .as_bytes(),
+        )
+        .display()
+        .to_string();
+    let directa = Receta {
+        repo: "https://github.com/ejemplo/repo".into(),
+        doc: "receta directa".into(),
+        pasos: vec![],
+        requiere: vec![],
+        verificar: None,
+    };
+    // La que va a Claude queda última en la lista: sin orden, sale primera de la fila.
+    let trabajos = vec![
+        Trabajo {
+            id: "marketplace:directa".into(),
+            prompt: String::new(),
+            directa: Some(directa),
+        },
+        Trabajo {
+            id: "skill:lenta".into(),
+            prompt: "x".into(),
+            directa: None,
+        },
+    ];
+    let rx = en_paralelo(trabajos, claude, Duration::from_secs(10), 1);
+    let ids: Vec<String> = rx.iter().map(|(id, _)| id).collect();
+    assert_eq!(ids, ["marketplace:directa", "skill:lenta"]);
+}

@@ -579,3 +579,14 @@ fn u_minuscula_tambien_actualiza() {
         Efecto::Actualizar("99.0.0".into())
     );
 }
+
+#[test]
+fn mientras_investiga_la_pantalla_lo_dice_con_texto() {
+    let mut app = con_un_item(con_fuente("plugin:a@x"));
+    tecla(&mut app, KeyCode::Char('i'));
+    let p = pantalla(&app);
+    assert!(p.contains("Armando la receta…"), "{p}");
+    assert!(!p.contains("todavía no hay receta"), "{p}");
+    assert!(p.contains("… a@x"), "{p}");
+    assert!(p.contains("… 1 investigando"), "{p}");
+}

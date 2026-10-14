@@ -328,6 +328,9 @@ pub fn en_paralelo(
     paralelo: usize,
 ) -> mpsc::Receiver<(String, Result<Receta>)> {
     let (tx, rx) = mpsc::channel();
+    let mut trabajos = trabajos;
+    // La fila se toma desde el final: las directas van ahí para no esperar a las de Claude.
+    trabajos.sort_by_key(|t| t.directa.is_some());
     let cola = Arc::new(Mutex::new(trabajos));
     for _ in 0..paralelo.max(1) {
         let (tx, cola, claude) = (tx.clone(), Arc::clone(&cola), claude.clone());
