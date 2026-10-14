@@ -452,3 +452,61 @@ fn un_comando_mal_escrito_no_se_toma_por_url() {
     assert!(texto(&o).contains("no es un comando"), "{}", texto(&o));
     assert!(!carpeta(&h).exists());
 }
+
+const PASO: &str = "\n[[item.paso]]\ncmd = \"true\"\nmodo = \"auto\"\n";
+
+fn aprobado_con(paso: &str) -> String {
+    COOKBOOK.replace("estado = \"pendiente\"", "estado = \"aprobada\"") + paso
+}
+
+/// Otro equipo reemplaza el cookbook del repo.
+fn subir(h: &HomeFalso, bare: &Path, contenido: &str) {
+    let otro = h.ruta().join("otro");
+    git(h, h.ruta(), &["clone", "-q", url(bare), url(&otro)]);
+    fs::write(otro.join("cookbook.toml"), contenido).unwrap();
+    git(h, &otro, &["commit", "-q", "-am", "otro equipo"]);
+    git(h, &otro, &["push", "-q", "origin", "HEAD"]);
+}
+
+#[test]
+fn instalar_lista_lo_que_llego_del_repo() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    clonado(&h, &bare);
+    subir(&h, &bare, &aprobado_con(PASO));
+    let o = rebake(&h, &["instalar", "--si"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("plugin:a@b  (nueva)"), "{err}");
+}
+
+#[test]
+fn instalar_lista_lo_que_cambio() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(&aprobado_con(PASO)));
+    clonado(&h, &bare);
+    subir(
+        &h,
+        &bare,
+        &aprobado_con(&PASO.replace("\"true\"", "\"true && true\"")),
+    );
+    let o = rebake(&h, &["instalar", "--si"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("plugin:a@b  (cambió)"), "{err}");
+}
+
+#[test]
+fn instalar_lista_sin_marcas_si_no_hubo_cambios() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(&aprobado_con(PASO)));
+    clonado(&h, &bare);
+    let o = rebake(&h, &["instalar", "--si"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("  plugin:a@b"), "{err}");
+    assert!(
+        !err.contains("(nueva)") && !err.contains("(cambió)"),
+        "{err}"
+    );
+}

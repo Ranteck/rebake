@@ -4,7 +4,9 @@ use rebake::escaner::{Entorno, PacmanReal};
 use rebake::instalador::{self, Evento, Opciones, Resultado};
 use rebake::investigador::{self, aplicar, en_paralelo};
 use rebake::secretos::sin_credenciales_url;
+use rebake::servicio::Novedad;
 use rebake::{acciones, archivo, rutas, servicio, sincro};
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -103,6 +105,7 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
     // `clonar` crea el clon: no hay nada que traer antes ni que publicar después.
     let mut sincroniza =
         !matches!(cli.comando, Some(Comando::Clonar { .. })) && sincronizado(&ruta);
+    let mut recien_clonado = false;
     if let Some(url) = &cli.url {
         if cli.comando.is_some() {
             bail!("pasá la URL o un comando, no los dos");
@@ -124,8 +127,14 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
             let r = sincro::clonar(url, &ruta)?;
             tracing::info!(comando = "clonar", items = r.items.len());
             sincroniza = true;
+            recien_clonado = true;
         }
     }
+    // El primer clonado no marca nada (REQ-12): no hay un "antes" con qué comparar. Si el
+    // cookbook local no se puede leer tampoco hay marcas; el error lo da la lectura de abajo.
+    let previo = (sincroniza && !recien_clonado)
+        .then(|| archivo::leer(&ruta).ok())
+        .flatten();
     if sincroniza && let Err(e) = sincro::traer(&ruta) {
         avisar(&e);
     }
@@ -135,8 +144,12 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
     } else {
         None
     };
+    let novedades = match (&previo, &antes) {
+        (Some(previo), Some(antes)) => servicio::novedades(previo, antes),
+        _ => Default::default(),
+    };
     let nombre = cli.comando.as_ref().map(Comando::nombre);
-    let resultado = ejecutar_comando(cli.comando, &ruta, home);
+    let resultado = ejecutar_comando(cli.comando, &ruta, home, novedades, cli.url.is_some());
     // También si el comando falló: lo que llegó a guardar no se pierde.
     if let Some(antes) = &antes {
         publicar(&ruta, nombre, antes);
@@ -176,9 +189,19 @@ fn avisar(e: &anyhow::Error) {
     eprintln!("aviso: {e:#}");
 }
 
-fn ejecutar_comando(comando: Option<Comando>, ruta: &Path, home: &Path) -> Result<bool> {
+fn ejecutar_comando(
+    comando: Option<Comando>,
+    ruta: &Path,
+    home: &Path,
+    novedades: HashMap<String, Novedad>,
+    hubo_url: bool,
+) -> Result<bool> {
     let Some(comando) = comando else {
-        rebake::tui::ejecutar(ruta, home, Default::default())?;
+        let arranque = rebake::tui::Arranque {
+            instalacion: hubo_url,
+            novedades,
+        };
+        rebake::tui::ejecutar(ruta, home, arranque)?;
         return Ok(true);
     };
     match comando {
@@ -207,7 +230,9 @@ fn ejecutar_comando(comando: Option<Comando>, ruta: &Path, home: &Path) -> Resul
             Ok(true)
         }
         Comando::Investigar { ids } => investigar(&mut archivo::leer(ruta)?, ruta, &ids, home),
-        Comando::Instalar { dry_run, si } => instalar(&archivo::leer(ruta)?, home, dry_run, si),
+        Comando::Instalar { dry_run, si } => {
+            instalar(&archivo::leer(ruta)?, home, dry_run, si, &novedades)
+        }
         Comando::RenombrarPerfil { viejo, nuevo } => {
             let mut r = archivo::leer(ruta)?;
             acciones::renombrar_perfil(&mut r, &viejo, &nuevo)?;
@@ -265,11 +290,26 @@ fn investigar(
     Ok(fallidos == 0)
 }
 
-fn instalar(r: &rebake::modelo::Recetario, home: &Path, dry_run: bool, si: bool) -> Result<bool> {
+fn instalar(
+    r: &rebake::modelo::Recetario,
+    home: &Path,
+    dry_run: bool,
+    si: bool,
+    novedades: &HashMap<String, Novedad>,
+) -> Result<bool> {
     let orden = instalador::planificar(r)?;
     if orden.is_empty() {
         println!("no hay recetas aprobadas");
         return Ok(true);
+    }
+    eprintln!("Va a instalar:");
+    for id in &orden {
+        let marca = match novedades.get(id) {
+            Some(Novedad::Nueva) => "  (nueva)",
+            Some(Novedad::Cambio) => "  (cambió)",
+            None => "",
+        };
+        eprintln!("  {id}{marca}");
     }
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
     if !dry_run
