@@ -43,7 +43,7 @@ fn texto_cabecera(app: &App) -> String {
         .as_ref()
         .map_or_else(String::new, |nueva| {
             format!(
-                " ⬆ rebake {nueva} disponible (tenés {}): U actualiza  ·",
+                " ⬆ rebake {nueva} disponible (tenés {}): u actualiza  ·",
                 env!("CARGO_PKG_VERSION")
             )
         });

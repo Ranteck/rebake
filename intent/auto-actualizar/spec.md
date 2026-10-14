@@ -57,3 +57,5 @@ Estado: aceptado
 ## Cambios
 - 2026-10-14: revisión en segundo plano y `U` para actualizar, en vez de preguntar antes de
   abrir (enmienda del intent). Aprobado.
+- 2026-10-14 (v0.6.4): la tecla también va en minúscula (`u`) y la cabecera dice "u
+  actualiza": con `U` sola, la minúscula no hacía nada y no avisaba. Aprobado.

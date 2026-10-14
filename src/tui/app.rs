@@ -190,10 +190,10 @@ impl App {
             }
             KeyCode::Char('q') => return Efecto::Salir,
             KeyCode::Char('P') if self.instalando => self.avisar("ya hay una instalación en curso"),
-            KeyCode::Char('U') if self.instalando => {
+            KeyCode::Char('u' | 'U') if self.instalando => {
                 self.avisar("esperá que termine la instalación para actualizar")
             }
-            KeyCode::Char('U') => match self.version_nueva.clone() {
+            KeyCode::Char('u' | 'U') => match self.version_nueva.clone() {
                 Some(version) => return Efecto::Actualizar(version),
                 None => self.avisar("rebake está al día"),
             },

@@ -488,7 +488,7 @@ fn con_version_nueva_la_cabecera_avisa_y_u_actualiza() {
     app.version_nueva = Some("99.0.0".into());
     let p = pantalla(&app);
     assert!(p.contains("rebake 99.0.0 disponible"), "{p}");
-    assert!(p.contains("U actualiza"), "{p}");
+    assert!(p.contains("u actualiza"), "{p}");
     assert_eq!(
         tecla(&mut app, KeyCode::Char('U')),
         Efecto::Actualizar("99.0.0".into())
@@ -568,4 +568,14 @@ fn el_siguiente_paso_aparece_hasta_que_hay_una_receta() {
     );
     r.items[1].estado = Estado::PorRevisar;
     assert!(!pantalla(&App::nueva(r)).contains("Siguiente:"));
+}
+
+#[test]
+fn u_minuscula_tambien_actualiza() {
+    let mut app = App::nueva(recetario());
+    app.version_nueva = Some("99.0.0".into());
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('u')),
+        Efecto::Actualizar("99.0.0".into())
+    );
 }

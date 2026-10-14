@@ -28,7 +28,7 @@ carpeta usá `REBAKE_INSTALL_DIR`; para una versión fija, `REBAKE_VERSION=v0.1.
 correrlo actualiza.
 
 Desde v0.6.1 rebake se fija solo, por debajo y sin demorar el arranque: si hay una versión
-publicada más nueva, la cabecera de la pantalla lo dice y `U` la instala (con el mismo
+publicada más nueva, la cabecera de la pantalla lo dice y `u` la instala (con el mismo
 `install.sh`, checksum incluido) y vuelve a abrir la pantalla con ella. Los comandos solo avisan
 en una línea si la revisión respondió antes de terminar. Sin red no pasa nada.
 
@@ -102,7 +102,7 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 | `r` | reinvestigar |
 | `P` | instalar lo marcado en Instalación (al abrir, todo lo aprobado) |
 | `/` | filtrar |
-| `U` | actualizar rebake cuando la cabecera avisa que hay una versión nueva |
+| `u` | actualizar rebake cuando la cabecera avisa que hay una versión nueva |
 | `1` `2` `3` | Recetas, Checklist, Instalación |
 | `q` | salir |
 
