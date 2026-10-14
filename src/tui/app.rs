@@ -1,10 +1,11 @@
 use crate::acciones;
 use crate::checklist;
-use crate::instalador::{Evento, Resultado};
+use crate::instalador::{self, Evento, Presencia, Resultado};
 use crate::investigador::{Receta, aplicar};
 use crate::modelo::{Estado, Item, Recetario};
+use crate::servicio::Novedad;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 const MAX_SALIDA: usize = 500;
 
@@ -40,6 +41,7 @@ pub enum Efecto {
     Investigar(Vec<String>),
     Editar(String),
     Instalar,
+    Comprobar,
     Salir,
 }
 
@@ -57,6 +59,12 @@ pub struct App {
     pub hechos: HashSet<usize>,
     pub seleccion_checklist: usize,
     pub instalando: bool,
+    /// Se guardan las desmarcadas: una receta aprobada después aparece marcada sin refrescar.
+    pub desmarcadas: HashSet<String>,
+    pub presencia: HashMap<String, Presencia>,
+    pub novedades: HashMap<String, Novedad>,
+    pub seleccion_plan: usize,
+    pub comprobando: bool,
 }
 
 impl App {
@@ -75,7 +83,54 @@ impl App {
             hechos: HashSet::new(),
             seleccion_checklist: 0,
             instalando: false,
+            desmarcadas: HashSet::new(),
+            presencia: HashMap::new(),
+            novedades: HashMap::new(),
+            seleccion_plan: 0,
+            comprobando: false,
         }
+    }
+
+    pub fn con_arranque(mut self, instalacion: bool, novedades: HashMap<String, Novedad>) -> Self {
+        if instalacion {
+            self.pestana = Pestana::Instalacion;
+        }
+        self.novedades = novedades;
+        self
+    }
+
+    /// Aprobadas en el orden en que se instalan; vacío si `planificar` falla.
+    pub fn plan(&self) -> Vec<String> {
+        instalador::planificar(&self.recetario).unwrap_or_default()
+    }
+
+    /// Lo que `P` instala: del plan, lo marcado que no está comprobado como instalado.
+    pub fn a_instalar(&self) -> Vec<String> {
+        self.plan()
+            .into_iter()
+            .filter(|id| self.marcada(id))
+            .collect()
+    }
+
+    pub fn marcada(&self, id: &str) -> bool {
+        !self.desmarcadas.contains(id) && !self.instalada(id)
+    }
+
+    pub fn instalada(&self, id: &str) -> bool {
+        self.presencia.get(id) == Some(&Presencia::Instalada)
+    }
+
+    pub fn registrar_presencia(&mut self, id: &str, p: Presencia) {
+        self.presencia.insert(id.to_string(), p);
+    }
+
+    pub fn terminar_comprobacion(&mut self) {
+        self.comprobando = false;
+    }
+
+    /// Hay plan a la vista: ni instalación en curso ni resultados de una anterior.
+    pub fn viendo_plan(&self) -> bool {
+        self.pestana == Pestana::Instalacion && self.instalacion.is_empty()
     }
 
     pub fn visibles(&self) -> Vec<&Item> {
@@ -136,20 +191,89 @@ impl App {
             KeyCode::Char('3') => self.pestana = Pestana::Instalacion,
             KeyCode::Char('s') => return Efecto::Escanear,
             KeyCode::Char('P') => {
-                let n = self
-                    .recetario
-                    .items
-                    .iter()
-                    .filter(|i| i.estado == Estado::Aprobada)
-                    .count();
-                self.mensaje = Some(format!("¿Instalar {n} recetas aprobadas? s/n"));
-                self.modo = Modo::ConfirmarInstalacion;
+                let n = self.a_instalar().len();
+                if let Err(e) = instalador::planificar(&self.recetario) {
+                    self.avisar(&format!("{e:#}"));
+                } else if n == 0 {
+                    self.avisar("no hay nada marcado para instalar");
+                } else {
+                    let m = self.plan().len();
+                    self.mensaje = Some(format!("¿Instalar {n} de {m} recetas? s/n"));
+                    self.modo = Modo::ConfirmarInstalacion;
+                }
             }
+            KeyCode::Esc if self.pestana == Pestana::Instalacion && !self.instalando => {
+                self.instalacion.clear();
+                self.salida.clear();
+            }
+            _ if self.viendo_plan() => return self.plan_instalacion(codigo),
             _ if self.pestana == Pestana::Checklist => self.checklist(codigo),
             _ if self.pestana == Pestana::Recetas => return self.recetas(codigo),
             _ => {}
         }
         Efecto::Nada
+    }
+
+    fn plan_instalacion(&mut self, codigo: KeyCode) -> Efecto {
+        let plan = self.plan();
+        match codigo {
+            KeyCode::Down | KeyCode::Char('j') if self.seleccion_plan + 1 < plan.len() => {
+                self.seleccion_plan += 1
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.seleccion_plan = self.seleccion_plan.saturating_sub(1)
+            }
+            KeyCode::Char(' ') => {
+                if let Some(id) = plan
+                    .get(self.seleccion_plan)
+                    .filter(|id| !self.instalada(id))
+                {
+                    self.alternar(id, &plan);
+                }
+            }
+            KeyCode::Char('t') => {
+                if self.a_instalar().is_empty() {
+                    self.desmarcadas.clear();
+                } else {
+                    self.desmarcadas.extend(plan);
+                }
+            }
+            KeyCode::Char('c') if !self.comprobando => {
+                self.comprobando = true;
+                return Efecto::Comprobar;
+            }
+            _ => {}
+        }
+        Efecto::Nada
+    }
+
+    /// Marcar arrastra lo que la receta requiere; desmarcar, lo que la requiere a ella.
+    fn alternar(&mut self, id: &str, plan: &[String]) {
+        let marcar = !self.marcada(id);
+        let mut afectadas: HashSet<String> = HashSet::from([id.to_string()]);
+        loop {
+            let antes = afectadas.len();
+            for otro in plan {
+                let Some(item) = self.recetario.item(otro) else {
+                    continue;
+                };
+                if marcar && afectadas.contains(otro) {
+                    afectadas.extend(item.requiere.iter().cloned());
+                } else if !marcar && item.requiere.iter().any(|r| afectadas.contains(r)) {
+                    afectadas.insert(otro.clone());
+                }
+            }
+            if afectadas.len() == antes {
+                break;
+            }
+        }
+        for a in afectadas {
+            if marcar {
+                self.desmarcadas.remove(&a);
+            } else {
+                self.desmarcadas.insert(a);
+            }
+        }
     }
 
     fn checklist(&mut self, codigo: KeyCode) {
@@ -367,6 +491,13 @@ impl App {
                 }
             }
             Evento::Fin(id, res) => {
+                // Lo comprobado antes de instalar ya no vale: salteada es que la comprobación
+                // pasó; del resto no se sabe hasta volver a comprobar.
+                if res == Resultado::Salteado {
+                    self.registrar_presencia(&id, Presencia::Instalada);
+                } else {
+                    self.presencia.remove(&id);
+                }
                 if let Some(fila) = self.instalacion.iter_mut().find(|(x, _)| *x == id) {
                     fila.1 = Some(res);
                 }

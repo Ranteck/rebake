@@ -1,6 +1,7 @@
 use super::app::{App, Entrada, Modo, Pestana};
-use crate::instalador::Resultado;
+use crate::instalador::{self, Presencia, Resultado};
 use crate::modelo::{Estado, Item, Modo as ModoPaso, Tipo, Via};
+use crate::servicio::Novedad;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -8,6 +9,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 const TECLAS: &str = "s escanear  i investigar  I investigar todo  a aprobar  x excluir  l pegar link  e editar  r reinvestigar  P instalar  / filtrar  q salir";
+const TECLAS_INSTALACION: &str =
+    "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  P instalar  q salir";
+const TECLAS_RESULTADOS: &str = "Esc volver al plan  q salir";
 
 pub fn dibujar(f: &mut Frame, app: &App) {
     let [cabecera, cuerpo, pie] = Layout::vertical([
@@ -264,7 +268,102 @@ fn checklist(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+fn texto_presencia(app: &App, id: &str) -> String {
+    match app.presencia.get(id) {
+        None if app.comprobando => "comprobando…".into(),
+        None => "sin comprobar".into(),
+        Some(Presencia::Instalada) => "instalada".into(),
+        Some(Presencia::Falta(faltan)) => {
+            let todos = app.recetario.item(id).map_or(&[][..], |i| &i.perfiles[..]);
+            if faltan.is_empty() || faltan.len() >= todos.len() {
+                "falta".into()
+            } else {
+                format!("falta en {}", faltan.join(", "))
+            }
+        }
+        Some(Presencia::SinComprobacion) => "no se puede saber".into(),
+        Some(Presencia::NoSePudo(_)) => "no se pudo comprobar".into(),
+    }
+}
+
+fn plan_instalacion(f: &mut Frame, app: &App, area: Rect) {
+    let [izq, der] =
+        Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(area);
+    let plan = match instalador::planificar(&app.recetario) {
+        Ok(plan) if plan.is_empty() => {
+            let aviso = "No hay recetas aprobadas: investigá (i) y aprobá (a) en la pestaña 1.";
+            f.render_widget(
+                Paragraph::new(aviso)
+                    .block(Block::default().borders(Borders::ALL).title("Instalación")),
+                area,
+            );
+            return;
+        }
+        Ok(plan) => plan,
+        Err(e) => {
+            f.render_widget(
+                Paragraph::new(format!("{e:#}"))
+                    .wrap(Wrap { trim: false })
+                    .block(Block::default().borders(Borders::ALL).title("Instalación")),
+                area,
+            );
+            return;
+        }
+    };
+    let lineas: Vec<Line> = plan
+        .iter()
+        .enumerate()
+        .map(|(n, id)| {
+            let casilla = if app.instalada(id) {
+                " ✓ "
+            } else if app.marcada(id) {
+                "[x]"
+            } else {
+                "[ ]"
+            };
+            let novedad = match app.novedades.get(id) {
+                Some(Novedad::Nueva) => "  nueva",
+                Some(Novedad::Cambio) => "  cambió",
+                None => "",
+            };
+            let estilo = if n == app.seleccion_plan {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            Line::from(Span::styled(
+                format!("{casilla} {id}  {}{novedad}", texto_presencia(app, id)),
+                estilo,
+            ))
+        })
+        .collect();
+    let alto = izq.height.saturating_sub(2) as usize;
+    let desde = app.seleccion_plan.saturating_sub(alto.saturating_sub(1));
+    f.render_widget(
+        Paragraph::new(lineas)
+            .scroll((desde as u16, 0))
+            .block(Block::default().borders(Borders::ALL).title("Instalación")),
+        izq,
+    );
+    let (titulo, detalle) = match plan
+        .get(app.seleccion_plan)
+        .and_then(|id| app.recetario.item(id))
+    {
+        Some(item) => (item.id.clone(), lineas_detalle(app, item)),
+        None => ("Detalle".into(), vec![]),
+    };
+    f.render_widget(
+        Paragraph::new(detalle)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title(titulo)),
+        der,
+    );
+}
+
 fn instalacion(f: &mut Frame, app: &App, area: Rect) {
+    if app.viendo_plan() {
+        return plan_instalacion(f, app, area);
+    }
     let [izq, der] =
         Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(area);
     let lineas: Vec<Line> = app
@@ -322,7 +421,14 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         };
         spans.push(Span::styled(format!(" {texto} "), estilo));
     }
-    spans.push(Span::raw(format!("  {TECLAS}")));
+    let teclas = if app.viendo_plan() {
+        TECLAS_INSTALACION
+    } else if app.pestana == Pestana::Instalacion && !app.instalando {
+        TECLAS_RESULTADOS
+    } else {
+        TECLAS
+    };
+    spans.push(Span::raw(format!("  {teclas}")));
     let segunda = match &app.modo {
         Modo::Escribiendo { para, texto } => {
             let etiqueta = match para {

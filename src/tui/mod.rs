@@ -2,25 +2,34 @@ pub mod app;
 pub mod vista;
 
 use crate::escaner::{Entorno, PacmanReal};
-use crate::instalador::{self, Evento, Opciones};
+use crate::instalador::{self, Evento, Opciones, Presencia};
 use crate::investigador::{self, Receta};
-use crate::{acciones, archivo, rutas, servicio};
+use crate::servicio::{self, Novedad};
+use crate::{acciones, archivo, rutas};
 use anyhow::{Context, Result, bail};
 use app::{App, Efecto, Pestana};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::Command;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, TryRecvError};
 use std::thread;
 use std::time::Duration;
 
 type Investigado = (String, Result<Receta>);
 
-pub fn ejecutar(ruta: &Path, home: &Path) -> Result<()> {
+#[derive(Default)]
+pub struct Arranque {
+    /// Abrir en la pestaña Instalación.
+    pub instalacion: bool,
+    pub novedades: HashMap<String, Novedad>,
+}
+
+pub fn ejecutar(ruta: &Path, home: &Path, arranque: Arranque) -> Result<()> {
     let recetario = archivo::leer(ruta)?;
-    let mut app = App::nueva(recetario);
+    let mut app = App::nueva(recetario).con_arranque(arranque.instalacion, arranque.novedades);
     // Sin esta guarda, `ratatui::init()` toma /dev/tty aunque la salida esté capturada.
     if !std::io::stdout().is_terminal() {
         bail!("no pude abrir la pantalla: la salida no es una terminal");
@@ -34,6 +43,7 @@ pub fn ejecutar(ruta: &Path, home: &Path) -> Result<()> {
 fn bucle(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, home: &Path) -> Result<()> {
     let (tx_inv, rx_inv) = mpsc::channel::<Investigado>();
     let mut rx_inst: Option<mpsc::Receiver<Evento>> = None;
+    let mut rx_comp: Option<mpsc::Receiver<(String, Presencia)>> = None;
     loop {
         while let Ok((id, res)) = rx_inv.try_recv() {
             tracing::info!(accion = "investigar", id = %id, ok = res.is_ok());
@@ -43,6 +53,19 @@ fn bucle(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, home: &Path
         if let Some(rx) = &rx_inst {
             while let Ok(e) = rx.try_recv() {
                 app.evento_instalacion(e);
+            }
+        }
+        if let Some(rx) = &rx_comp {
+            loop {
+                match rx.try_recv() {
+                    Ok((id, p)) => app.registrar_presencia(&id, p),
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        app.terminar_comprobacion();
+                        rx_comp = None;
+                        break;
+                    }
+                }
             }
         }
         terminal.draw(|f| vista::dibujar(f, app))?;
@@ -62,6 +85,7 @@ fn bucle(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, home: &Path
             Efecto::Escanear => escanear(app, ruta),
             Efecto::Investigar(ids) => investigar(app, ruta, home, ids, &tx_inv),
             Efecto::Editar(id) => editar(terminal, app, ruta, home, &id)?,
+            Efecto::Comprobar => rx_comp = Some(comprobar(app, home)),
             Efecto::Instalar => rx_inst = instalar(app, home).or(rx_inst.take()),
         }
     }
@@ -124,16 +148,30 @@ fn investigar(
     }
 }
 
+fn comprobar(app: &App, home: &Path) -> mpsc::Receiver<(String, Presencia)> {
+    let recetario = app.recetario.clone();
+    let ids = app.plan();
+    let home = home.to_path_buf();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        instalador::comprobar(
+            &recetario,
+            &ids,
+            &home,
+            instalador::TOPE_COMPROBACION,
+            &mut |id, p| {
+                // Solo falla si la TUI ya terminó; no queda nadie a quien avisar.
+                let _ = tx.send((id, p));
+            },
+        );
+    });
+    rx
+}
+
 fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
-    let orden = match instalador::planificar(&app.recetario) {
-        Ok(o) => o,
-        Err(e) => {
-            app.mensaje = Some(format!("{e:#}"));
-            return None;
-        }
-    };
+    let orden = app.a_instalar();
     if orden.is_empty() {
-        app.mensaje = Some("no hay recetas aprobadas".into());
+        app.mensaje = Some("no hay nada marcado para instalar".into());
         return None;
     }
     app.instalacion = orden.iter().map(|id| (id.clone(), None)).collect();

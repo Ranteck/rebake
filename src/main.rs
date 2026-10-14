@@ -178,7 +178,7 @@ fn avisar(e: &anyhow::Error) {
 
 fn ejecutar_comando(comando: Option<Comando>, ruta: &Path, home: &Path) -> Result<bool> {
     let Some(comando) = comando else {
-        rebake::tui::ejecutar(ruta, home)?;
+        rebake::tui::ejecutar(ruta, home, Default::default())?;
         return Ok(true);
     };
     match comando {

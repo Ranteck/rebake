@@ -1,8 +1,10 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use rebake::instalador::Presencia;
 use rebake::modelo::*;
-use rebake::tui::app::{App, Efecto};
+use rebake::servicio::Novedad;
+use rebake::tui::app::{App, Efecto, Pestana};
 use rebake::tui::vista;
 
 fn recetario() -> Recetario {
@@ -204,4 +206,206 @@ fn al_terminar_la_instalacion_resume_y_va_a_la_checklist() {
         p.contains("✗ plugin:codex@openai-codex") && p.contains("código Some(7)"),
         "{p}"
     );
+}
+
+const MKT: &str = "marketplace:openai-codex";
+const CODEX: &str = "plugin:codex@openai-codex";
+
+/// `recetario()` más un marketplace aprobado del que depende codex. Plan: MKT, CODEX, claude
+/// (codex está antes que claude en el recetario y arrastra primero a su requisito).
+fn con_plan() -> App {
+    let mut r = recetario();
+    let mut mkt = Item::nuevo(MKT, Tipo::Marketplace);
+    mkt.estado = Estado::Aprobada;
+    r.items.push(mkt);
+    let codex = r.items.iter_mut().find(|i| i.id == CODEX).unwrap();
+    codex.requiere = vec![MKT.into()];
+    codex.verificar = Some("claude plugin list | grep codex".into());
+    let mut app = App::nueva(r);
+    app.pestana = Pestana::Instalacion;
+    app
+}
+
+fn resaltar(app: &mut App, id: &str) {
+    app.seleccion_plan = app.plan().iter().position(|x| x == id).unwrap();
+}
+
+#[test]
+fn con_url_abre_en_instalacion_y_sin_url_en_recetas() {
+    assert_eq!(App::nueva(recetario()).pestana, Pestana::Recetas);
+    let app = App::nueva(recetario()).con_arranque(true, Default::default());
+    assert_eq!(app.pestana, Pestana::Instalacion);
+}
+
+#[test]
+fn instalacion_lista_las_aprobadas_marcadas() {
+    let app = con_plan();
+    assert_eq!(app.plan(), [MKT, CODEX, "claude"]);
+    assert_eq!(app.a_instalar(), app.plan());
+    let p = pantalla(&app);
+    assert!(p.contains(&format!("[x] {MKT}")), "{p}");
+    assert!(p.contains(&format!("[x] {CODEX}")), "{p}");
+    assert!(p.contains("sin comprobar"), "{p}");
+    assert!(!p.contains("crawl4ai"), "{p}");
+}
+
+#[test]
+fn t_marca_todas_o_ninguna() {
+    let mut app = con_plan();
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(app.a_instalar().is_empty());
+    tecla(&mut app, KeyCode::Char('t'));
+    assert_eq!(app.a_instalar().len(), 3);
+}
+
+#[test]
+fn desmarcar_arrastra_a_las_que_la_requieren() {
+    let mut app = con_plan();
+    resaltar(&mut app, MKT);
+    tecla(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.a_instalar(), ["claude"]);
+    assert!(pantalla(&app).contains(&format!("[ ] {CODEX}")));
+
+    resaltar(&mut app, CODEX);
+    tecla(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.a_instalar(), [MKT, CODEX, "claude"]);
+}
+
+#[test]
+fn marcar_no_cambia_el_cookbook() {
+    let mut app = con_plan();
+    let antes = app.recetario.clone();
+    resaltar(&mut app, MKT);
+    assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Nada);
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert_eq!(app.recetario, antes);
+}
+
+#[test]
+fn p_confirma_cuantas_de_cuantas_e_instala_las_marcadas() {
+    let mut app = con_plan();
+    resaltar(&mut app, "claude");
+    tecla(&mut app, KeyCode::Char(' '));
+    assert_eq!(tecla(&mut app, KeyCode::Char('P')), Efecto::Nada);
+    assert!(
+        app.mensaje.as_deref().unwrap().contains("2 de 3"),
+        "{:?}",
+        app.mensaje
+    );
+    assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Instalar);
+    assert_eq!(app.a_instalar(), [MKT, CODEX]);
+}
+
+#[test]
+fn abrir_instalacion_no_pide_comprobar() {
+    let mut app = App::nueva(recetario());
+    assert_eq!(tecla(&mut app, KeyCode::Char('3')), Efecto::Nada);
+    assert!(app.presencia.is_empty() && !app.comprobando);
+}
+
+#[test]
+fn c_pide_comprobar_y_muestra_el_estado_de_cada_fila() {
+    let mut app = con_plan();
+    app.recetario.perfiles.push(Perfil {
+        nombre: "personal".into(),
+        dir: "~/.claude-personal".into(),
+    });
+    app.recetario.item_mut(CODEX).unwrap().perfiles = vec!["laburo".into(), "personal".into()];
+    assert_eq!(tecla(&mut app, KeyCode::Char('c')), Efecto::Comprobar);
+    assert!(app.comprobando);
+    assert!(pantalla(&app).contains("comprobando"));
+
+    app.registrar_presencia(CODEX, Presencia::Falta(vec!["personal".into()]));
+    app.registrar_presencia(MKT, Presencia::SinComprobacion);
+    app.registrar_presencia("claude", Presencia::NoSePudo("tope".into()));
+    app.terminar_comprobacion();
+    let p = pantalla(&app);
+    assert!(p.contains("falta en personal"), "{p}");
+    assert!(p.contains("no se puede saber"), "{p}");
+    assert!(p.contains("no se pudo comprobar"), "{p}");
+    assert!(!app.comprobando);
+    assert_eq!(app.a_instalar().len(), 3);
+}
+
+#[test]
+fn instalada_pierde_la_casilla_y_no_se_instala() {
+    let mut app = con_plan();
+    app.registrar_presencia(MKT, Presencia::Instalada);
+    let p = pantalla(&app);
+    assert!(
+        p.contains(&format!("✓  {MKT}")) || p.contains(&format!("✓ {MKT}")),
+        "{p}"
+    );
+    assert!(p.contains("instalada"), "{p}");
+    assert_eq!(app.a_instalar(), [CODEX, "claude"]);
+
+    resaltar(&mut app, MKT);
+    tecla(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.a_instalar(), [CODEX, "claude"]);
+}
+
+#[test]
+fn el_detalle_muestra_los_comandos_y_la_comprobacion() {
+    let mut app = con_plan();
+    resaltar(&mut app, CODEX);
+    let p = pantalla(&app);
+    assert!(
+        p.contains("claude plugin install codex@openai-codex"),
+        "{p}"
+    );
+    assert!(p.contains("claude plugin list | grep codex"), "{p}");
+    assert!(p.contains(MKT), "{p}");
+}
+
+#[test]
+fn novedades_se_ven_en_la_lista() {
+    let mut app = con_plan();
+    app.novedades.insert(CODEX.into(), Novedad::Cambio);
+    app.novedades.insert(MKT.into(), Novedad::Nueva);
+    let p = pantalla(&app);
+    assert!(p.contains("cambió") && p.contains("nueva"), "{p}");
+}
+
+#[test]
+fn sin_aprobadas_explica_que_hacer() {
+    let mut r = Recetario::nuevo();
+    r.items.push(Item::nuevo("plugin:a@b", Tipo::Plugin));
+    let mut app = App::nueva(r);
+    app.pestana = Pestana::Instalacion;
+    assert!(pantalla(&app).contains("No hay recetas aprobadas"));
+    assert_eq!(tecla(&mut app, KeyCode::Char('P')), Efecto::Nada);
+}
+
+#[test]
+fn c_no_lanza_otra_comprobacion_si_hay_una_corriendo() {
+    let mut app = con_plan();
+    assert_eq!(tecla(&mut app, KeyCode::Char('c')), Efecto::Comprobar);
+    assert_eq!(tecla(&mut app, KeyCode::Char('c')), Efecto::Nada);
+    app.terminar_comprobacion();
+    assert_eq!(tecla(&mut app, KeyCode::Char('c')), Efecto::Comprobar);
+}
+
+#[test]
+fn un_ciclo_en_requiere_se_informa_al_instalar() {
+    let mut app = con_plan();
+    app.recetario.item_mut(MKT).unwrap().requiere = vec![CODEX.into()];
+    assert_eq!(tecla(&mut app, KeyCode::Char('P')), Efecto::Nada);
+    assert!(
+        app.mensaje.as_deref().unwrap().contains("ciclo"),
+        "{:?}",
+        app.mensaje
+    );
+    assert!(pantalla(&app).contains("ciclo"));
+}
+
+#[test]
+fn instalar_actualiza_lo_comprobado() {
+    use rebake::instalador::{Evento, Resultado};
+    let mut app = con_plan();
+    app.registrar_presencia(MKT, Presencia::Falta(vec![]));
+    app.registrar_presencia(CODEX, Presencia::Falta(vec!["laburo".into()]));
+    app.evento_instalacion(Evento::Fin(MKT.into(), Resultado::Salteado));
+    app.evento_instalacion(Evento::Fin(CODEX.into(), Resultado::Ok));
+    assert_eq!(app.presencia.get(MKT), Some(&Presencia::Instalada));
+    assert_eq!(app.presencia.get(CODEX), None);
 }
