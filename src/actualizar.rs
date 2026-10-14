@@ -30,8 +30,9 @@ pub fn si_es_nueva(propia: &str, publicada: &str) -> Option<String> {
 /// más de 2 s, una URL rara) se avisa: revisar nunca debe frenar el uso.
 pub fn version_nueva(propia: &str, base: &str) -> Option<String> {
     let salida = Command::new("curl")
-        .args(["-fsSL", "-o", "/dev/null", "--max-time", "2"])
-        .args(["-w", "%{url_effective}"])
+        // Sin seguir la redirección a `…/tag/vX.Y.Z`: bajar esa página casi duplica la demora.
+        .args(["-fsS", "-o", "/dev/null", "--max-time", "2"])
+        .args(["-w", "%{redirect_url}"])
         .arg(format!("{base}/latest"))
         .output()
         .ok()?;
