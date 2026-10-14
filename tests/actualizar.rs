@@ -1,4 +1,6 @@
-use rebake::actualizar::{parsear, si_es_nueva};
+use rebake::actualizar::{instalar, parsear, si_es_nueva};
+use rebake::archivo;
+use rebake::modelo::{Fuente, Item, Recetario, Tipo, Via};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -136,29 +138,36 @@ impl Copia {
         fs::read(self.bin()).unwrap()
     }
 
-    fn correr(&self, base: &str, args: &[&str], stdin: Option<&str>) -> Output {
-        let cookbook = self.home.path().join("cookbook.toml");
-        let mut hijo = Command::new(self.bin())
+    fn correr(&self, base: &str, args: &[&str]) -> Output {
+        self.correr_con(base, args, &[])
+    }
+
+    fn correr_con(&self, base: &str, args: &[&str], entorno: &[(&str, &str)]) -> Output {
+        Command::new(self.bin())
             .args(args)
             .arg("--archivo")
-            .arg(cookbook)
+            .arg(self.home.path().join("cookbook.toml"))
             .env("HOME", self.home.path())
             .env("PATH", "/usr/bin:/bin")
             .env("REBAKE_BASE_URL", base)
             .env_remove("CLAUDE_CONFIG_DIR")
-            .stdin(if stdin.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        if let Some(s) = stdin {
-            hijo.stdin.take().unwrap().write_all(s.as_bytes()).unwrap();
-        }
-        hijo.wait_with_output().unwrap()
+            .envs(entorno.iter().copied())
+            .stdin(Stdio::null())
+            .output()
+            .unwrap()
+    }
+
+    /// Un cookbook con un ítem que tiene fuente, para que `investigar` tenga algo que hacer.
+    fn con_item_pendiente(&self) {
+        let mut r = Recetario::nuevo();
+        let mut item = Item::nuevo("skill:ejemplo", Tipo::Skill);
+        item.fuente = Some(Fuente {
+            repo: "https://github.com/ejemplo/ejemplo".into(),
+            via: Via::Busqueda,
+            doc: None,
+        });
+        r.items.push(item);
+        archivo::guardar(&self.home.path().join("cookbook.toml"), &r).unwrap();
     }
 }
 
@@ -187,7 +196,7 @@ fn compara_versiones_por_numero() {
 fn publicada_igual_no_avisa() {
     let s = Servidor::nuevo(PROPIA);
     let c = Copia::nueva();
-    let o = c.correr(&s.base, &["escanear"], None);
+    let o = c.correr(&s.base, &["escanear"]);
     assert!(o.status.success(), "{}", texto(&o));
     assert!(!texto(&o).contains("hay rebake"), "{}", texto(&o));
 }
@@ -196,8 +205,16 @@ fn publicada_igual_no_avisa() {
 fn subcomando_avisa_y_sigue() {
     let s = Servidor::nuevo("99.0.0");
     let c = Copia::nueva();
-    let o = c.correr(&s.base, &["escanear"], None);
-    assert!(o.status.success(), "{}", texto(&o));
+    c.con_item_pendiente();
+    // El falso tarda 1 s: da tiempo a que la revisión llegue antes de terminar.
+    let claude = c.home.path().join("claude-falso");
+    fs::write(&claude, "#!/bin/sh\nsleep 1\n").unwrap();
+    fs::set_permissions(&claude, fs::Permissions::from_mode(0o755)).unwrap();
+    let o = c.correr_con(
+        &s.base,
+        &["investigar", "skill:ejemplo"],
+        &[("REBAKE_CLAUDE", claude.to_str().unwrap())],
+    );
     assert!(
         texto(&o).contains(&format!(
             "hay rebake 99.0.0 (tenés {PROPIA}): abrí `rebake` para actualizar"
@@ -208,33 +225,16 @@ fn subcomando_avisa_y_sigue() {
 }
 
 #[test]
-fn pantalla_con_s_actualiza_y_abre_la_nueva() {
+fn instalar_reemplaza_el_binario() {
     let s = Servidor::nuevo("99.0.0");
     let c = Copia::nueva();
-    let antes = c.contenido();
-    let o = c.correr(&s.base, &[], Some("s\n"));
+    instalar("99.0.0", &s.base, &c.bin()).unwrap();
+    let o = Command::new(c.bin()).arg("--version").output().unwrap();
     assert!(texto(&o).contains("rebake 99.0.0"), "{}", texto(&o));
-    assert_ne!(c.contenido(), antes);
 }
 
 #[test]
-fn pantalla_con_enter_no_cambia_nada() {
-    let s = Servidor::nuevo("99.0.0");
-    let c = Copia::nueva();
-    let antes = c.contenido();
-    let o = c.correr(&s.base, &[], Some("\n"));
-    assert!(
-        texto(&o).contains(&format!(
-            "Hay rebake 99.0.0 (tenés {PROPIA}). ¿Actualizar? [s/N]"
-        )),
-        "{}",
-        texto(&o)
-    );
-    assert_eq!(c.contenido(), antes);
-}
-
-#[test]
-fn checksum_malo_no_actualiza() {
+fn checksum_malo_no_instala() {
     let s = Servidor::nuevo("99.0.0");
     fs::write(
         s.raiz.path().join(format!("{ASSET}.sha256")),
@@ -243,14 +243,13 @@ fn checksum_malo_no_actualiza() {
     .unwrap();
     let c = Copia::nueva();
     let antes = c.contenido();
-    let o = c.correr(&s.base, &[], Some("s\n"));
-    assert!(texto(&o).contains("no se actualizó"), "{}", texto(&o));
-    assert!(texto(&o).contains("checksum"), "{}", texto(&o));
+    let e = instalar("99.0.0", &s.base, &c.bin()).unwrap_err();
+    assert!(format!("{e:#}").contains("checksum"), "{e:#}");
     assert_eq!(c.contenido(), antes);
 }
 
 #[test]
-fn carpeta_sin_permiso_no_actualiza() {
+fn carpeta_sin_permiso_no_instala() {
     // Como root el chmod no impide escribir: el caso no se puede probar.
     if Command::new("id").arg("-u").output().unwrap().stdout == b"0\n" {
         return;
@@ -259,13 +258,12 @@ fn carpeta_sin_permiso_no_actualiza() {
     let c = Copia::nueva();
     let antes = c.contenido();
     fs::set_permissions(c.dir.path(), fs::Permissions::from_mode(0o555)).unwrap();
-    let o = c.correr(&s.base, &[], Some("s\n"));
+    let r = instalar("99.0.0", &s.base, &c.bin());
     fs::set_permissions(c.dir.path(), fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(texto(&o).contains("no se actualizó"), "{}", texto(&o));
+    let e = r.unwrap_err();
     assert!(
-        texto(&o).contains(&c.dir.path().display().to_string()),
-        "{}",
-        texto(&o)
+        format!("{e:#}").contains(&c.dir.path().display().to_string()),
+        "{e:#}"
     );
     assert_eq!(c.contenido(), antes);
 }
@@ -278,7 +276,7 @@ fn puerto_cerrado_no_avisa() {
         .unwrap()
         .port();
     let c = Copia::nueva();
-    let o = c.correr(&format!("http://127.0.0.1:{puerto}"), &["escanear"], None);
+    let o = c.correr(&format!("http://127.0.0.1:{puerto}"), &["escanear"]);
     assert!(o.status.success(), "{}", texto(&o));
     assert!(!texto(&o).contains("hay rebake"), "{}", texto(&o));
 }
@@ -296,8 +294,8 @@ fn servidor_que_no_responde_no_frena() {
     });
     let c = Copia::nueva();
     let t = Instant::now();
-    let o = c.correr(&base, &["escanear"], None);
-    assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+    let o = c.correr(&base, &["escanear"]);
+    assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
     assert!(o.status.success(), "{}", texto(&o));
     assert!(!texto(&o).contains("hay rebake"), "{}", texto(&o));
 }

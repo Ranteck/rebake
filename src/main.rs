@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::mpsc::Receiver;
 
 #[derive(Parser)]
 #[command(
@@ -71,8 +72,18 @@ fn main() -> ExitCode {
         }
     };
     let _guardia = iniciar_logs(&home);
-    revisar_version(cli.comando.is_some());
-    match correr(cli, &home) {
+    let propia = env!("CARGO_PKG_VERSION");
+    let mut revision = Some(actualizar::en_segundo_plano(
+        propia.to_string(),
+        actualizar::base(),
+    ));
+    let resultado = correr(cli, &home, &mut revision);
+    // Sigue acá solo con subcomando (la pantalla se lleva el receptor): avisa si ya llegó.
+    if let Some(nueva) = revision.and_then(|rx| rx.try_recv().ok().flatten()) {
+        tracing::info!(propia, nueva = %nueva, "hay una versión nueva");
+        eprintln!("hay rebake {nueva} (tenés {propia}): abrí `rebake` para actualizar");
+    }
+    match resultado {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
@@ -80,31 +91,6 @@ fn main() -> ExitCode {
             eprintln!("rebake: {e:#}");
             ExitCode::FAILURE
         }
-    }
-}
-
-/// Con subcomando solo avisa; en la pantalla pregunta. Nada de esto frena el arranque.
-fn revisar_version(hay_subcomando: bool) {
-    let propia = env!("CARGO_PKG_VERSION");
-    let base = actualizar::base();
-    let Some(nueva) = actualizar::version_nueva(propia, &base) else {
-        return;
-    };
-    if hay_subcomando {
-        tracing::info!(propia, nueva = %nueva, "hay una versión nueva");
-        eprintln!("hay rebake {nueva} (tenés {propia}): abrí `rebake` para actualizar");
-        return;
-    }
-    let acepto = confirmar(&format!(
-        "Hay rebake {nueva} (tenés {propia}). ¿Actualizar? [s/N] "
-    ))
-    .unwrap_or(false);
-    tracing::info!(propia, nueva = %nueva, acepto, "hay una versión nueva");
-    if !acepto {
-        return;
-    }
-    if let Err(e) = actualizar::actualizar(&nueva, &base) {
-        eprintln!("rebake: {e:#}\nno se actualizó");
     }
 }
 
@@ -125,7 +111,7 @@ fn iniciar_logs(home: &Path) -> Option<tracing_appender::non_blocking::WorkerGua
 }
 
 /// `Ok(false)` = terminó, pero algo no salió (p. ej. una receta falló).
-fn correr(cli: Cli, home: &Path) -> Result<bool> {
+fn correr(cli: Cli, home: &Path, revision: &mut Option<Receiver<Option<String>>>) -> Result<bool> {
     let ruta = cli
         .archivo
         .unwrap_or_else(|| rutas::archivo_por_defecto(home));
@@ -176,7 +162,14 @@ fn correr(cli: Cli, home: &Path) -> Result<bool> {
         _ => Default::default(),
     };
     let nombre = cli.comando.as_ref().map(Comando::nombre);
-    let resultado = ejecutar_comando(cli.comando, &ruta, home, novedades, cli.url.is_some());
+    let resultado = ejecutar_comando(
+        cli.comando,
+        &ruta,
+        home,
+        novedades,
+        cli.url.is_some(),
+        revision,
+    );
     // También si el comando falló: lo que llegó a guardar no se pierde.
     if let Some(antes) = &antes {
         publicar(&ruta, nombre, antes);
@@ -222,11 +215,13 @@ fn ejecutar_comando(
     home: &Path,
     novedades: HashMap<String, Novedad>,
     hubo_url: bool,
+    revision: &mut Option<Receiver<Option<String>>>,
 ) -> Result<bool> {
     let Some(comando) = comando else {
         let arranque = rebake::tui::Arranque {
             instalacion: hubo_url,
             novedades,
+            revision: revision.take(),
         };
         rebake::tui::ejecutar(ruta, home, arranque)?;
         return Ok(true);

@@ -1,6 +1,9 @@
 use anyhow::{Context, Result, bail};
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::process::Command;
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 
 const BASE_POR_DEFECTO: &str = "https://github.com/Ranteck/rebake/releases";
 
@@ -43,18 +46,27 @@ pub fn version_nueva(propia: &str, base: &str) -> Option<String> {
     si_es_nueva(propia, url.trim_end_matches('/').rsplit('/').next()?)
 }
 
-/// Corre el `install.sh` de la versión `version` sobre el binario en uso y lo vuelve a lanzar
-/// con los mismos argumentos. Solo vuelve si algo falló.
-pub fn actualizar(version: &str, base: &str) -> Result<()> {
-    let exe = std::env::current_exe().context("no pude ver cuál es el binario en uso")?;
+/// Lanza la revisión en un hilo y no espera: quien la lea con `try_recv` ve el resultado solo
+/// si ya llegó.
+pub fn en_segundo_plano(propia: String, base: String) -> Receiver<Option<String>> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        // Falla solo si ya nadie espera la respuesta (el programa terminó o no la quiso).
+        let _ = tx.send(version_nueva(&propia, &base));
+    });
+    rx
+}
+
+/// Corre el `install.sh` de la versión `version` sobre la carpeta de `binario`.
+pub fn instalar(version: &str, base: &str, binario: &Path) -> Result<()> {
     // install.sh escribe siempre <carpeta>/rebake: con otro nombre instalaría al lado.
-    if exe.file_name().is_none_or(|n| n != "rebake") {
+    if binario.file_name().is_none_or(|n| n != "rebake") {
         bail!(
             "{} no se llama `rebake`: actualizá a mano con el install.sh",
-            exe.display()
+            binario.display()
         );
     }
-    let dir = exe.parent().context("el binario no tiene carpeta")?;
+    let dir = binario.parent().context("el binario no tiene carpeta")?;
     let tag = format!("v{version}");
     let url = format!("{base}/download/{tag}/install.sh");
     let script = Command::new("curl")
@@ -78,6 +90,13 @@ pub fn actualizar(version: &str, base: &str) -> Result<()> {
     if !instalacion.status.success() {
         bail!("{}", String::from_utf8_lossy(&instalacion.stderr).trim());
     }
-    let error = Command::new(&exe).args(std::env::args_os().skip(1)).exec();
-    Err(error).with_context(|| format!("no pude abrir {}", exe.display()))
+    Ok(())
+}
+
+/// Lanza `binario` con los mismos argumentos que el proceso actual. Solo vuelve si falló.
+pub fn reabrir(binario: &Path) -> anyhow::Error {
+    let error = Command::new(binario)
+        .args(std::env::args_os().skip(1))
+        .exec();
+    anyhow::Error::new(error).context(format!("no pude abrir {}", binario.display()))
 }

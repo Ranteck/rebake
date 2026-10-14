@@ -473,3 +473,32 @@ fn instalar_actualiza_lo_comprobado() {
     assert_eq!(app.presencia.get(MKT), Some(&Presencia::Instalada));
     assert_eq!(app.presencia.get(CODEX), None);
 }
+
+#[test]
+fn con_version_nueva_la_cabecera_avisa_y_u_actualiza() {
+    let mut app = App::nueva(recetario());
+    app.version_nueva = Some("99.0.0".into());
+    let p = pantalla(&app);
+    assert!(p.contains("rebake 99.0.0 disponible"), "{p}");
+    assert!(p.contains("U actualiza"), "{p}");
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('U')),
+        Efecto::Actualizar("99.0.0".into())
+    );
+}
+
+#[test]
+fn u_sin_version_nueva_avisa_que_esta_al_dia() {
+    let mut app = App::nueva(recetario());
+    assert_eq!(tecla(&mut app, KeyCode::Char('U')), Efecto::Nada);
+    assert_eq!(app.mensaje.as_deref(), Some("rebake está al día"));
+}
+
+#[test]
+fn u_con_instalacion_en_curso_no_actualiza() {
+    let mut app = App::nueva(recetario());
+    app.version_nueva = Some("99.0.0".into());
+    app.instalando = true;
+    assert_eq!(tecla(&mut app, KeyCode::Char('U')), Efecto::Nada);
+    assert!(app.mensaje.unwrap().contains("esperá"));
+}

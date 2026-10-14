@@ -5,7 +5,7 @@ use crate::escaner::{Entorno, PacmanReal};
 use crate::instalador::{self, Evento, Opciones, Presencia};
 use crate::investigador::{self, Receta};
 use crate::servicio::{self, Novedad};
-use crate::{acciones, archivo, rutas};
+use crate::{acciones, actualizar, archivo, rutas};
 use anyhow::{Context, Result, bail};
 use app::{App, Efecto, Pestana};
 use ratatui::DefaultTerminal;
@@ -25,6 +25,8 @@ pub struct Arranque {
     /// Abrir en la pestaña Instalación.
     pub instalacion: bool,
     pub novedades: HashMap<String, Novedad>,
+    /// La revisión de versión que `main` lanzó al arrancar.
+    pub revision: Option<mpsc::Receiver<Option<String>>>,
 }
 
 pub fn ejecutar(ruta: &Path, home: &Path, arranque: Arranque) -> Result<()> {
@@ -35,16 +37,29 @@ pub fn ejecutar(ruta: &Path, home: &Path, arranque: Arranque) -> Result<()> {
         bail!("no pude abrir la pantalla: la salida no es una terminal");
     }
     let mut terminal = ratatui::init();
-    let resultado = bucle(&mut terminal, &mut app, ruta, home);
+    let resultado = bucle(&mut terminal, &mut app, ruta, home, arranque.revision);
     ratatui::restore();
     resultado
 }
 
-fn bucle(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, home: &Path) -> Result<()> {
+fn bucle(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    ruta: &Path,
+    home: &Path,
+    mut rx_version: Option<mpsc::Receiver<Option<String>>>,
+) -> Result<()> {
     let (tx_inv, rx_inv) = mpsc::channel::<Investigado>();
     let mut rx_inst: Option<mpsc::Receiver<Evento>> = None;
     let mut rx_comp: Option<mpsc::Receiver<(String, Presencia)>> = None;
     loop {
+        if let Some(rx) = &rx_version
+            && let Ok(nueva) = rx.try_recv()
+        {
+            tracing::info!(nueva = ?nueva, "revisión de versión terminada");
+            app.version_nueva = nueva;
+            rx_version = None;
+        }
         while let Ok((id, res)) = rx_inv.try_recv() {
             tracing::info!(accion = "investigar", id = %id, ok = res.is_ok());
             app.registrar_investigacion(&id, res, &rutas::hoy());
@@ -85,6 +100,7 @@ fn bucle(terminal: &mut DefaultTerminal, app: &mut App, ruta: &Path, home: &Path
             Efecto::Escanear => escanear(app, ruta),
             Efecto::Investigar(ids) => investigar(app, ruta, home, ids, &tx_inv),
             Efecto::Editar(id) => editar(terminal, app, ruta, home, &id)?,
+            Efecto::Actualizar(version) => actualizar(terminal, app, &version),
             Efecto::Comprobar => rx_comp = Some(comprobar(app, home)),
             Efecto::Instalar => rx_inst = instalar(app, home).or(rx_inst.take()),
         }
@@ -192,6 +208,31 @@ fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
         });
     });
     Some(rx)
+}
+
+/// Como `editar`, suelta la terminal mientras corre el instalador; con éxito no vuelve.
+fn actualizar(terminal: &mut DefaultTerminal, app: &mut App, version: &str) {
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(e) => {
+            app.mensaje = Some(format!(
+                "no se actualizó: no pude ver el binario en uso: {e}"
+            ));
+            return;
+        }
+    };
+    ratatui::restore();
+    eprintln!("actualizando a rebake {version}…");
+    let error = match actualizar::instalar(version, &actualizar::base(), &exe) {
+        Ok(()) => {
+            tracing::info!(version, "rebake actualizado; se reabre");
+            actualizar::reabrir(&exe)
+        }
+        Err(e) => e,
+    };
+    tracing::warn!(version, error = %format!("{error:#}"), "no se actualizó");
+    *terminal = ratatui::init();
+    app.mensaje = Some(format!("no se actualizó: {error:#}"));
 }
 
 fn editar(

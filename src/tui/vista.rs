@@ -33,8 +33,18 @@ fn texto_cabecera(app: &App) -> String {
     let r = &app.recetario;
     let contar = |e: Estado| r.items.iter().filter(|i| i.estado == e).count();
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
+    let aviso = app
+        .version_nueva
+        .as_ref()
+        .map_or_else(String::new, |nueva| {
+            format!(
+                " ⬆ rebake {nueva} disponible (tenés {}): U actualiza  ·",
+                env!("CARGO_PKG_VERSION")
+            )
+        });
+    // Adelante: en una terminal angosta se corta el final de la línea, no el aviso.
     format!(
-        " rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} pendientes  ✗ {} excluidas",
+        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} pendientes  ✗ {} excluidas",
         perfiles.join(" + "),
         contar(Estado::Aprobada),
         contar(Estado::PorRevisar),

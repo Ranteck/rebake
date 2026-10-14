@@ -42,6 +42,7 @@ pub enum Efecto {
     Editar(String),
     Instalar,
     Comprobar,
+    Actualizar(String),
     Salir,
 }
 
@@ -65,6 +66,8 @@ pub struct App {
     pub novedades: HashMap<String, Novedad>,
     pub seleccion_plan: usize,
     pub comprobando: bool,
+    /// Versión publicada más nueva que la propia, si la revisión ya llegó.
+    pub version_nueva: Option<String>,
 }
 
 impl App {
@@ -88,6 +91,7 @@ impl App {
             novedades: HashMap::new(),
             seleccion_plan: 0,
             comprobando: false,
+            version_nueva: None,
         }
     }
 
@@ -186,6 +190,13 @@ impl App {
             }
             KeyCode::Char('q') => return Efecto::Salir,
             KeyCode::Char('P') if self.instalando => self.avisar("ya hay una instalación en curso"),
+            KeyCode::Char('U') if self.instalando => {
+                self.avisar("esperá que termine la instalación para actualizar")
+            }
+            KeyCode::Char('U') => match self.version_nueva.clone() {
+                Some(version) => return Efecto::Actualizar(version),
+                None => self.avisar("rebake está al día"),
+            },
             KeyCode::Char('1') => self.pestana = Pestana::Recetas,
             KeyCode::Char('2') => self.pestana = Pestana::Checklist,
             KeyCode::Char('3') => self.pestana = Pestana::Instalacion,
