@@ -8,7 +8,13 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-const TECLAS: &str = "s escanear  i investigar  I investigar todo  a aprobar  x excluir  l pegar link  e editar  r reinvestigar  P instalar  / filtrar  q salir";
+const TECLAS_TODAS: [(&str, &str); 5] = [
+    ("I", "investigar todas"),
+    ("s", "escanear"),
+    ("/", "filtrar"),
+    ("P", "instalar"),
+    ("q", "salir"),
+];
 const TECLAS_INSTALACION: &str =
     "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  P instalar  q salir";
 const TECLAS_RESULTADOS: &str = "Esc volver al plan  q salir";
@@ -17,7 +23,7 @@ pub fn dibujar(f: &mut Frame, app: &App) {
     let [cabecera, cuerpo, pie] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
-        Constraint::Length(2),
+        Constraint::Length(3),
     ])
     .areas(f.area());
     f.render_widget(Paragraph::new(texto_cabecera(app)), cabecera);
@@ -457,6 +463,36 @@ fn instalacion(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+fn teclas_de_receta(item: &Item) -> Vec<(&'static str, &'static str)> {
+    match item.estado {
+        Estado::Pendiente if item.fuente.is_none() => {
+            vec![("i", "pasar el link"), ("x", "excluir")]
+        }
+        Estado::Pendiente => vec![("i", "armar receta"), ("x", "excluir")],
+        Estado::PorRevisar => vec![
+            ("a", "aprobar"),
+            ("e", "editar"),
+            ("r", "reinvestigar"),
+            ("x", "excluir"),
+        ],
+        Estado::Aprobada => vec![("e", "editar"), ("r", "reinvestigar"), ("x", "excluir")],
+        // Excluida no se investiga: editarla es la forma de volver a revisarla.
+        Estado::Excluida => vec![("e", "editar")],
+    }
+}
+
+/// La tecla en video inverso se lee como un botón, separada de lo que hace.
+fn teclas(lista: &[(&'static str, &'static str)]) -> Vec<Span<'static>> {
+    let resaltada = Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD);
+    let mut spans = Vec::new();
+    for (tecla, accion) in lista {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(format!(" {tecla} "), resaltada));
+        spans.push(Span::raw(format!(" {accion} ")));
+    }
+    spans
+}
+
 /// Con todo sin receta la pantalla no dice por dónde empezar.
 fn siguiente_paso(app: &App) -> String {
     let items = &app.recetario.items;
@@ -491,14 +527,27 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         };
         spans.push(Span::styled(format!(" {texto} "), estilo));
     }
-    let teclas = if app.viendo_plan() {
-        TECLAS_INSTALACION
-    } else if app.pestana == Pestana::Instalacion && !app.instalando {
-        TECLAS_RESULTADOS
+    let mut todas: Vec<Span> = Vec::new();
+    if app.pestana == Pestana::Recetas {
+        // Solo lo que hace algo sobre la receta elegida, en el orden en que conviene hacerlo.
+        if let Some(item) = app.seleccionado()
+            && !app.investigando.contains(&item.id)
+        {
+            spans.push(Span::raw("  Esta receta:"));
+            spans.extend(teclas(&teclas_de_receta(item)));
+        }
+        todas.push(Span::raw(" Todas:      "));
+        todas.extend(teclas(&TECLAS_TODAS));
     } else {
-        TECLAS
-    };
-    spans.push(Span::raw(format!("  {teclas}")));
+        let texto = if app.viendo_plan() {
+            TECLAS_INSTALACION
+        } else if app.pestana == Pestana::Instalacion && !app.instalando {
+            TECLAS_RESULTADOS
+        } else {
+            ""
+        };
+        spans.push(Span::raw(format!("  {texto}")));
+    }
     let segunda = match &app.modo {
         Modo::Escribiendo { para, texto } => {
             let etiqueta = match para {
@@ -517,5 +566,5 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             app.mensaje.clone().unwrap_or_else(|| siguiente_paso(app))
         ),
     };
-    vec![Line::from(spans), Line::from(segunda)]
+    vec![Line::from(spans), Line::from(todas), Line::from(segunda)]
 }

@@ -590,3 +590,50 @@ fn mientras_investiga_la_pantalla_lo_dice_con_texto() {
     assert!(p.contains("… a@x"), "{p}");
     assert!(p.contains("… 1 investigando"), "{p}");
 }
+
+fn pie(app: &App) -> Vec<String> {
+    let p = pantalla(app);
+    let lineas: Vec<String> = p.lines().map(|l| l.trim_end().to_string()).collect();
+    lineas[lineas.len() - 3..].to_vec()
+}
+
+#[test]
+fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
+    let mut sin_origen = Item::nuevo("statusline:s.sh", Tipo::Statusline);
+    sin_origen.pista = Some("archivo sin origen conocido: ~/.claude/s.sh".into());
+    let mut por_revisar = con_fuente("plugin:b@x");
+    por_revisar.estado = Estado::PorRevisar;
+    let mut aprobada = con_fuente("plugin:c@x");
+    aprobada.estado = Estado::Aprobada;
+    let mut excluida = con_fuente("plugin:d@x");
+    excluida.estado = Estado::Excluida;
+    for (item, esperado) in [
+        (con_fuente("plugin:a@x"), " i  armar receta   x  excluir"),
+        (sin_origen, " i  pasar el link   x  excluir"),
+        (
+            por_revisar,
+            " a  aprobar   e  editar   r  reinvestigar   x  excluir",
+        ),
+        (aprobada, " e  editar   r  reinvestigar   x  excluir"),
+        (excluida, " e  editar"),
+    ] {
+        let pie = pie(&con_un_item(item));
+        assert!(
+            pie[0].contains("Esta receta:") && pie[0].ends_with(esperado),
+            "{pie:?}"
+        );
+        assert!(
+            pie[1].contains("Todas:") && pie[1].contains(" I  investigar todas"),
+            "{pie:?}"
+        );
+    }
+}
+
+#[test]
+fn el_mensaje_va_en_su_propia_linea() {
+    let mut app = con_un_item(con_fuente("plugin:a@x"));
+    tecla(&mut app, KeyCode::Char('a'));
+    let pie = pie(&app);
+    assert!(pie[2].contains("todavía no tiene receta"), "{pie:?}");
+    assert!(!pie[0].contains("todavía") && !pie[1].contains("todavía"));
+}
