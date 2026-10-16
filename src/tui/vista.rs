@@ -73,7 +73,11 @@ fn leyenda(app: &App) -> Vec<Span<'static>> {
         spans.push(Span::styled(simbolo(e), estilo_estado(app, e)));
         spans.push(Span::raw(format!(" {}  ", nombre_estado(e))));
     }
-    spans.push(Span::raw("… armando"));
+    spans.push(Span::raw("… armando  "));
+    spans.push(Span::styled(
+        "(ausente) no está en esta PC",
+        Style::default().add_modifier(Modifier::DIM),
+    ));
     spans
 }
 

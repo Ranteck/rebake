@@ -679,6 +679,7 @@ fn recetas_muestra_la_leyenda_de_marcas() {
         "○ sin receta",
         "✗ excluida",
         "… armando",
+        "(ausente) no está en esta PC",
     ] {
         assert!(p.contains(marca), "falta {marca:?} en:\n{p}");
     }
