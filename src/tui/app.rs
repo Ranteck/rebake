@@ -31,6 +31,7 @@ pub enum Modo {
     Escribiendo { para: Entrada, texto: String },
     ConfirmarInstalacion,
     ConfirmarSalida,
+    Ayuda,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +69,8 @@ pub struct App {
     pub comprobando: bool,
     /// Versión publicada más nueva que la propia, si la revisión ya llegó.
     pub version_nueva: Option<String>,
+    /// Falso con `NO_COLOR`: los estados se distinguen solo por marca y texto.
+    pub color: bool,
 }
 
 impl App {
@@ -92,6 +95,7 @@ impl App {
             seleccion_plan: 0,
             comprobando: false,
             version_nueva: None,
+            color: true,
         }
     }
 
@@ -178,6 +182,17 @@ impl App {
                     Efecto::Nada
                 }
             }
+            Modo::Ayuda => match k.code {
+                KeyCode::Char('?') | KeyCode::Esc => {
+                    self.modo = Modo::Normal;
+                    Efecto::Nada
+                }
+                KeyCode::Char('q') => {
+                    self.modo = Modo::Normal;
+                    self.normal(k.code)
+                }
+                _ => Efecto::Nada,
+            },
             Modo::Normal => self.normal(k.code),
         }
     }
@@ -189,6 +204,7 @@ impl App {
                 self.modo = Modo::ConfirmarSalida;
             }
             KeyCode::Char('q') => return Efecto::Salir,
+            KeyCode::Char('?') => self.modo = Modo::Ayuda,
             KeyCode::Char('p' | 'P') if self.instalando => {
                 self.avisar("ya hay una instalación en curso")
             }

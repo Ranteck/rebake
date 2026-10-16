@@ -40,7 +40,11 @@ fn recetario() -> Recetario {
 }
 
 fn pantalla(app: &App) -> String {
-    let mut t = Terminal::new(TestBackend::new(140, 32)).unwrap();
+    pantalla_en(app, 140, 32)
+}
+
+fn pantalla_en(app: &App, ancho: u16, alto: u16) -> String {
+    let mut t = Terminal::new(TestBackend::new(ancho, alto)).unwrap();
     t.draw(|f| vista::dibujar(f, app)).unwrap();
     let b = t.backend().buffer().clone();
     let mut s = String::new();
@@ -78,7 +82,7 @@ fn recetas_muestra_grupos_estados_y_detalle() {
     let p = pantalla(&app);
     assert!(p.contains("github.com/openai/codex-plugin-cc"), "{p}");
     assert!(
-        p.contains("cita: /plugin install codex@openai-codex"),
+        p.contains("según el repo: /plugin install codex@openai-codex"),
         "{p}"
     );
 }
@@ -540,7 +544,7 @@ fn el_detalle_dice_que_falta_en_cada_estado() {
             "todavía no hay receta: `i` la arma",
         ),
         (sin_origen, "no sé de qué repo viene: `i` te pide el link"),
-        (por_revisar, "revisá los pasos y la cita, y `a` la aprueba"),
+        (por_revisar, "revisá qué va a ejecutar y `a` la aprueba"),
         (aprobada, "en una PC nueva se instala con esto"),
         (excluida, "No se instala"),
     ] {
@@ -558,7 +562,7 @@ fn la_cabecera_y_el_detalle_dicen_sin_receta() {
 }
 
 #[test]
-fn el_siguiente_paso_aparece_hasta_que_hay_una_receta() {
+fn el_siguiente_paso_sigue_al_camino() {
     let mut r = Recetario::nuevo();
     r.items = vec![con_fuente("plugin:a@x"), con_fuente("plugin:b@x")];
     let p = pantalla(&App::nueva(r.clone()));
@@ -566,8 +570,13 @@ fn el_siguiente_paso_aparece_hasta_que_hay_una_receta() {
         p.contains("Siguiente: `t` arma 2 recetas (las que tienen origen)"),
         "{p}"
     );
+    r.items[0].estado = Estado::PorRevisar;
     r.items[1].estado = Estado::PorRevisar;
-    assert!(!pantalla(&App::nueva(r)).contains("Siguiente:"));
+    let pie = pie(&App::nueva(r));
+    assert!(
+        pie[2].contains("Siguiente: 2 recetas por revisar: elegí una y `a` la aprueba"),
+        "{pie:?}"
+    );
 }
 
 #[test]
@@ -655,4 +664,201 @@ fn ninguna_tecla_depende_de_shift() {
     let pie = pie(&App::nueva(recetario()));
     assert!(pie[1].contains(" t  investigar todas"), "{pie:?}");
     assert!(pie[1].contains(" p  instalar"), "{pie:?}");
+}
+
+fn camino(app: &App) -> String {
+    pantalla(app).lines().nth(1).unwrap().to_string()
+}
+
+#[test]
+fn recetas_muestra_la_leyenda_de_marcas() {
+    let p = pantalla(&App::nueva(recetario()));
+    for marca in [
+        "✓ aprobada",
+        "? por revisar",
+        "○ sin receta",
+        "✗ excluida",
+        "… armando",
+    ] {
+        assert!(p.contains(marca), "falta {marca:?} en:\n{p}");
+    }
+}
+
+#[test]
+fn el_camino_resalta_el_primer_paso_con_trabajo() {
+    assert!(camino(&App::nueva(Recetario::nuevo())).contains("[escanear]"));
+    let pendiente = con_un_item(con_fuente("plugin:a@x"));
+    assert!(camino(&pendiente).contains("✓ escanear › [armar recetas]"));
+    let mut revisar = con_fuente("plugin:a@x");
+    revisar.estado = Estado::PorRevisar;
+    assert!(camino(&con_un_item(revisar)).contains("› [aprobar] ›"));
+    let mut aprobada = con_fuente("plugin:a@x");
+    aprobada.estado = Estado::Aprobada;
+    let c = camino(&con_un_item(aprobada));
+    assert!(c.contains("✓ aprobar › [instalar]"), "{c}");
+}
+
+#[test]
+fn el_plugin_oficial_se_lista_sin_su_marketplace_y_lo_largo_termina_en_elipsis() {
+    let mut r = Recetario::nuevo();
+    r.items = vec![
+        con_fuente("plugin:claude-md-management@claude-plugins-official"),
+        con_fuente("plugin:un-nombre-larguisimo-que-no-entra-en-la-lista@x"),
+    ];
+    let app = App::nueva(r);
+    let p = pantalla_en(&app, 70, 24);
+    let oficial = p
+        .lines()
+        .find(|l| l.contains("○ claude-md-management"))
+        .unwrap_or_else(|| panic!("{p}"));
+    assert!(!oficial.contains("○ claude-md-management@"), "{oficial}");
+    let largo = p.lines().find(|l| l.contains("○ un-nombre")).unwrap();
+    assert!(largo.contains("…│"), "{largo}");
+    // El título del detalle no entra en 70 columnas: se corta con `…`, y entero en 140.
+    assert!(
+        p.lines()
+            .any(|l| l.contains("┐┌plugin:claude-md-management@") && l.ends_with("…┐")),
+        "{p}"
+    );
+    assert!(
+        pantalla(&app).contains("plugin:claude-md-management@claude-plugins-official"),
+        "{p}"
+    );
+}
+
+#[test]
+fn un_nombre_ancho_no_corre_la_columna_de_estado() {
+    let mut item = Item::nuevo("skill:日本語の名前", Tipo::Skill);
+    item.pista = Some("skill sin origen conocido: ~/.claude/skills/x".into());
+    let p = pantalla(&con_un_item(item));
+    let linea = p
+        .lines()
+        .find(|l| l.contains("○ 日"))
+        .unwrap_or_else(|| panic!("{p}"));
+    assert!(linea.contains("sin origen│"), "{linea}");
+}
+
+#[test]
+fn el_detalle_habla_en_palabras_simples() {
+    let mut mkt = Item::nuevo("marketplace:ponytail", Tipo::Marketplace);
+    mkt.estado = Estado::PorRevisar;
+    mkt.fuente = Some(Fuente {
+        repo: "https://github.com/DietrichGebert/ponytail".into(),
+        via: Via::Metadatos,
+        doc: Some("receta directa: instalador de plugins de Claude Code".into()),
+    });
+    mkt.verificar = Some("claude plugin marketplace list".into());
+    mkt.pasos = vec![Paso {
+        cmd: "claude plugin marketplace add https://github.com/DietrichGebert/ponytail".into(),
+        modo: Modo::Auto,
+        por_perfil: true,
+        cita: None,
+        nota: Some("receta directa: instalador de plugins de Claude Code".into()),
+    }];
+    let p = pantalla(&con_un_item(mkt));
+    for esperado in [
+        "Viene de: https://github.com/DietrichGebert/ponytail (lo registró su instalador)",
+        "Cómo se arma: instalador de plugins de Claude Code, sin Claude",
+        "Para saber si ya está: claude plugin marketplace list",
+        "Qué va a ejecutar",
+        "en cada perfil, automático",
+    ] {
+        assert!(p.contains(esperado), "falta {esperado:?} en:\n{p}");
+    }
+    for viejo in ["metadatos", "Doc:", "Fuente:", "por perfil", "nota:"] {
+        assert!(!p.contains(viejo), "sobra {viejo:?} en:\n{p}");
+    }
+}
+
+#[test]
+fn en_80_columnas_la_cabecera_conserva_los_contadores() {
+    let mut app = App::nueva(recetario());
+    app.recetario.perfiles.push(Perfil {
+        nombre: "personal".into(),
+        dir: "~/.claude-personal".into(),
+    });
+    app.version_nueva = Some("99.0.0".into());
+    let p = pantalla_en(&app, 80, 24);
+    let cabecera = p.lines().next().unwrap();
+    for contador in ["✓2", "?0", "○1", "✗1", "u actualiza"] {
+        assert!(
+            cabecera.contains(contador),
+            "falta {contador:?} en {cabecera:?}"
+        );
+    }
+}
+
+#[test]
+fn instalacion_sin_aprobadas_solo_ofrece_lo_que_sirve() {
+    let mut app = con_un_item(con_fuente("plugin:a@x"));
+    tecla(&mut app, KeyCode::Char('3'));
+    let pie = pie(&app);
+    for sobra in [" t ", " c ", " p ", "espacio"] {
+        assert!(!pie[0].contains(sobra), "sobra {sobra:?} en {pie:?}");
+    }
+    assert!(
+        pie[0].contains("1 volver a Recetas") && pie[0].contains("q salir"),
+        "{pie:?}"
+    );
+}
+
+fn colores(app: &App) -> Vec<ratatui::style::Color> {
+    let mut t = Terminal::new(TestBackend::new(140, 32)).unwrap();
+    t.draw(|f| vista::dibujar(f, app)).unwrap();
+    t.backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.fg)
+        .collect()
+}
+
+#[test]
+fn los_estados_tienen_color_salvo_con_no_color() {
+    use ratatui::style::Color;
+    let mut app = App::nueva(recetario());
+    assert!(colores(&app).contains(&Color::Green));
+    app.color = false;
+    assert!(colores(&app).iter().all(|c| *c == Color::Reset));
+    assert!(pantalla(&app).contains("✓ codex@openai-codex"));
+}
+
+#[test]
+fn la_ayuda_se_abre_con_signo_y_vuelve_a_la_misma_seleccion() {
+    let mut app = App::nueva(recetario());
+    app.seleccion = 2;
+    assert_eq!(tecla(&mut app, KeyCode::Char('?')), Efecto::Nada);
+    let p = pantalla(&app);
+    assert!(
+        p.contains("Ayuda") && p.contains("armar recetas (i, t)"),
+        "{p}"
+    );
+    tecla(&mut app, KeyCode::Char('j'));
+    tecla(&mut app, KeyCode::Esc);
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+    assert_eq!(app.seleccion, 2);
+    assert!(!pantalla(&app).contains("armar recetas (i, t)"));
+}
+
+#[test]
+fn el_signo_en_el_filtro_se_escribe() {
+    let mut app = App::nueva(recetario());
+    tecla(&mut app, KeyCode::Char('/'));
+    tecla(&mut app, KeyCode::Char('?'));
+    assert!(matches!(&app.modo, rebake::tui::app::Modo::Escribiendo { texto, .. } if texto == "?"));
+}
+
+#[test]
+fn cada_pestana_dice_para_que_es() {
+    let mut app = App::nueva(recetario());
+    assert!(pantalla(&app).contains("En esta PC: decidí cómo se instala cada cosa"));
+    tecla(&mut app, KeyCode::Char('2'));
+    let p = pantalla(&app);
+    assert!(
+        p.contains("Después de instalar: lo que rebake no hace por vos"),
+        "{p}"
+    );
+    assert!(p.contains("[2]Pendientes"), "{p}");
+    tecla(&mut app, KeyCode::Char('3'));
+    assert!(pantalla(&app).contains("En una PC nueva: instalá las recetas aprobadas"));
 }

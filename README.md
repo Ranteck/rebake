@@ -6,7 +6,7 @@ receta con su forma de instalación, y en una PC nueva `rebake` las vuelve a hor
 En vez de copiar carpetas (que quedan viejas o rotas), `rebake` mira qué tenés instalado,
 averigua con `claude -p` cómo se instala cada cosa según su propio repo, y guarda esas recetas
 en tu **cookbook**, un archivo TOML que revisás y versionás. En una PC nueva, ejecuta las
-recetas aprobadas y te deja una checklist de lo que falta hacer a mano.
+recetas aprobadas y te deja una lista de pendientes de lo que falta hacer a mano.
 
 Cubre plugins, marketplaces, skills, imports de `CLAUDE.md`, hooks, statusline y las
 herramientas que usan, en todos tus perfiles (`~/.claude` y `~/.claude-*`). No copia
@@ -91,6 +91,11 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 
 ### Teclas de la TUI
 
+La cabecera muestra el camino (escanear › armar recetas › aprobar › instalar) con el paso
+actual entre corchetes, y abajo, la próxima tecla útil. Las pestañas se usan en este orden:
+**Recetas** en esta PC, **Instalación** en la PC nueva y, al final, **Pendientes** (logins y
+ajustes que rebake no hace por vos). Con `NO_COLOR` la pantalla no usa colores.
+
 | Tecla | Acción |
 |---|---|
 | `s` | escanear |
@@ -103,7 +108,8 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 | `p` | instalar lo marcado en Instalación (al abrir, todo lo aprobado) |
 | `/` | filtrar |
 | `u` | actualizar rebake cuando la cabecera avisa que hay una versión nueva |
-| `1` `2` `3` | Recetas, Checklist, Instalación |
+| `1` `2` `3` | Recetas, Pendientes, Instalación |
+| `?` | ayuda: el camino, las marcas y las teclas |
 | `q` | salir |
 
 Ninguna tecla depende de Shift: `I`, `P` y `U` siguen andando como `t`, `p` y `u`.

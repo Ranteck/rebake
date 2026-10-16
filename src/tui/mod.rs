@@ -32,6 +32,7 @@ pub struct Arranque {
 pub fn ejecutar(ruta: &Path, home: &Path, arranque: Arranque) -> Result<()> {
     let recetario = archivo::leer(ruta)?;
     let mut app = App::nueva(recetario).con_arranque(arranque.instalacion, arranque.novedades);
+    app.color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty());
     // Sin esta guarda, `ratatui::init()` toma /dev/tty aunque la salida esté capturada.
     if !std::io::stdout().is_terminal() {
         bail!("no pude abrir la pantalla: la salida no es una terminal");
