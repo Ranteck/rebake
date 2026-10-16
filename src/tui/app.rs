@@ -343,6 +343,12 @@ impl App {
                     texto: self.filtro.clone(),
                 }
             }
+            (KeyCode::Char('x'), Some(id))
+                if self.recetario.item(&id).map(|i| i.estado) == Some(Estado::Excluida) =>
+            {
+                let resultado = acciones::incluir(&mut self.recetario, &id);
+                return self.guardar_cambio(&id, resultado);
+            }
             (KeyCode::Char('x'), Some(id)) => {
                 self.modo = Modo::Escribiendo {
                     para: Entrada::Motivo { id },
@@ -356,17 +362,10 @@ impl App {
                 }
             }
             (KeyCode::Char('e'), Some(id)) => return Efecto::Editar(id),
-            (KeyCode::Char('a'), Some(id)) => {
-                return match acciones::aprobar(&mut self.recetario, &id) {
-                    Ok(()) => {
-                        self.avisar(&format!("{id} aprobado"));
-                        Efecto::Guardar
-                    }
-                    Err(e) => {
-                        self.avisar(&format!("{e:#}"));
-                        Efecto::Nada
-                    }
-                };
+            // Espacio marca en las otras pestañas; acá lo marcado es la aprobación.
+            (KeyCode::Char('a' | ' '), Some(id)) => {
+                let resultado = acciones::alternar_aprobacion(&mut self.recetario, &id);
+                return self.guardar_cambio(&id, resultado);
             }
             (KeyCode::Char('i' | 'r'), Some(id)) => {
                 if self.recetario.item(&id).is_some_and(|i| i.fuente.is_none()) {
@@ -397,6 +396,27 @@ impl App {
             _ => {}
         }
         Efecto::Nada
+    }
+
+    fn guardar_cambio(&mut self, id: &str, resultado: anyhow::Result<Estado>) -> Efecto {
+        match resultado {
+            Ok(Estado::Aprobada) => {
+                self.avisar(&format!("{id}: aprobada (queda guardado en el cookbook)"));
+                Efecto::Guardar
+            }
+            Ok(Estado::PorRevisar) => {
+                self.avisar(&format!("{id}: vuelve a por revisar"));
+                Efecto::Guardar
+            }
+            Ok(_) => {
+                self.avisar(&format!("{id}: vuelve a sin receta"));
+                Efecto::Guardar
+            }
+            Err(e) => {
+                self.avisar(&format!("{e:#}"));
+                Efecto::Nada
+            }
+        }
     }
 
     fn investigar(&mut self, ids: Vec<String>) -> Efecto {

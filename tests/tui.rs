@@ -622,10 +622,13 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
         (sin_origen, " i  pasar el link   x  excluir"),
         (
             por_revisar,
-            " a  aprobar   e  editar   r  reinvestigar   x  excluir",
+            " espacio/a  aprobar   e  editar   r  reinvestigar   x  excluir",
         ),
-        (aprobada, " e  editar   r  reinvestigar   x  excluir"),
-        (excluida, " e  editar"),
+        (
+            aprobada,
+            " espacio/a  desaprobar   e  editar   r  reinvestigar   x  excluir",
+        ),
+        (excluida, " x  volver a incluir   e  editar"),
     ] {
         let pie = pie(&con_un_item(item));
         assert!(
@@ -887,4 +890,103 @@ fn un_requisito_dice_quien_lo_pide_y_no_por_que_falta() {
         p.contains("Por qué falta: skill sin origen conocido"),
         "{p}"
     );
+}
+
+fn por_revisar_con_pasos() -> App {
+    let mut item = con_fuente("plugin:b@x");
+    item.estado = Estado::PorRevisar;
+    item.pasos = vec![Paso {
+        cmd: "claude plugin install b@x".into(),
+        modo: Modo::Auto,
+        por_perfil: true,
+        cita: None,
+        nota: None,
+    }];
+    con_un_item(item)
+}
+
+fn estado(app: &App) -> Estado {
+    app.recetario.item("plugin:b@x").unwrap().estado
+}
+
+#[test]
+fn espacio_y_a_alternan_la_aprobacion_y_guardan() {
+    for (ida, vuelta) in [(' ', 'a'), ('a', ' ')] {
+        let mut app = por_revisar_con_pasos();
+        assert_eq!(tecla(&mut app, KeyCode::Char(ida)), Efecto::Guardar);
+        assert_eq!(estado(&app), Estado::Aprobada);
+        assert!(
+            app.mensaje.as_deref().unwrap().contains("aprobada"),
+            "{:?}",
+            app.mensaje
+        );
+        assert_eq!(tecla(&mut app, KeyCode::Char(vuelta)), Efecto::Guardar);
+        assert_eq!(estado(&app), Estado::PorRevisar);
+        assert!(
+            app.mensaje
+                .as_deref()
+                .unwrap()
+                .contains("vuelve a por revisar"),
+            "{:?}",
+            app.mensaje
+        );
+    }
+}
+
+#[test]
+fn espacio_no_aprueba_sin_receta_ni_excluida() {
+    let mut app = con_un_item(con_fuente("plugin:b@x"));
+    assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Nada);
+    assert_eq!(estado(&app), Estado::Pendiente);
+    assert!(
+        app.mensaje
+            .as_deref()
+            .unwrap()
+            .contains("todavía no tiene receta")
+    );
+
+    let mut excluida = con_fuente("plugin:b@x");
+    excluida.estado = Estado::Excluida;
+    let mut app = con_un_item(excluida);
+    assert_eq!(tecla(&mut app, KeyCode::Char('a')), Efecto::Nada);
+    assert_eq!(estado(&app), Estado::Excluida);
+    assert!(app.mensaje.as_deref().unwrap().contains("`x` lo devuelve"));
+}
+
+#[test]
+fn x_excluye_con_motivo_y_x_otra_vez_lo_devuelve_sin_preguntar() {
+    let mut app = por_revisar_con_pasos();
+    tecla(&mut app, KeyCode::Char('x'));
+    assert_eq!(
+        tecla(&mut app, KeyCode::Enter),
+        Efecto::Nada,
+        "motivo vacío"
+    );
+    assert_eq!(estado(&app), Estado::PorRevisar);
+    tecla(&mut app, KeyCode::Char('x'));
+    for c in "duplicado".chars() {
+        tecla(&mut app, KeyCode::Char(c));
+    }
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(estado(&app), Estado::Excluida);
+
+    assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+    assert_eq!(estado(&app), Estado::PorRevisar);
+    assert_eq!(app.recetario.item("plugin:b@x").unwrap().motivo, None);
+    assert!(
+        app.mensaje
+            .as_deref()
+            .unwrap()
+            .contains("vuelve a por revisar")
+    );
+}
+
+#[test]
+fn la_ayuda_dice_que_espacio_guarda_en_recetas_y_solo_marca_en_instalacion() {
+    let mut app = App::nueva(recetario());
+    tecla(&mut app, KeyCode::Char('?'));
+    let p = pantalla(&app);
+    assert!(p.contains("queda guardado en el cookbook"), "{p}");
+    assert!(p.contains("solo para esa instalación"), "{p}");
 }

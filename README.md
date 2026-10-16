@@ -100,8 +100,8 @@ ajustes que rebake no hace por vos). Con `NO_COLOR` la pantalla no usa colores.
 |---|---|
 | `s` | escanear |
 | `i` / `t` | investigar la receta (sin origen, pide el link) / todas las sin receta con origen |
-| `a` | aprobar (solo una receta investigada o editada) |
-| `x` | excluir, con motivo |
+| espacio / `a` | aprobar o desaprobar (solo una receta investigada o editada); queda guardado en el cookbook |
+| `x` | excluir, con motivo; sobre una excluida, la vuelve a incluir |
 | `l` | pegar el link del repo cuando no se encontró |
 | `e` | editar la receta en `$EDITOR` |
 | `r` | reinvestigar |

@@ -15,9 +15,34 @@ pub fn aprobar(r: &mut Recetario, id: &str) -> Result<()> {
         Estado::Pendiente => {
             bail!("{id} todavía no tiene receta: investigalo o editalo antes de aprobar")
         }
-        Estado::Excluida => bail!("{id} está excluido"),
+        Estado::Excluida => bail!("{id} está excluido: `x` lo devuelve"),
     }
     Ok(())
+}
+
+/// Aprueba una receta por revisar o devuelve a revisión una aprobada; dice cómo quedó.
+pub fn alternar_aprobacion(r: &mut Recetario, id: &str) -> Result<Estado> {
+    if buscar(r, id)?.estado == Estado::Aprobada {
+        buscar(r, id)?.estado = Estado::PorRevisar;
+    } else {
+        aprobar(r, id)?;
+    }
+    Ok(buscar(r, id)?.estado)
+}
+
+/// Deshace una exclusión: vuelve a revisión si tiene pasos, o a sin receta si no.
+pub fn incluir(r: &mut Recetario, id: &str) -> Result<Estado> {
+    let item = buscar(r, id)?;
+    if item.estado != Estado::Excluida {
+        bail!("{id} no está excluido");
+    }
+    item.estado = if item.pasos.is_empty() {
+        Estado::Pendiente
+    } else {
+        Estado::PorRevisar
+    };
+    item.motivo = None;
+    Ok(item.estado)
 }
 
 pub fn excluir(r: &mut Recetario, id: &str, motivo: &str) -> Result<()> {

@@ -91,3 +91,39 @@ fn renombrar_perfil_actualiza_items() {
     });
     assert!(renombrar_perfil(&mut r, "laburo", "personal").is_err());
 }
+
+#[test]
+fn alternar_aprobacion_va_y_vuelve() {
+    let mut r = recetario_con(Estado::PorRevisar);
+    assert_eq!(alternar_aprobacion(&mut r, ID).unwrap(), Estado::Aprobada);
+    assert_eq!(alternar_aprobacion(&mut r, ID).unwrap(), Estado::PorRevisar);
+    assert_eq!(r.item(ID).unwrap().estado, Estado::PorRevisar);
+    for estado in [Estado::Pendiente, Estado::Excluida] {
+        let mut r = recetario_con(estado);
+        assert!(alternar_aprobacion(&mut r, ID).is_err());
+        assert_eq!(r.item(ID).unwrap().estado, estado);
+    }
+}
+
+#[test]
+fn incluir_vuelve_segun_tenga_pasos_y_borra_el_motivo() {
+    let mut r = recetario_con(Estado::Pendiente);
+    excluir(&mut r, ID, "no lo uso").unwrap();
+    assert_eq!(incluir(&mut r, ID).unwrap(), Estado::Pendiente);
+    assert_eq!(r.item(ID).unwrap().motivo, None);
+
+    let mut r = recetario_con(Estado::PorRevisar);
+    r.item_mut(ID).unwrap().pasos = vec![Paso {
+        cmd: "echo hola".into(),
+        modo: Modo::Auto,
+        por_perfil: false,
+        cita: None,
+        nota: None,
+    }];
+    excluir(&mut r, ID, "duplicado").unwrap();
+    assert_eq!(incluir(&mut r, ID).unwrap(), Estado::PorRevisar);
+    assert!(
+        incluir(&mut r, ID).is_err(),
+        "incluir algo no excluido es un error"
+    );
+}

@@ -678,14 +678,19 @@ fn teclas_de_receta(item: &Item) -> Vec<(&'static str, &'static str)> {
         }
         Estado::Pendiente => vec![("i", "armar receta"), ("x", "excluir")],
         Estado::PorRevisar => vec![
-            ("a", "aprobar"),
+            ("espacio/a", "aprobar"),
             ("e", "editar"),
             ("r", "reinvestigar"),
             ("x", "excluir"),
         ],
-        Estado::Aprobada => vec![("e", "editar"), ("r", "reinvestigar"), ("x", "excluir")],
-        // Excluida no se investiga: editarla es la forma de volver a revisarla.
-        Estado::Excluida => vec![("e", "editar")],
+        Estado::Aprobada => vec![
+            ("espacio/a", "desaprobar"),
+            ("e", "editar"),
+            ("r", "reinvestigar"),
+            ("x", "excluir"),
+        ],
+        // Excluida no se investiga: se vuelve a incluir o se edita.
+        Estado::Excluida => vec![("x", "volver a incluir"), ("e", "editar")],
     }
 }
 
@@ -741,7 +746,9 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         titulo("Camino"),
         Line::from("1. escanear (s): busca lo que tiene esta PC."),
         Line::from("2. armar recetas (i, t): de qué repo viene cada cosa y cómo se instala."),
-        Line::from("3. aprobar (a): revisás los pasos y la aprobás; e edita, x excluye."),
+        Line::from(
+            "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; x excluye y vuelve a incluir, e edita.",
+        ),
         Line::from(
             "4. instalar (3, p): en una PC nueva instala lo aprobado; después, 2 Pendientes.",
         ),
@@ -753,7 +760,7 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         Line::from("1 Recetas: en esta PC, armar y aprobar recetas."),
         Line::from("2 Pendientes: logins y ajustes que rebake no hace por vos."),
         Line::from(
-            "3 Instalación: en una PC nueva, comprobar (c), marcar (espacio) e instalar (p).",
+            "3 Instalación: en una PC nueva, comprobar (c), marcar (espacio, solo para esa instalación) e instalar (p).",
         ),
         Line::from(""),
         titulo("Otras teclas"),
