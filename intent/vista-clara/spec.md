@@ -3,7 +3,8 @@ Estado: aceptado
 
 ## Requisitos
 - REQ-1 MUST: la pestaña Recetas muestra siempre una leyenda de las marcas de la lista
-  (`✓ aprobada  ? por revisar  ○ sin receta  ✗ excluida  … armando`). Origen: Resultado 1,
+  (`✓ aprobada  ○ por revisar  · sin receta  ? sin origen  ✗ excluida  … armando`); `?` solo
+  marca lo que rebake no sabe de qué repo viene (cambio pedido por Denis, 2026-10-16). Origen: Resultado 1,
   "qué significa cada marca y cada estado".
 - REQ-2 MUST: la cabecera muestra el camino `escanear › armar recetas › aprobar › instalar`
   con el paso actual resaltado (en negrita y con un marcador que se ve sin color). El paso es
@@ -23,7 +24,7 @@ Estado: aceptado
   `Doc: receta directa…`, y "Para saber si ya está" en lugar de `Verificar`.
   Origen: Resultado 3; Problema, "jerga interna".
 - REQ-6 MUST: en 80 columnas la cabecera no pierde los contadores: si no entran, se abrevian
-  (`✓0 ?62 ○20 ✗0`) antes de cortarse. Origen: Resultado 4; Problema, "la cabecera se corta".
+  (`✓0 ○62 ·1 ?19 ✗0`) antes de cortarse. Origen: Resultado 4; Problema, "la cabecera se corta".
 - REQ-7 MUST: el pie muestra solo teclas que hacen algo en esa pestaña y ese estado. En
   Instalación sin recetas aprobadas: `1` volver a Recetas y `q` salir. Origen: Problema,
   "teclas que no hacen nada ahí".

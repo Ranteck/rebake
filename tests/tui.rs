@@ -73,7 +73,7 @@ fn recetas_muestra_grupos_estados_y_detalle() {
         "✓ codex@openai-codex",
         "✗ crawl4ai",
         "no me interesa",
-        "○ statusline.sh",
+        "? statusline.sh",
     ] {
         assert!(p.contains(esperado), "falta {esperado:?} en:\n{p}");
     }
@@ -147,7 +147,7 @@ fn la_cabecera_muestra_las_sin_origen_antes_y_despues_del_lote() {
     let mut r = recetario();
     r.items.push(con_fuente("plugin:pendiente@x"));
     let mut app = App::nueva(r);
-    assert!(pantalla(&app).contains("(1 sin origen)"));
+    assert!(pantalla(&app).contains("? 1 sin origen"));
     tecla(&mut app, KeyCode::Char('I'));
     let receta = Receta {
         repo: "https://github.com/ejemplo/repo".into(),
@@ -162,14 +162,15 @@ fn la_cabecera_muestra_las_sin_origen_antes_y_despues_del_lote() {
         mensaje.contains("plugin:pendiente@x → por revisar"),
         "{mensaje}"
     );
-    assert!(pantalla(&app).contains("(1 sin origen)"));
+    assert!(pantalla(&app).contains("? 1 sin origen"));
 }
 
 #[test]
 fn sin_pendientes_sin_origen_la_cabecera_no_las_nombra() {
     let mut r = recetario();
     r.items.retain(|i| i.id != "statusline:statusline.sh");
-    assert!(!pantalla(&App::nueva(r)).contains("sin origen"));
+    let p = pantalla(&App::nueva(r));
+    assert!(!p.lines().next().unwrap().contains("sin origen"), "{p}");
 }
 
 #[test]
@@ -556,7 +557,7 @@ fn el_detalle_dice_que_falta_en_cada_estado() {
 #[test]
 fn la_cabecera_y_el_detalle_dicen_sin_receta() {
     let p = pantalla(&con_un_item(con_fuente("plugin:a@x")));
-    assert!(p.contains("○ 1 sin receta"), "{p}");
+    assert!(p.contains("· 1 sin receta"), "{p}");
     assert!(p.contains("Estado: sin receta"), "{p}");
     assert!(!p.contains("pendiente"), "{p}");
 }
@@ -675,8 +676,9 @@ fn recetas_muestra_la_leyenda_de_marcas() {
     let p = pantalla(&App::nueva(recetario()));
     for marca in [
         "✓ aprobada",
-        "? por revisar",
-        "○ sin receta",
+        "○ por revisar",
+        "· sin receta",
+        "? sin origen",
         "✗ excluida",
         "… armando",
         "(ausente) no está en esta PC",
@@ -710,10 +712,10 @@ fn el_plugin_oficial_se_lista_sin_su_marketplace_y_lo_largo_termina_en_elipsis()
     let p = pantalla_en(&app, 70, 24);
     let oficial = p
         .lines()
-        .find(|l| l.contains("○ claude-md-management"))
+        .find(|l| l.contains("· claude-md-management"))
         .unwrap_or_else(|| panic!("{p}"));
-    assert!(!oficial.contains("○ claude-md-management@"), "{oficial}");
-    let largo = p.lines().find(|l| l.contains("○ un-nombre")).unwrap();
+    assert!(!oficial.contains("· claude-md-management@"), "{oficial}");
+    let largo = p.lines().find(|l| l.contains("· un-nombre")).unwrap();
     assert!(largo.contains("…│"), "{largo}");
     // El título del detalle no entra en 70 columnas: se corta con `…`, y entero en 140.
     assert!(
@@ -734,7 +736,7 @@ fn un_nombre_ancho_no_corre_la_columna_de_estado() {
     let p = pantalla(&con_un_item(item));
     let linea = p
         .lines()
-        .find(|l| l.contains("○ 日"))
+        .find(|l| l.contains("? 日"))
         .unwrap_or_else(|| panic!("{p}"));
     assert!(linea.contains("sin origen│"), "{linea}");
 }
@@ -781,7 +783,7 @@ fn en_80_columnas_la_cabecera_conserva_los_contadores() {
     app.version_nueva = Some("99.0.0".into());
     let p = pantalla_en(&app, 80, 24);
     let cabecera = p.lines().next().unwrap();
-    for contador in ["✓2", "?0", "○1", "✗1", "u actualiza"] {
+    for contador in ["✓2", "○0", "·0", "?1", "✗1", "u actualiza"] {
         assert!(
             cabecera.contains(contador),
             "falta {contador:?} en {cabecera:?}"
@@ -862,4 +864,27 @@ fn cada_pestana_dice_para_que_es() {
     assert!(p.contains("[2]Pendientes"), "{p}");
     tecla(&mut app, KeyCode::Char('3'));
     assert!(pantalla(&app).contains("En una PC nueva: instalá las recetas aprobadas"));
+}
+
+#[test]
+fn un_requisito_dice_quien_lo_pide_y_no_por_que_falta() {
+    let mut req = con_fuente("marketplace:openai/codex-plugin-cc");
+    req.estado = Estado::PorRevisar;
+    req.pista = Some("requisito de skill:graph-engineer".into());
+    let p = pantalla(&con_un_item(req));
+    assert!(p.contains("Lo pide: skill:graph-engineer"), "{p}");
+    assert!(!p.contains("Por qué falta"), "{p}");
+
+    let mut con_link = con_fuente("skill:seo");
+    con_link.estado = Estado::PorRevisar;
+    con_link.pista = Some("skill sin origen conocido: ~/.claude/skills/seo".into());
+    assert!(!pantalla(&con_un_item(con_link)).contains("Por qué falta"));
+
+    let mut sin_origen = Item::nuevo("skill:seo", Tipo::Skill);
+    sin_origen.pista = Some("skill sin origen conocido: ~/.claude/skills/seo".into());
+    let p = pantalla(&con_un_item(sin_origen));
+    assert!(
+        p.contains("Por qué falta: skill sin origen conocido"),
+        "{p}"
+    );
 }

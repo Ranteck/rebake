@@ -1,5 +1,6 @@
 use super::app::{App, Entrada, Modo, Pestana};
 use crate::instalador::{self, Presencia, Resultado};
+use crate::investigador::PISTA_REQUISITO;
 use crate::modelo::{Estado, Item, Modo as ModoPaso, Tipo, Via};
 use crate::servicio::{self, Novedad};
 use ratatui::Frame;
@@ -23,11 +24,13 @@ const TECLAS_SIN_PLAN: &str = "1 volver a Recetas  q salir  ? ayuda";
 const TECLAS_RESULTADOS: &str = "Esc volver al plan  ? ayuda  q salir";
 const TECLAS_PENDIENTES: &str = "↑↓ mover  espacio marcar  ? ayuda  q salir";
 const PASOS: [&str; 4] = ["escanear", "armar recetas", "aprobar", "instalar"];
-const ESTADOS: [Estado; 4] = [
-    Estado::Aprobada,
-    Estado::PorRevisar,
-    Estado::Pendiente,
-    Estado::Excluida,
+/// Marca, nombre y estado (para el color) de cada entrada de la leyenda, en el orden del camino.
+const LEYENDA: [(&str, &str, Estado); 5] = [
+    ("✓", "aprobada", Estado::Aprobada),
+    ("○", "por revisar", Estado::PorRevisar),
+    ("·", "sin receta", Estado::Pendiente),
+    ("?", "sin origen", Estado::Pendiente),
+    ("✗", "excluida", Estado::Excluida),
 ];
 
 pub fn dibujar(f: &mut Frame, app: &App) {
@@ -69,9 +72,9 @@ fn estilo_estado(app: &App, e: Estado) -> Style {
 
 fn leyenda(app: &App) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
-    for e in ESTADOS {
-        spans.push(Span::styled(simbolo(e), estilo_estado(app, e)));
-        spans.push(Span::raw(format!(" {}  ", nombre_estado(e))));
+    for (marca, nombre, e) in LEYENDA {
+        spans.push(Span::styled(marca, estilo_estado(app, e)));
+        spans.push(Span::raw(format!(" {nombre}  ")));
     }
     spans.push(Span::raw("… armando  "));
     spans.push(Span::styled(
@@ -162,11 +165,8 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
     let r = &app.recetario;
     let contar = |e: Estado| r.items.iter().filter(|i| i.estado == e).count();
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
-    // Fijo acá y no en los avisos: el próximo aviso lo pisaría y es lo que queda a mano.
-    let sin_origen = match servicio::sin_origen(r).len() {
-        0 => String::new(),
-        n => format!(" ({n} sin origen)"),
-    };
+    let sin_origen = servicio::sin_origen(r).len();
+    let sin_receta = contar(Estado::Pendiente) - sin_origen;
     let aviso = app
         .version_nueva
         .as_ref()
@@ -182,11 +182,14 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
         });
     if corta {
         return format!(
-            "{aviso} rebake · {}  ✓{} ?{} ○{}{sin_origen} ✗{}{}",
+            "{aviso} rebake · {}  ✓{} ○{} ·{sin_receta}{} ✗{}{}",
             perfiles.join(" + "),
             contar(Estado::Aprobada),
             contar(Estado::PorRevisar),
-            contar(Estado::Pendiente),
+            match sin_origen {
+                0 => String::new(),
+                n => format!(" ?{n}"),
+            },
             contar(Estado::Excluida),
             match app.investigando.len() {
                 0 => String::new(),
@@ -196,12 +199,15 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
     }
     // Adelante: en una terminal angosta se corta el final de la línea, no el aviso.
     format!(
-        "{aviso} rebake · {}   ✓ {} aprobadas  ? {} por revisar  ○ {} sin receta{}  ✗ {} excluidas{}",
+        "{aviso} rebake · {}   ✓ {} aprobadas  ○ {} por revisar  · {sin_receta} sin receta{}  ✗ {} excluidas{}",
         perfiles.join(" + "),
         contar(Estado::Aprobada),
         contar(Estado::PorRevisar),
-        contar(Estado::Pendiente),
-        sin_origen,
+        // Fijo acá y no en los avisos: el próximo aviso lo pisaría y es lo que queda a mano.
+        match sin_origen {
+            0 => String::new(),
+            n => format!("  ? {n} sin origen"),
+        },
         contar(Estado::Excluida),
         match app.investigando.len() {
             0 => String::new(),
@@ -223,11 +229,13 @@ fn grupo(t: Tipo) -> &'static str {
     }
 }
 
-fn simbolo(e: Estado) -> &'static str {
-    match e {
+/// `?` solo cuando rebake no sabe de qué repo viene; sin receta pero con origen, `t` la arma.
+fn marca(i: &Item) -> &'static str {
+    match i.estado {
         Estado::Aprobada => "✓",
-        Estado::PorRevisar => "?",
-        Estado::Pendiente => "○",
+        Estado::PorRevisar => "○",
+        Estado::Pendiente if i.fuente.is_none() => "?",
+        Estado::Pendiente => "·",
         Estado::Excluida => "✗",
     }
 }
@@ -331,7 +339,7 @@ fn linea_item(app: &App, item: &Item, seleccionado: bool, ancho: u16) -> Line<'s
     let (marca, estilo_marca) = if app.investigando.contains(&item.id) {
         ("…", Style::default())
     } else {
-        (simbolo(item.estado), estilo_estado(app, item.estado))
+        (marca(item), estilo_estado(app, item.estado))
     };
     let extra = match (item.estado, &item.motivo, &item.pista, &item.error) {
         (Estado::Excluida, Some(m), _, _) => m.clone(),
@@ -438,8 +446,19 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
     if let Some(v) = &item.verificar {
         l.push(Line::from(format!("Para saber si ya está: {v}")));
     }
+    // La pista dice por qué está en el cookbook (un requisito) o por qué falta el origen;
+    // lo segundo deja de importar cuando ya hay receta.
+    match item.pista.as_deref() {
+        Some(p) if p.starts_with(PISTA_REQUISITO) => l.push(Line::from(format!(
+            "Lo pide: {}",
+            &p[PISTA_REQUISITO.len()..]
+        ))),
+        Some(p) if item.estado == Estado::Pendiente => {
+            l.push(Line::from(format!("Por qué falta: {p}")))
+        }
+        _ => {}
+    }
     for (etiqueta, valor) in [
-        ("Por qué falta", &item.pista),
         ("Motivo", &item.motivo),
         ("Error", &item.error),
         ("Receta armada el", &item.investigado),

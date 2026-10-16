@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
+/// Prefijo de la pista de un requisito agregado al investigar; la pantalla lo muestra como "Lo pide".
+pub const PISTA_REQUISITO: &str = "requisito de ";
+
 pub const TOPE: Duration = Duration::from_secs(5 * 60);
 pub const PARALELO: usize = 4;
 
@@ -409,7 +412,7 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         // Si ya existe (aunque esté excluido) no se toca: lo decidido por Denis se respeta.
         if r.item(&rid).is_none() {
             let mut nuevo = Item::nuevo(&rid, tipo);
-            nuevo.pista = Some(format!("requisito de {id}"));
+            nuevo.pista = Some(format!("{PISTA_REQUISITO}{id}"));
             r.items.push(nuevo);
         }
     }
