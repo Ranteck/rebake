@@ -4,7 +4,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rebake::instalador::Presencia;
 use rebake::modelo::*;
 use rebake::servicio::Novedad;
-use rebake::tui::app::{App, Efecto, Pestana};
+use rebake::tui::app::{App, ClaseFila, Efecto, Pestana};
 use rebake::tui::vista;
 
 fn recetario() -> Recetario {
@@ -1183,13 +1183,141 @@ fn el_resumen_avisa_las_que_dejaron_pasos_a_mano() {
     ));
     let m = app.mensaje.clone().unwrap();
     assert!(m.contains("1 con pasos a mano: mirá Pendientes"), "{m}");
+    assert!(pantalla(&app).contains("[ ] revisá codex@openai-codex"));
+    // Logins tiene dos filas; la tercera elegible es el bloque, entero en el detalle.
+    tecla(&mut app, KeyCode::Down);
+    tecla(&mut app, KeyCode::Down);
     let p = pantalla(&app);
     assert!(
-        p.contains("revisá codex@openai-codex (plugin): instalada, pero falta esto"),
+        p.contains("│revisá codex@openai-codex (plugin): instalada, pero falta esto"),
         "{p}"
     );
     assert!(
         p.contains("[laburo] abrí `claude` y corré /codex:setup"),
+        "{p}"
+    );
+}
+
+fn con_pendientes() -> App {
+    let mut r = recetario();
+    let largo = "claude mcp get serena >/dev/null 2>&1 || claude mcp add --scope user serena -- serena start-mcp-server --context=claude-code --project-from-cwd";
+    let mut serena = Item::nuevo("mcp:serena", Tipo::Mcp);
+    serena.estado = Estado::Aprobada;
+    serena.pasos = vec![Paso {
+        cmd: largo.into(),
+        modo: Modo::Manual,
+        por_perfil: false,
+        cita: None,
+        nota: None,
+    }];
+    r.items.push(serena);
+    for (n, v) in ["### Org-wide", "**Organization**: Flock", "**Cloud**: none"]
+        .iter()
+        .enumerate()
+    {
+        r.checklist.ajustes.push(Ajuste {
+            perfil: "laburo".into(),
+            clave: format!("autoMode.environment[{n}]"),
+            valor: v.to_string(),
+        });
+    }
+    r.checklist.ajustes.push(Ajuste {
+        perfil: "laburo".into(),
+        clave: "theme".into(),
+        valor: "dark".into(),
+    });
+    let mut app = App::nueva(r);
+    app.pestana = Pestana::Checklist;
+    app
+}
+
+/// Baja hasta la fila elegible cuyo texto contiene `texto`.
+fn elegir_pendiente(app: &mut App, texto: &str) {
+    app.seleccion_checklist = 0;
+    while !app.fila_elegida().unwrap().texto.contains(texto) {
+        tecla(app, KeyCode::Down);
+    }
+}
+
+#[test]
+fn un_comando_largo_se_ve_entero_en_el_detalle_a_80_columnas() {
+    let mut app = con_pendientes();
+    elegir_pendiente(&mut app, "claude mcp get serena");
+    let p = pantalla_en(&app, 80, 24);
+    // Partido en varias líneas del panel, pero sin perder el final.
+    let detalle: String = p
+        .lines()
+        .filter_map(|l| l.rsplit_once('│').and(l.split('│').nth(3)))
+        .collect::<Vec<_>>()
+        .join("");
+    let sin_espacios = |s: &str| s.split_whitespace().collect::<String>();
+    assert!(
+        sin_espacios(&detalle).contains(&sin_espacios("--context=claude-code --project-from-cwd")),
+        "{p}"
+    );
+}
+
+#[test]
+fn los_ajustes_arrancan_colapsados_y_enter_los_despliega() {
+    let mut app = con_pendientes();
+    let p = pantalla(&app);
+    assert!(p.contains("▸ Ajustes (2) · Enter despliega"), "{p}");
+    assert!(!p.contains("theme = dark"), "{p}");
+    elegir_pendiente(&mut app, "Ajustes");
+    tecla(&mut app, KeyCode::Enter);
+    let p = pantalla(&app);
+    assert!(p.contains("▾ Ajustes (2) · Enter colapsa"), "{p}");
+    // La lista de 3 valores es una sola fila; su texto completo va al detalle.
+    assert!(
+        p.contains("[ ] [laburo] autoMode.environment (3 líneas)"),
+        "{p}"
+    );
+    assert!(!p.contains("autoMode.environment[1]"), "{p}");
+    assert!(p.contains("[ ] [laburo] theme = dark"), "{p}");
+    elegir_pendiente(&mut app, "autoMode.environment");
+    assert!(pantalla(&app).contains("**Organization**: Flock"));
+    elegir_pendiente(&mut app, "Ajustes");
+    tecla(&mut app, KeyCode::Enter);
+    assert!(!pantalla(&app).contains("theme = dark"));
+}
+
+#[test]
+fn un_tilde_sobrevive_a_desplegar_los_ajustes() {
+    let mut app = con_pendientes();
+    elegir_pendiente(&mut app, "GitHub");
+    tecla(&mut app, KeyCode::Char(' '));
+    elegir_pendiente(&mut app, "Ajustes");
+    tecla(&mut app, KeyCode::Enter);
+    elegir_pendiente(&mut app, "theme");
+    tecla(&mut app, KeyCode::Char(' '));
+    let p = pantalla(&app);
+    assert!(p.contains("[x] GitHub: `gh auth login`"), "{p}");
+    assert!(p.contains("[x] [laburo] theme = dark"), "{p}");
+    elegir_pendiente(&mut app, "Ajustes");
+    tecla(&mut app, KeyCode::Enter);
+    assert!(pantalla(&app).contains("[x] GitHub: `gh auth login`"));
+}
+
+#[test]
+fn los_titulos_de_seccion_no_se_eligen() {
+    let mut app = con_pendientes();
+    let mut vistas = Vec::new();
+    for _ in 0..20 {
+        vistas.push(app.fila_elegida().unwrap());
+        tecla(&mut app, KeyCode::Down);
+    }
+    assert!(vistas.iter().all(|f| f.clase != ClaseFila::Titulo));
+    let p = pantalla(&app);
+    assert!(p.contains("│Logins"), "{p}");
+    assert!(p.contains("│Pasos a mano (rebake no los corre)"), "{p}");
+}
+
+#[test]
+fn las_teclas_de_pendientes_entran_enteras_a_80_columnas() {
+    let app = con_pendientes();
+    let p = pantalla_en(&app, 80, 24);
+    assert!(
+        p.contains("↑↓ mover  espacio marcar  Enter despliega/colapsa ajustes  ? ayuda  q salir"),
         "{p}"
     );
 }

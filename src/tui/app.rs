@@ -2,7 +2,7 @@ use crate::acciones;
 use crate::checklist;
 use crate::instalador::{self, Evento, Presencia, Resultado};
 use crate::investigador::{Receta, aplicar, aplicar_posible};
-use crate::modelo::{Estado, Item, Posible, Recetario};
+use crate::modelo::{Ajuste, Estado, Item, Posible, Recetario};
 use crate::servicio::Novedad;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use std::collections::{HashMap, HashSet};
@@ -32,6 +32,40 @@ pub enum Modo {
     ConfirmarInstalacion,
     ConfirmarSalida,
     Ayuda,
+}
+
+/// Una fila de Pendientes: el texto corto de la lista y el completo para el panel de detalle.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fila {
+    pub texto: String,
+    pub detalle: String,
+    pub clase: ClaseFila,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ClaseFila {
+    /// Título de sección: se ve pero no se elige.
+    Titulo,
+    /// Algo para hacer; espacio lo tilda.
+    Marcable,
+    /// El bloque de ajustes; Enter lo despliega o lo colapsa.
+    Plegable { abierto: bool },
+}
+
+impl Fila {
+    fn nueva(texto: String, detalle: String, clase: ClaseFila) -> Self {
+        Fila {
+            texto,
+            detalle,
+            clase,
+        }
+    }
+    fn marcable(texto: String) -> Self {
+        Fila::nueva(texto.clone(), texto, ClaseFila::Marcable)
+    }
+    fn titulo(texto: &str) -> Self {
+        Fila::nueva(texto.into(), String::new(), ClaseFila::Titulo)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,8 +99,11 @@ pub struct App {
     pub instalacion: Vec<(String, Option<Resultado>)>,
     pub en_curso: Option<String>,
     pub salida: Vec<String>,
-    pub hechos: HashSet<usize>,
+    /// Se guarda el texto completo y no la posición: desplegar los ajustes corre las filas.
+    pub hechos: HashSet<String>,
+    /// Índice entre las filas que se pueden elegir (los títulos no cuentan).
     pub seleccion_checklist: usize,
+    pub ajustes_abiertos: bool,
     pub instalando: bool,
     /// Se guardan las desmarcadas: una receta aprobada después aparece marcada sin refrescar.
     pub desmarcadas: HashSet<String>,
@@ -97,6 +134,7 @@ impl App {
             salida: vec![],
             hechos: HashSet::new(),
             seleccion_checklist: 0,
+            ajustes_abiertos: false,
             instalando: false,
             desmarcadas: HashSet::new(),
             presencia: HashMap::new(),
@@ -316,24 +354,44 @@ impl App {
     }
 
     fn checklist(&mut self, codigo: KeyCode) {
-        let total = self.lineas_checklist().len();
+        let filas = self.filas_checklist();
+        let elegibles: Vec<&Fila> = filas
+            .iter()
+            .filter(|f| f.clase != ClaseFila::Titulo)
+            .collect();
+        let actual = elegibles.get(self.seleccion_checklist).copied();
         match codigo {
-            KeyCode::Down | KeyCode::Char('j') if self.seleccion_checklist + 1 < total => {
+            KeyCode::Down | KeyCode::Char('j')
+                if self.seleccion_checklist + 1 < elegibles.len() =>
+            {
                 self.seleccion_checklist += 1
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 self.seleccion_checklist = self.seleccion_checklist.saturating_sub(1)
             }
             KeyCode::Char(' ') => {
-                let n = self.seleccion_checklist;
-                if self.hechos.contains(&n) {
-                    self.hechos.remove(&n);
-                } else {
-                    self.hechos.insert(n);
+                if let Some(f) = actual.filter(|f| f.clase == ClaseFila::Marcable)
+                    && !self.hechos.remove(&f.detalle)
+                {
+                    self.hechos.insert(f.detalle.clone());
                 }
+            }
+            // Lo de antes del bloque no cambia: la selección queda sobre él.
+            KeyCode::Enter
+                if actual.is_some_and(|f| matches!(f.clase, ClaseFila::Plegable { .. })) =>
+            {
+                self.ajustes_abiertos = !self.ajustes_abiertos
             }
             _ => {}
         }
+    }
+
+    /// La fila elegida en Pendientes, si hay alguna.
+    pub fn fila_elegida(&self) -> Option<Fila> {
+        self.filas_checklist()
+            .into_iter()
+            .filter(|f| f.clase != ClaseFila::Titulo)
+            .nth(self.seleccion_checklist)
     }
 
     fn recetas(&mut self, codigo: KeyCode) -> Efecto {
@@ -595,32 +653,56 @@ impl App {
         self.mensaje = Some(texto.to_string());
     }
 
-    pub fn lineas_checklist(&self) -> Vec<String> {
+    pub fn filas_checklist(&self) -> Vec<Fila> {
         let r = &self.recetario;
-        let mut l: Vec<String> = checklist::logins(r);
-        for (titulo, pasos) in checklist::a_mano(r) {
-            l.push(titulo);
-            l.extend(pasos.into_iter().map(|p| format!("    {p}")));
+        let mut f = vec![Fila::titulo("Logins")];
+        f.extend(checklist::logins(r).into_iter().map(Fila::marcable));
+        let a_mano = checklist::a_mano(r);
+        if !a_mano.is_empty() {
+            f.push(Fila::titulo("Pasos a mano (rebake no los corre)"));
+            for (titulo, pasos) in a_mano {
+                // Elegir el bloque muestra todos sus pasos enteros en el detalle.
+                let detalle = std::iter::once(titulo.clone())
+                    .chain(pasos.iter().map(|p| format!("  {p}")))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                f.push(Fila::nueva(titulo, detalle, ClaseFila::Marcable));
+                f.extend(
+                    pasos
+                        .into_iter()
+                        .map(|p| Fila::nueva(format!("    {p}"), p, ClaseFila::Marcable)),
+                );
+            }
         }
-        l.extend(
-            r.checklist
-                .ajustes
-                .iter()
-                .map(|a| format!("[{}] {} = {}", a.perfil, a.clave, a.valor)),
-        );
-        l.extend(
-            r.checklist
-                .sistema
-                .iter()
-                .map(|p| format!("sudo pacman -S {} (para {})", p.paquete, p.para)),
-        );
-        l.extend(
-            r.checklist
-                .titulos
-                .iter()
-                .map(|t| format!("[{}] CLAUDE.md: {}", t.perfil, t.texto)),
-        );
-        l
+        let ajustes = agrupar_ajustes(&r.checklist.ajustes);
+        if !ajustes.is_empty() {
+            let abierto = self.ajustes_abiertos;
+            let accion = if abierto { "colapsa" } else { "despliega" };
+            f.push(Fila::nueva(
+                format!("Ajustes ({}) · Enter {accion}", ajustes.len()),
+                "Ajustes de settings.json que rebake no copia: revisalos y ponelos a mano si los querés.".into(),
+                ClaseFila::Plegable { abierto },
+            ));
+            if abierto {
+                f.extend(ajustes);
+            }
+        }
+        if !r.checklist.sistema.is_empty() {
+            f.push(Fila::titulo("Paquetes del sistema"));
+            f.extend(r.checklist.sistema.iter().map(|p| {
+                Fila::marcable(format!("sudo pacman -S {} (para {})", p.paquete, p.para))
+            }));
+        }
+        if !r.checklist.titulos.is_empty() {
+            f.push(Fila::titulo("Tu texto propio en CLAUDE.md"));
+            f.extend(
+                r.checklist
+                    .titulos
+                    .iter()
+                    .map(|t| Fila::marcable(format!("[{}] {}", t.perfil, t.texto))),
+            );
+        }
+        f
     }
 
     pub fn registrar_investigacion(
@@ -708,4 +790,45 @@ impl App {
         ));
         self.pestana = Pestana::Checklist;
     }
+}
+
+/// `clave[0]`, `clave[1]`… de un mismo perfil son una lista: una fila, con todo en el detalle.
+fn agrupar_ajustes(ajustes: &[Ajuste]) -> Vec<Fila> {
+    let mut filas: Vec<Fila> = Vec::new();
+    let mut lista: Option<(String, String, Vec<String>)> = None;
+    let cerrar = |lista: &mut Option<(String, String, Vec<String>)>, filas: &mut Vec<Fila>| {
+        if let Some((perfil, base, valores)) = lista.take() {
+            filas.push(Fila::nueva(
+                format!("[{perfil}] {base} ({} líneas)", valores.len()),
+                format!("[{perfil}] {base}:\n{}", valores.join("\n")),
+                ClaseFila::Marcable,
+            ));
+        }
+    };
+    for a in ajustes {
+        let base = a
+            .clave
+            .strip_suffix(']')
+            .and_then(|c| c.rsplit_once('['))
+            .filter(|(_, n)| n.chars().all(|c| c.is_ascii_digit()))
+            .map(|(b, _)| b.to_string());
+        match (&mut lista, base) {
+            (Some((p, b, valores)), Some(base)) if *p == a.perfil && *b == base => {
+                valores.push(a.valor.clone())
+            }
+            (_, Some(base)) => {
+                cerrar(&mut lista, &mut filas);
+                lista = Some((a.perfil.clone(), base, vec![a.valor.clone()]));
+            }
+            (_, None) => {
+                cerrar(&mut lista, &mut filas);
+                filas.push(Fila::marcable(format!(
+                    "[{}] {} = {}",
+                    a.perfil, a.clave, a.valor
+                )));
+            }
+        }
+    }
+    cerrar(&mut lista, &mut filas);
+    filas
 }

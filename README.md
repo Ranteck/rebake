@@ -126,6 +126,11 @@ En la pestaña Instalación:
 | `c` | comprobar qué está instalado en cada perfil |
 | `Esc` | volver de los resultados al plan |
 
+En la pestaña Pendientes, a la izquierda va la lista y a la derecha lo elegido entero: un
+comando largo se lee completo ahí. Espacio lo tilda (no se guarda en el cookbook) y Enter
+despliega o colapsa los ajustes, que arrancan colapsados; una lista como
+`autoMode.environment` es una sola fila.
+
 ## Cómo arma cada receta
 
 1. Busca el repo de origen: el link que pegaste o los metadatos locales (catálogo del

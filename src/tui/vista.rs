@@ -1,4 +1,4 @@
-use super::app::{App, Entrada, Modo, Pestana};
+use super::app::{App, ClaseFila, Entrada, Modo, Pestana};
 use crate::instalador::{self, Presencia, Resultado};
 use crate::investigador::PISTA_REQUISITO;
 use crate::modelo::{Estado, Item, Modo as ModoPaso, Tipo, Via};
@@ -22,7 +22,8 @@ const TECLAS_INSTALACION: &str =
     "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  p instalar  ? ayuda  q salir";
 const TECLAS_SIN_PLAN: &str = "1 volver a Recetas  q salir  ? ayuda";
 const TECLAS_RESULTADOS: &str = "Esc volver al plan  ? ayuda  q salir";
-const TECLAS_PENDIENTES: &str = "↑↓ mover  espacio marcar  ? ayuda  q salir";
+const TECLAS_PENDIENTES: &str =
+    "↑↓ mover  espacio marcar  Enter despliega/colapsa ajustes  ? ayuda  q salir";
 const PASOS: [&str; 4] = ["escanear", "armar recetas", "aprobar", "instalar"];
 /// Marca, nombre y estado (para el color) de cada entrada de la leyenda, en el orden del camino.
 const LEYENDA: [(&str, &str, Estado); 5] = [
@@ -555,35 +556,65 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
 const DIRECTA: &str = "receta directa: ";
 
 fn checklist(f: &mut Frame, app: &App, area: Rect) {
-    let lineas: Vec<Line> = app
-        .lineas_checklist()
-        .into_iter()
-        .enumerate()
-        .map(|(n, texto)| {
-            let marca = if app.hechos.contains(&n) {
-                "[x]"
-            } else {
-                "[ ]"
-            };
-            let estilo = if n == app.seleccion_checklist {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            };
-            Line::from(Span::styled(format!("{marca} {texto}"), estilo))
-        })
-        .collect();
-    let alto = area.height.saturating_sub(2) as usize;
-    let desde = app
-        .seleccion_checklist
-        .saturating_sub(alto.saturating_sub(1));
+    // Como Recetas: la lista corta a la izquierda y lo elegido entero a la derecha.
+    let [izq, der] =
+        Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)]).areas(area);
+    let ancho = izq.width.saturating_sub(2) as usize;
+    let mut lineas: Vec<Line> = Vec::new();
+    let mut linea_sel = 0;
+    let mut elegible = 0;
+    for fila in app.filas_checklist() {
+        if fila.clase == ClaseFila::Titulo {
+            lineas.push(Line::from(Span::styled(
+                cortar(&fila.texto, ancho),
+                Style::default().add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        }
+        let marca = match fila.clase {
+            ClaseFila::Plegable { abierto: true } => "▾",
+            ClaseFila::Plegable { abierto: false } => "▸",
+            _ if app.hechos.contains(&fila.detalle) => "[x]",
+            _ => "[ ]",
+        };
+        let mut estilo = Style::default();
+        if matches!(fila.clase, ClaseFila::Plegable { .. }) {
+            estilo = estilo.add_modifier(Modifier::BOLD);
+        }
+        if elegible == app.seleccion_checklist {
+            estilo = estilo.add_modifier(Modifier::REVERSED);
+            linea_sel = lineas.len();
+        }
+        lineas.push(Line::from(Span::styled(
+            cortar(&format!("{marca} {}", fila.texto), ancho),
+            estilo,
+        )));
+        elegible += 1;
+    }
+    let alto = izq.height.saturating_sub(2) as usize;
+    let desde = linea_sel.saturating_sub(alto.saturating_sub(1));
     f.render_widget(
         Paragraph::new(lineas).scroll((desde as u16, 0)).block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Pendientes (espacio marca)"),
         ),
-        area,
+        izq,
+    );
+    let detalle: Vec<Line> = app
+        .fila_elegida()
+        .map(|f| {
+            f.detalle
+                .lines()
+                .map(|l| Line::from(l.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    f.render_widget(
+        Paragraph::new(detalle)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title("Detalle")),
+        der,
     );
 }
 
@@ -867,6 +898,9 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         }
         todas.push(Span::raw(" Todas:      "));
         todas.extend(teclas(&TECLAS_TODAS));
+    } else if app.pestana == Pestana::Checklist {
+        // Al lado de las pestañas no entra a 80 columnas; la segunda línea está libre.
+        todas.push(Span::raw(format!(" {TECLAS_PENDIENTES}")));
     } else {
         let texto = if app.viendo_plan() && app.plan().is_empty() {
             TECLAS_SIN_PLAN
@@ -874,8 +908,6 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             TECLAS_INSTALACION
         } else if app.pestana == Pestana::Instalacion && !app.instalando {
             TECLAS_RESULTADOS
-        } else if app.pestana == Pestana::Checklist {
-            TECLAS_PENDIENTES
         } else {
             ""
         };
