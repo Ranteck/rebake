@@ -1,4 +1,4 @@
-use crate::modelo::{Estado, Item, Modo, Recetario};
+use crate::modelo::{Estado, Item, Modo, Recetario, Tipo};
 use crate::proceso::ejecutar;
 use crate::rutas::expandir;
 use anyhow::{Result, bail};
@@ -229,7 +229,12 @@ fn instalar_item(
     emitir: &mut dyn FnMut(Evento),
 ) -> Resultado {
     let perfiles = perfiles_de(r, item, &op.home);
-    let autos: Vec<_> = item.pasos.iter().filter(|p| p.modo == Modo::Auto).collect();
+    // Un servidor MCP nunca se instala solo, aunque una edición marque un paso como automático.
+    let autos: Vec<_> = item
+        .pasos
+        .iter()
+        .filter(|p| p.modo == Modo::Auto && item.tipo != Tipo::Mcp)
+        .collect();
     if op.dry_run {
         for paso in &autos {
             if paso.por_perfil && !perfiles.is_empty() {

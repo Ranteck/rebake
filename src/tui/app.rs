@@ -1,9 +1,9 @@
 use crate::acciones;
 use crate::checklist;
 use crate::instalador::{self, Evento, Presencia, Resultado};
-use crate::investigador::{Receta, aplicar};
-use crate::modelo::{Estado, Item, Recetario};
-use crate::servicio::{self, Novedad};
+use crate::investigador::{Receta, aplicar, aplicar_posible};
+use crate::modelo::{Estado, Item, Posible, Recetario};
+use crate::servicio::Novedad;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use std::collections::{HashMap, HashSet};
 
@@ -40,6 +40,10 @@ pub enum Efecto {
     Guardar,
     Escanear,
     Investigar(Vec<String>),
+    /// Buscar en la web el posible origen de los que no lo tienen.
+    Buscar(Vec<String>),
+    /// `t`: investigar los que tienen origen y buscar el de los que no.
+    Lote(Vec<String>, Vec<String>),
     Editar(String),
     Instalar,
     Comprobar,
@@ -55,6 +59,9 @@ pub struct App {
     pub modo: Modo,
     pub mensaje: Option<String>,
     pub investigando: HashSet<String>,
+    pub buscando: HashSet<String>,
+    /// Avanza en cada vuelta del bucle: el cuadro del spinner.
+    pub cuadro: usize,
     pub instalacion: Vec<(String, Option<Resultado>)>,
     pub en_curso: Option<String>,
     pub salida: Vec<String>,
@@ -83,6 +90,8 @@ impl App {
             modo: Modo::Normal,
             mensaje: None,
             investigando: HashSet::new(),
+            buscando: HashSet::new(),
+            cuadro: 0,
             instalacion: vec![],
             en_curso: None,
             salida: vec![],
@@ -368,28 +377,75 @@ impl App {
                 return self.guardar_cambio(&id, resultado);
             }
             (KeyCode::Char('i' | 'r'), Some(id)) => {
-                if self.recetario.item(&id).is_some_and(|i| i.fuente.is_none()) {
-                    self.modo = Modo::Escribiendo {
-                        para: Entrada::Link { id },
-                        texto: String::new(),
-                    };
-                } else {
+                let item = self.recetario.item(&id);
+                if item.is_some_and(|i| i.fuente.is_some()) {
                     return self.investigar(vec![id]);
                 }
+                // La primera vez busca; después de una búsqueda, pide el link.
+                if item.is_some_and(|i| i.posible.is_none()) {
+                    return self.buscar(vec![id]);
+                }
+                self.modo = Modo::Escribiendo {
+                    para: Entrada::Link { id },
+                    texto: String::new(),
+                };
+            }
+            (KeyCode::Enter, Some(id)) if self.posible_pendiente(&id) => {
+                return match acciones::aceptar_posible(&mut self.recetario, &id) {
+                    Ok(()) => self.investigar(vec![id]),
+                    Err(e) => {
+                        self.avisar(&format!("{e:#}"));
+                        Efecto::Nada
+                    }
+                };
+            }
+            (KeyCode::Char('n'), Some(id)) if self.posible_pendiente(&id) => {
+                return match acciones::descartar_posible(&mut self.recetario, &id) {
+                    Ok(()) => {
+                        self.avisar(&format!("{id}: descartado; `i` para pegar el link"));
+                        Efecto::Guardar
+                    }
+                    Err(e) => {
+                        self.avisar(&format!("{e:#}"));
+                        Efecto::Nada
+                    }
+                };
             }
             (KeyCode::Char('t' | 'I'), _) => {
-                let ids = self
+                let pendientes: Vec<&Item> = self
                     .recetario
                     .items
                     .iter()
-                    .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_some())
+                    .filter(|i| i.estado == Estado::Pendiente)
+                    .collect();
+                let con_origen: Vec<String> = pendientes
+                    .iter()
+                    .filter(|i| i.fuente.is_some())
                     .map(|i| i.id.clone())
                     .collect();
-                let efecto = self.investigar(ids);
-                let sin_origen = servicio::sin_origen(&self.recetario).len();
-                if sin_origen > 0 {
-                    // Pisa el aviso de investigar: es lo único que el usuario tiene que hacer a mano.
-                    self.avisar(&format!("{sin_origen} sin origen: `i` para pasar el link"));
+                // Una búsqueda por ítem: lo ya buscado (encontrado, no o descartado) solo con `i`.
+                let a_buscar: Vec<String> = pendientes
+                    .iter()
+                    .filter(|i| i.fuente.is_none() && i.posible.is_none())
+                    .map(|i| i.id.clone())
+                    .collect();
+                let investigar = if con_origen.is_empty() {
+                    Efecto::Nada
+                } else {
+                    self.investigar(con_origen)
+                };
+                let efecto = match (investigar, self.buscar(a_buscar)) {
+                    (Efecto::Investigar(a), Efecto::Buscar(b)) => Efecto::Lote(a, b),
+                    (Efecto::Nada, b) => b,
+                    (a, _) => a,
+                };
+                let (inv, bus) = (self.investigando.len(), self.buscando.len());
+                match (inv, bus) {
+                    (0, 0) => self.avisar("no hay nada para investigar"),
+                    (_, 0) => self.avisar(&format!("investigando {inv} ítems…")),
+                    _ => self.avisar(&format!(
+                        "investigando {inv} y buscando de dónde vienen {bus}…"
+                    )),
                 }
                 return efecto;
             }
@@ -417,6 +473,48 @@ impl App {
                 Efecto::Nada
             }
         }
+    }
+
+    pub fn posible_pendiente(&self, id: &str) -> bool {
+        self.recetario
+            .item(id)
+            .and_then(|i| i.posible.as_ref())
+            .is_some_and(|p| p.pendiente().is_some())
+    }
+
+    fn buscar(&mut self, ids: Vec<String>) -> Efecto {
+        let ids: Vec<String> = ids
+            .into_iter()
+            .filter(|id| !self.buscando.contains(id) && !self.investigando.contains(id))
+            .filter(|id| {
+                self.recetario
+                    .item(id)
+                    .is_some_and(|i| i.estado != Estado::Excluida && i.fuente.is_none())
+            })
+            .collect();
+        if ids.is_empty() {
+            return Efecto::Nada;
+        }
+        self.buscando.extend(ids.iter().cloned());
+        self.avisar(&format!("buscando de dónde vienen {} ítems…", ids.len()));
+        Efecto::Buscar(ids)
+    }
+
+    pub fn registrar_busqueda(&mut self, id: &str, resultado: anyhow::Result<Posible>) {
+        self.buscando.remove(id);
+        let texto = match &resultado {
+            Ok(p) if p.repo.is_some() => {
+                format!("{id}: posible origen, mirá el panel de la derecha")
+            }
+            Ok(_) => format!("{id}: no encontré de dónde viene; `i` para pegar el link"),
+            Err(e) => format!("{id} → error: {e:#}"),
+        };
+        aplicar_posible(&mut self.recetario, id, resultado);
+        self.avisar(&texto);
+    }
+
+    pub fn tic(&mut self) {
+        self.cuadro = self.cuadro.wrapping_add(1);
     }
 
     fn investigar(&mut self, ids: Vec<String>) -> Efecto {
@@ -468,7 +566,7 @@ impl App {
                 };
                 let id = id.clone();
                 if matches!(para, Entrada::Link { .. }) && texto.trim().is_empty() {
-                    return self.investigar(vec![id]);
+                    return self.buscar(vec![id]);
                 }
                 let resultado = if matches!(para, Entrada::Motivo { .. }) {
                     acciones::excluir(&mut self.recetario, &id, &texto).map(|_| Efecto::Guardar)
@@ -505,6 +603,10 @@ impl App {
                 .into_iter()
                 .map(|(id, p)| format!("{id}: {}", p.cmd)),
         );
+        for (titulo, pasos) in checklist::servidores_mcp(r) {
+            l.push(titulo);
+            l.extend(pasos.into_iter().map(|p| format!("    {p}")));
+        }
         l.extend(
             r.checklist
                 .ajustes

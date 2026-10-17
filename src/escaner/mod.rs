@@ -1,6 +1,7 @@
 pub mod archivos;
 pub mod comandos;
 pub mod git;
+pub mod mcp;
 pub mod plugins;
 
 use crate::modelo::{Ajuste, Fuente, Perfil, Tipo, TituloClaudeMd, Via};
@@ -89,6 +90,7 @@ pub fn escanear(entorno: &Entorno, perfiles: &[Perfil]) -> Escaneo {
         plugins::detectar(entorno, &perfil.nombre, &dir, &mut salida);
         archivos::detectar(entorno, &perfil.nombre, &dir, &mut salida);
         comandos::detectar(entorno, &perfil.nombre, &dir, &mut salida);
+        mcp::detectar(entorno, &perfil.nombre, &dir, &mut salida);
         crate::checklist::detectar(entorno, &perfil.nombre, &dir, &mut salida);
     }
     salida.hallazgos = agrupar(std::mem::take(&mut salida.hallazgos));
@@ -119,8 +121,9 @@ fn agrupar(hallazgos: Vec<Hallazgo>) -> Vec<Hallazgo> {
                 if u.pista.is_none() {
                     u.pista = h.pista;
                 }
-                // Si algún perfil dio la fuente, la pista de otro perfil ya no aplica.
-                if u.fuente.is_some() {
+                // Si algún perfil dio la fuente, la pista de otro perfil ya no aplica; la de un
+                // servidor MCP es el comando que se registra, así que se queda.
+                if u.fuente.is_some() && u.tipo != Tipo::Mcp {
                     u.pista = None;
                 }
             }

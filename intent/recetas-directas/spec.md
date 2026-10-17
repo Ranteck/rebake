@@ -88,4 +88,7 @@ Investigar escribe, sin `claude -p`, un paso por perfil (Origen de REQ-1 a REQ-3
     posible — WHEN `n` — THEN queda sin origen y no se investigó. GIVEN 3 sin origen — WHEN `t`
     — THEN las 3 muestran spinner y después su posible; ninguna se investiga sola. GIVEN un
     posible sin responder — WHEN salgo y vuelvo a abrir — THEN sigue ahí.
-  - Concern: `t` con muchos sin origen gasta una búsqueda por cada uno.
+  - REQ-17 MUST: `t` busca una sola vez por ítem: saltea los que tienen un posible sin
+    responder y los ya buscados (no encontrado o descartado). Solo `i` vuelve a buscar. Origen:
+    Resultado 6; cuidar la cuota (nota del 2026-10-17).
+  - Concern: el primer `t` gasta una búsqueda por cada ítem sin origen (hoy 18).

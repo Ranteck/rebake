@@ -297,3 +297,23 @@ fn el_perfil_por_defecto_no_exporta_claude_config_dir() {
         format!("{h}/.claude|\n{h}/.claude-personal|{h}/.claude-personal\n")
     );
 }
+
+#[test]
+fn un_servidor_mcp_nunca_ejecuta_sus_pasos() {
+    let dir = tempfile::tempdir().unwrap();
+    let traza = dir.path().join("traza");
+    let mut r = Recetario::nuevo();
+    let mut mcp = aprobado(
+        "mcp:serena",
+        &[],
+        vec![auto(
+            &format!("echo corrio >> '{}'", traza.display()),
+            false,
+        )],
+    );
+    mcp.tipo = Tipo::Mcp;
+    r.items.push(mcp);
+    let (res, _) = correr(&r, dir.path(), false);
+    assert_eq!(res, [("mcp:serena".to_string(), Resultado::Ok)]);
+    assert!(!traza.exists(), "el paso de un servidor MCP se ejecutó");
+}

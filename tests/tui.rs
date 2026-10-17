@@ -126,7 +126,7 @@ fn con_fuente(id: &str) -> Item {
 }
 
 #[test]
-fn investigar_todo_pide_solo_pendientes_con_fuente_y_avisa_las_sin_origen() {
+fn investigar_todo_investiga_las_con_fuente_y_busca_el_origen_de_las_otras() {
     let mut r = recetario();
     let mut por_revisar = con_fuente("plugin:revisar@x");
     por_revisar.estado = Estado::PorRevisar;
@@ -135,10 +135,15 @@ fn investigar_todo_pide_solo_pendientes_con_fuente_y_avisa_las_sin_origen() {
     let mut app = App::nueva(r);
     assert_eq!(
         tecla(&mut app, KeyCode::Char('I')),
-        Efecto::Investigar(vec!["plugin:pendiente@x".into()])
+        Efecto::Lote(
+            vec!["plugin:pendiente@x".into()],
+            vec!["statusline:statusline.sh".into()]
+        )
     );
     assert!(app.investigando.contains("plugin:pendiente@x"));
-    assert!(app.mensaje.as_deref().unwrap().contains("1 sin origen"));
+    assert!(app.buscando.contains("statusline:statusline.sh"));
+    let mensaje = app.mensaje.as_deref().unwrap();
+    assert!(mensaje.contains("buscando de dónde vienen 1"), "{mensaje}");
 }
 
 #[test]
@@ -174,9 +179,22 @@ fn sin_pendientes_sin_origen_la_cabecera_no_las_nombra() {
 }
 
 #[test]
-fn i_sobre_una_receta_sin_origen_pide_el_link_y_esc_no_cambia_nada() {
+fn i_sobre_una_receta_sin_origen_busca_y_despues_pide_el_link() {
     let mut app = App::nueva(recetario());
     app.filtro = "statusline".into();
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('i')),
+        Efecto::Buscar(vec!["statusline:statusline.sh".into()])
+    );
+    assert!(app.investigando.is_empty());
+    app.registrar_busqueda(
+        "statusline:statusline.sh",
+        Ok(Posible {
+            repo: None,
+            motivo: "nada claro".into(),
+            descartado: false,
+        }),
+    );
     assert_eq!(tecla(&mut app, KeyCode::Char('i')), Efecto::Nada);
     assert!(app.investigando.is_empty());
     assert!(pantalla(&app).contains("Link del repo"));
@@ -188,13 +206,19 @@ fn i_sobre_una_receta_sin_origen_pide_el_link_y_esc_no_cambia_nada() {
 }
 
 #[test]
-fn enter_vacio_en_el_pedido_del_link_investiga_ese_item() {
-    let mut app = App::nueva(recetario());
+fn enter_vacio_en_el_pedido_del_link_vuelve_a_buscar_el_origen() {
+    let mut r = recetario();
+    r.item_mut("statusline:statusline.sh").unwrap().posible = Some(Posible {
+        repo: None,
+        motivo: "nada claro".into(),
+        descartado: false,
+    });
+    let mut app = App::nueva(r);
     app.filtro = "statusline".into();
     tecla(&mut app, KeyCode::Char('r'));
     assert_eq!(
         tecla(&mut app, KeyCode::Enter),
-        Efecto::Investigar(vec!["statusline:statusline.sh".into()])
+        Efecto::Buscar(vec!["statusline:statusline.sh".into()])
     );
 }
 
@@ -544,7 +568,10 @@ fn el_detalle_dice_que_falta_en_cada_estado() {
             con_fuente("plugin:a@x"),
             "todavía no hay receta: `i` la arma",
         ),
-        (sin_origen, "no sé de qué repo viene: `i` te pide el link"),
+        (
+            sin_origen,
+            "no sé de qué repo viene: `i` lo busca en la web",
+        ),
         (por_revisar, "revisá qué va a ejecutar y `a` la aprueba"),
         (aprobada, "en una PC nueva se instala con esto"),
         (excluida, "No se instala"),
@@ -619,7 +646,7 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
     excluida.estado = Estado::Excluida;
     for (item, esperado) in [
         (con_fuente("plugin:a@x"), " i  armar receta   x  excluir"),
-        (sin_origen, " i  pasar el link   x  excluir"),
+        (sin_origen, " i  buscar origen   x  excluir"),
         (
             por_revisar,
             " espacio/a  aprobar   e  editar   r  reinvestigar   x  excluir",
@@ -989,4 +1016,142 @@ fn la_ayuda_dice_que_espacio_guarda_en_recetas_y_solo_marca_en_instalacion() {
     let p = pantalla(&app);
     assert!(p.contains("queda guardado en el cookbook"), "{p}");
     assert!(p.contains("solo para esa instalación"), "{p}");
+}
+
+fn con_posible(repo: Option<&str>, descartado: bool) -> App {
+    let mut item = Item::nuevo("mcp:serena", Tipo::Mcp);
+    item.pista = Some("servidor MCP: serena start-mcp-server".into());
+    item.posible = Some(Posible {
+        repo: repo.map(String::from),
+        motivo: "el paquete serena-agent es de oraios".into(),
+        descartado,
+    });
+    con_un_item(item)
+}
+
+#[test]
+fn el_panel_muestra_el_posible_origen_con_su_motivo_y_sus_teclas() {
+    let app = con_posible(Some("https://github.com/oraios/serena"), false);
+    let p = pantalla(&app);
+    assert!(
+        p.contains("Posible origen: https://github.com/oraios/serena"),
+        "{p}"
+    );
+    assert!(
+        p.contains("Por qué: el paquete serena-agent es de oraios"),
+        "{p}"
+    );
+    assert!(p.contains("Enter lo acepta, `n` lo descarta"), "{p}");
+    assert!(p.contains("posible origen│"), "{p}");
+    let pie = pie(&app);
+    assert!(
+        pie[0].ends_with(" Enter  aceptar origen   n  descartar   i  pegar otro link   x  excluir"),
+        "{pie:?}"
+    );
+}
+
+#[test]
+fn enter_acepta_el_posible_e_investiga_desde_ese_repo() {
+    let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
+    assert_eq!(
+        tecla(&mut app, KeyCode::Enter),
+        Efecto::Investigar(vec!["mcp:serena".into()])
+    );
+    let x = app.recetario.item("mcp:serena").unwrap();
+    assert_eq!(x.fuente.as_ref().unwrap().via, Via::Busqueda);
+    assert!(x.posible.is_none());
+}
+
+#[test]
+fn n_descarta_el_posible_sin_investigar() {
+    let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
+    assert_eq!(tecla(&mut app, KeyCode::Char('n')), Efecto::Guardar);
+    assert!(app.investigando.is_empty());
+    let x = app.recetario.item("mcp:serena").unwrap();
+    assert!(x.fuente.is_none());
+    assert!(x.posible.as_ref().unwrap().descartado);
+    let p = pantalla(&app);
+    assert!(
+        p.contains("Descartaste el posible origen: `i` te pide el link"),
+        "{p}"
+    );
+    // Ya no hay nada que aceptar: Enter no hace nada.
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+}
+
+#[test]
+fn un_posible_sin_aceptar_no_se_aprueba_ni_se_instala() {
+    let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
+    tecla(&mut app, KeyCode::Char('a'));
+    assert_eq!(
+        app.recetario.item("mcp:serena").unwrap().estado,
+        Estado::Pendiente
+    );
+    assert!(app.plan().is_empty());
+}
+
+#[test]
+fn t_busca_una_sola_vez_por_item() {
+    let mut r = Recetario::nuevo();
+    let nunca = Item::nuevo("mcp:nunca", Tipo::Mcp);
+    let mut esperando = Item::nuevo("mcp:esperando", Tipo::Mcp);
+    esperando.posible = Some(Posible {
+        repo: Some("https://github.com/a/b".into()),
+        motivo: String::new(),
+        descartado: false,
+    });
+    let mut no_encontrado = Item::nuevo("mcp:no-encontrado", Tipo::Mcp);
+    no_encontrado.posible = Some(Posible {
+        repo: None,
+        motivo: String::new(),
+        descartado: false,
+    });
+    let mut descartado = Item::nuevo("mcp:descartado", Tipo::Mcp);
+    descartado.posible = Some(Posible {
+        repo: Some("https://github.com/a/c".into()),
+        motivo: String::new(),
+        descartado: true,
+    });
+    r.items = vec![nunca, esperando, no_encontrado, descartado];
+    let mut app = App::nueva(r);
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('t')),
+        Efecto::Buscar(vec!["mcp:nunca".into()])
+    );
+    // Mientras busca, otro `t` no la vuelve a lanzar.
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+}
+
+#[test]
+fn mientras_busca_un_spinner_se_mueve_en_la_fila_y_el_panel() {
+    let mut app = con_un_item(Item::nuevo("mcp:serena", Tipo::Mcp));
+    tecla(&mut app, KeyCode::Char('i'));
+    assert!(app.buscando.contains("mcp:serena"));
+    let antes = pantalla(&app);
+    assert!(
+        antes.contains("Buscando en la web de dónde viene…"),
+        "{antes}"
+    );
+    assert!(antes.contains("buscando origen│"), "{antes}");
+    assert!(antes.contains("1 buscando origen"), "{antes}");
+    app.tic();
+    let despues = pantalla(&app);
+    let fila = |p: &str| {
+        p.lines()
+            .find(|l| l.contains(" serena"))
+            .unwrap()
+            .to_string()
+    };
+    assert_ne!(fila(&antes), fila(&despues));
+
+    app.registrar_busqueda(
+        "mcp:serena",
+        Ok(Posible {
+            repo: Some("https://github.com/oraios/serena".into()),
+            motivo: "x".into(),
+            descartado: false,
+        }),
+    );
+    assert!(app.buscando.is_empty());
+    assert!(pantalla(&app).contains("Posible origen: https://github.com/oraios/serena"));
 }

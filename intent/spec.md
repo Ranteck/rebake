@@ -21,6 +21,9 @@ Estado: aceptado
 > investigar ni instalar). Pedido de Denis.
 > Desde v0.6.3 la pantalla muestra el estado `pendiente` como "sin receta" (el TOML no cambia),
 > el detalle dice qué falta en cada estado y el pie sugiere el siguiente paso. Pedido de Denis.
+> Desde v0.8.0 el escaneo detecta los servidores MCP de usuario (`tipo = "mcp"`); sus pasos son
+> siempre manuales y van a Pendientes (ver `servidores-mcp/`). Sin origen, investigar busca
+> primero un "posible origen" que Denis acepta o descarta (ver `recetas-directas/`, Cambios).
 
 ## Requisitos
 - REQ-1 MUST: detecta como perfiles `~/.claude` y cada `~/.claude-*` con `settings.json`;

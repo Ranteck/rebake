@@ -194,6 +194,9 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
             match app.investigando.len() {
                 0 => String::new(),
                 n => format!(" …{n}"),
+            } + &match app.buscando.len() {
+                0 => String::new(),
+                n => format!(" {}{n}", spinner(app)),
             }
         );
     }
@@ -212,6 +215,9 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
         match app.investigando.len() {
             0 => String::new(),
             n => format!("  … {n} investigando"),
+        } + &match app.buscando.len() {
+            0 => String::new(),
+            n => format!("  {} {n} buscando origen", spinner(app)),
         }
     )
 }
@@ -226,6 +232,7 @@ fn grupo(t: Tipo) -> &'static str {
         Tipo::Hook => "Hooks",
         Tipo::Statusline => "Statusline",
         Tipo::Herramienta => "Herramientas",
+        Tipo::Mcp => "Servidores MCP",
     }
 }
 
@@ -330,6 +337,12 @@ fn cortar(texto: &str, ancho: usize) -> String {
     corto
 }
 
+const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+fn spinner(app: &App) -> &'static str {
+    SPINNER[app.cuadro % SPINNER.len()]
+}
+
 fn linea_item(app: &App, item: &Item, seleccionado: bool, ancho: u16) -> Line<'static> {
     let nombre = item.id.split_once(':').map_or(item.id.as_str(), |(_, n)| n);
     // Casi todos los plugins son del oficial: repetirlo no dice nada y empuja el nombre fuera.
@@ -338,16 +351,24 @@ fn linea_item(app: &App, item: &Item, seleccionado: bool, ancho: u16) -> Line<'s
         .unwrap_or(nombre);
     let (marca, estilo_marca) = if app.investigando.contains(&item.id) {
         ("…", Style::default())
+    } else if app.buscando.contains(&item.id) {
+        (spinner(app), Style::default())
     } else {
         (marca(item), estilo_estado(app, item.estado))
     };
     let extra = match (item.estado, &item.motivo, &item.pista, &item.error) {
+        _ if app.buscando.contains(&item.id) => "buscando origen".into(),
         (Estado::Excluida, Some(m), _, _) => m.clone(),
         (_, _, _, Some(_)) => "error".into(),
+        (Estado::Pendiente, ..) if app.posible_pendiente(&item.id) => "posible origen".into(),
         (Estado::Pendiente, _, Some(p), _) if p.starts_with("repo local sin remoto") => {
             "sin remoto".into()
         }
-        (Estado::Pendiente, _, Some(p), _) if p.contains("sin origen") => "sin origen".into(),
+        (Estado::Pendiente, _, Some(p), _)
+            if p.contains("sin origen") || (item.tipo == Tipo::Mcp && item.fuente.is_none()) =>
+        {
+            "sin origen".into()
+        }
         _ => String::new(),
     };
     let ausente = if item.ausente { "  (ausente)" } else { "" };
@@ -394,10 +415,18 @@ fn que_falta(app: &App, item: &Item) -> &'static str {
     if app.investigando.contains(&item.id) {
         return "Armando la receta…";
     }
+    if app.buscando.contains(&item.id) {
+        return "Buscando en la web de dónde viene…";
+    }
     match item.estado {
-        Estado::Pendiente if item.fuente.is_none() => {
-            "Esta PC lo tiene, pero no sé de qué repo viene: `i` te pide el link."
-        }
+        Estado::Pendiente if item.fuente.is_none() => match &item.posible {
+            Some(p) if p.pendiente().is_some() => {
+                "Encontré de dónde podría venir: Enter lo acepta, `n` lo descarta."
+            }
+            Some(p) if p.descartado => "Descartaste el posible origen: `i` te pide el link.",
+            Some(_) => "No encontré de qué repo viene: `i` te pide el link.",
+            None => "Esta PC lo tiene, pero no sé de qué repo viene: `i` lo busca en la web.",
+        },
         Estado::Pendiente => "Esta PC lo tiene, pero todavía no hay receta: `i` la arma.",
         Estado::PorRevisar => "Hay receta: revisá qué va a ejecutar y `a` la aprueba.",
         Estado::Aprobada => "Lista: en una PC nueva se instala con esto (pestaña 3).",
@@ -406,10 +435,14 @@ fn que_falta(app: &App, item: &Item) -> &'static str {
 }
 
 fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
-    let mut l = vec![Line::from(Span::styled(
+    let mut primera = vec![Span::styled(
         que_falta(app, item),
         Style::default().add_modifier(Modifier::BOLD),
-    ))];
+    )];
+    if app.buscando.contains(&item.id) {
+        primera.insert(0, Span::raw(format!("{} ", spinner(app))));
+    }
+    let mut l = vec![Line::from(primera)];
     l.push(Line::from(format!(
         "Estado: {}   Perfiles: {}",
         nombre_estado(item.estado),
@@ -436,6 +469,27 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
             }
         }
         None => l.push(Line::from("Viene de: — (no se sabe de qué repo)")),
+    }
+    if item.fuente.is_none()
+        && let Some(p) = &item.posible
+    {
+        if let Some(repo) = &p.repo {
+            let estado = if p.descartado { " (descartado)" } else { "" };
+            l.push(Line::from(Span::styled(
+                format!("Posible origen: {repo}{estado}"),
+                Style::default().add_modifier(Modifier::BOLD),
+            )));
+        }
+        if !p.motivo.is_empty() {
+            l.push(Line::from(format!("Por qué: {}", p.motivo)));
+        }
+        if p.pendiente().is_some() {
+            l.push(Line::from(teclas(&[
+                ("Enter", "aceptar"),
+                ("n", "descartar"),
+                ("i", "pegar otro link"),
+            ])));
+        }
     }
     if !item.requiere.is_empty() {
         l.push(Line::from(format!(
@@ -673,9 +727,16 @@ fn instalacion(f: &mut Frame, app: &App, area: Rect) {
 
 fn teclas_de_receta(item: &Item) -> Vec<(&'static str, &'static str)> {
     match item.estado {
-        Estado::Pendiente if item.fuente.is_none() => {
-            vec![("i", "pasar el link"), ("x", "excluir")]
-        }
+        Estado::Pendiente if item.fuente.is_none() => match &item.posible {
+            Some(p) if p.pendiente().is_some() => vec![
+                ("Enter", "aceptar origen"),
+                ("n", "descartar"),
+                ("i", "pegar otro link"),
+                ("x", "excluir"),
+            ],
+            Some(_) => vec![("i", "pegar el link"), ("x", "excluir")],
+            None => vec![("i", "buscar origen"), ("x", "excluir")],
+        },
         Estado::Pendiente => vec![("i", "armar receta"), ("x", "excluir")],
         Estado::PorRevisar => vec![
             ("espacio/a", "aprobar"),
@@ -799,6 +860,7 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         // Solo lo que hace algo sobre la receta elegida, en el orden en que conviene hacerlo.
         if let Some(item) = app.seleccionado()
             && !app.investigando.contains(&item.id)
+            && !app.buscando.contains(&item.id)
         {
             spans.push(Span::raw("  Esta receta:"));
             spans.extend(teclas(&teclas_de_receta(item)));

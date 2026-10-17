@@ -4,6 +4,7 @@ pub mod vista;
 use crate::escaner::{Entorno, PacmanReal};
 use crate::instalador::{self, Evento, Opciones, Presencia};
 use crate::investigador::{self, Receta};
+use crate::modelo::Posible;
 use crate::servicio::{self, Novedad};
 use crate::{acciones, actualizar, archivo, rutas};
 use anyhow::{Context, Result, bail};
@@ -19,6 +20,7 @@ use std::thread;
 use std::time::Duration;
 
 type Investigado = (String, Result<Receta>);
+type Buscado = (String, Result<Posible>);
 
 #[derive(Default)]
 pub struct Arranque {
@@ -51,6 +53,7 @@ fn bucle(
     mut rx_version: Option<mpsc::Receiver<Option<String>>>,
 ) -> Result<()> {
     let (tx_inv, rx_inv) = mpsc::channel::<Investigado>();
+    let (tx_bus, rx_bus) = mpsc::channel::<Buscado>();
     let mut rx_inst: Option<mpsc::Receiver<Evento>> = None;
     let mut rx_comp: Option<mpsc::Receiver<(String, Presencia)>> = None;
     loop {
@@ -64,6 +67,11 @@ fn bucle(
         while let Ok((id, res)) = rx_inv.try_recv() {
             tracing::info!(accion = "investigar", id = %id, ok = res.is_ok());
             app.registrar_investigacion(&id, res, &rutas::hoy());
+            guardar(app, ruta);
+        }
+        while let Ok((id, res)) = rx_bus.try_recv() {
+            tracing::info!(accion = "buscar_origen", id = %id, ok = res.is_ok());
+            app.registrar_busqueda(&id, res);
             guardar(app, ruta);
         }
         if let Some(rx) = &rx_inst {
@@ -84,6 +92,7 @@ fn bucle(
                 }
             }
         }
+        app.tic();
         terminal.draw(|f| vista::dibujar(f, app))?;
         if !event::poll(Duration::from_millis(100))? {
             continue;
@@ -100,6 +109,11 @@ fn bucle(
             Efecto::Guardar => guardar(app, ruta),
             Efecto::Escanear => escanear(app, ruta),
             Efecto::Investigar(ids) => investigar(app, ruta, home, ids, &tx_inv),
+            Efecto::Buscar(ids) => buscar(app, home, ids, &tx_bus),
+            Efecto::Lote(inv, bus) => {
+                investigar(app, ruta, home, inv, &tx_inv);
+                buscar(app, home, bus, &tx_bus);
+            }
             Efecto::Editar(id) => editar(terminal, app, ruta, home, &id)?,
             Efecto::Actualizar(version) => actualizar(terminal, app, &version),
             Efecto::Comprobar => rx_comp = Some(comprobar(app, home)),
@@ -163,6 +177,28 @@ fn investigar(
             app.mensaje = Some(format!("{e:#}"));
         }
     }
+}
+
+fn buscar(app: &App, home: &Path, ids: Vec<String>, tx: &mpsc::Sender<Buscado>) {
+    let trabajos = ids
+        .iter()
+        .filter_map(|id| app.recetario.item(id))
+        .map(|i| (i.id.clone(), investigador::prompt_origen(i, home)))
+        .collect();
+    let rx = investigador::buscar_origenes(
+        trabajos,
+        investigador::binario_claude(),
+        investigador::TOPE,
+        investigador::PARALELO,
+    );
+    let tx = tx.clone();
+    thread::spawn(move || {
+        for m in rx {
+            if tx.send(m).is_err() {
+                break;
+            }
+        }
+    });
 }
 
 fn comprobar(app: &App, home: &Path) -> mpsc::Receiver<(String, Presencia)> {

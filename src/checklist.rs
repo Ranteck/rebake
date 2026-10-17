@@ -1,5 +1,5 @@
 use crate::escaner::{Entorno, Escaneo, leer_json};
-use crate::modelo::{Ajuste, Estado, Modo, OCULTO, Paso, Recetario, TituloClaudeMd};
+use crate::modelo::{Ajuste, Estado, Modo, OCULTO, Paso, Recetario, Tipo, TituloClaudeMd};
 use crate::rutas::contraer;
 use crate::secretos;
 use serde_json::Value;
@@ -119,12 +119,29 @@ pub fn logins(r: &Recetario) -> Vec<String> {
 pub fn pasos_manuales(r: &Recetario) -> Vec<(String, Paso)> {
     r.items
         .iter()
-        .filter(|i| i.estado == Estado::Aprobada)
+        .filter(|i| i.estado == Estado::Aprobada && i.tipo != Tipo::Mcp)
         .flat_map(|i| {
             i.pasos
                 .iter()
                 .filter(|p| p.modo == Modo::Manual)
                 .map(|p| (i.id.clone(), p.clone()))
+        })
+        .collect()
+}
+
+/// Servidores MCP aprobados: "revisá X" y debajo sus pasos, o el comando detectado si no tiene.
+pub fn servidores_mcp(r: &Recetario) -> Vec<(String, Vec<String>)> {
+    r.items
+        .iter()
+        .filter(|i| i.estado == Estado::Aprobada && i.tipo == Tipo::Mcp)
+        .map(|i| {
+            let nombre = i.id.trim_start_matches("mcp:");
+            let pasos = if i.pasos.is_empty() {
+                i.pista.iter().cloned().collect()
+            } else {
+                i.pasos.iter().map(|p| p.cmd.clone()).collect()
+            };
+            (format!("revisá {nombre} (servidor MCP)"), pasos)
         })
         .collect()
 }

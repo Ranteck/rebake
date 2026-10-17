@@ -75,7 +75,36 @@ pub fn pegar_link(r: &mut Recetario, id: &str, url: &str) -> Result<()> {
     });
     item.estado = Estado::Pendiente;
     item.error = None;
+    item.posible = None;
     Ok(())
+}
+
+/// El posible origen pasa a ser el origen, marcado como buscado en la web.
+pub fn aceptar_posible(r: &mut Recetario, id: &str) -> Result<()> {
+    let item = buscar(r, id)?;
+    let Some(repo) = item.posible.as_ref().and_then(|p| p.pendiente()) else {
+        bail!("{id} no tiene un posible origen para aceptar");
+    };
+    item.fuente = Some(Fuente {
+        repo: repo.to_string(),
+        via: Via::Busqueda,
+        doc: None,
+    });
+    item.posible = None;
+    item.error = None;
+    Ok(())
+}
+
+/// Queda anotado para que `t` no lo vuelva a buscar.
+pub fn descartar_posible(r: &mut Recetario, id: &str) -> Result<()> {
+    let item = buscar(r, id)?;
+    match item.posible.as_mut() {
+        Some(p) if p.pendiente().is_some() => {
+            p.descartado = true;
+            Ok(())
+        }
+        _ => bail!("{id} no tiene un posible origen para descartar"),
+    }
 }
 
 pub fn item_como_toml(item: &Item) -> Result<String> {

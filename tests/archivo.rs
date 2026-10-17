@@ -25,6 +25,14 @@ fn ejemplo() -> Recetario {
         nota: None,
     });
     r.items.push(item);
+    let mut mcp = Item::nuevo("mcp:serena", Tipo::Mcp);
+    mcp.pista = Some("servidor MCP: serena start-mcp-server".into());
+    mcp.posible = Some(Posible {
+        repo: Some("https://github.com/oraios/serena".into()),
+        motivo: "lo dice el paquete".into(),
+        descartado: true,
+    });
+    r.items.push(mcp);
     r.checklist.ajustes.push(Ajuste {
         perfil: "laburo".into(),
         clave: "theme".into(),
@@ -40,6 +48,9 @@ fn ida_y_vuelta_sin_perdidas() {
     let r = ejemplo();
     archivo::guardar(&ruta, &r).unwrap();
     assert_eq!(archivo::leer(&ruta).unwrap(), r);
+    let texto = fs::read_to_string(&ruta).unwrap();
+    assert!(texto.contains("tipo = \"mcp\""), "{texto}");
+    assert!(texto.contains("descartado = true"), "{texto}");
 }
 
 #[test]

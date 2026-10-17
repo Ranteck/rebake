@@ -127,3 +127,57 @@ fn incluir_vuelve_segun_tenga_pasos_y_borra_el_motivo() {
         "incluir algo no excluido es un error"
     );
 }
+
+fn con_posible(repo: Option<&str>) -> Recetario {
+    let mut r = recetario_con(Estado::Pendiente);
+    r.item_mut(ID).unwrap().posible = Some(Posible {
+        repo: repo.map(String::from),
+        motivo: "el README lo nombra".into(),
+        descartado: false,
+    });
+    r
+}
+
+#[test]
+fn aceptar_el_posible_lo_vuelve_origen_buscado() {
+    let mut r = con_posible(Some("https://github.com/ejemplo/statusline"));
+    aceptar_posible(&mut r, ID).unwrap();
+    let x = r.item(ID).unwrap();
+    assert!(x.posible.is_none());
+    assert_eq!(
+        x.fuente,
+        Some(Fuente {
+            repo: "https://github.com/ejemplo/statusline".into(),
+            via: Via::Busqueda,
+            doc: None,
+        })
+    );
+    assert_eq!(x.estado, Estado::Pendiente);
+}
+
+#[test]
+fn descartar_lo_anota_y_ya_no_se_puede_aceptar() {
+    let mut r = con_posible(Some("https://github.com/ejemplo/statusline"));
+    descartar_posible(&mut r, ID).unwrap();
+    let x = r.item(ID).unwrap();
+    assert!(x.fuente.is_none());
+    assert!(x.posible.as_ref().unwrap().descartado);
+    assert!(aceptar_posible(&mut r, ID).is_err());
+    assert!(r.item(ID).unwrap().fuente.is_none());
+}
+
+#[test]
+fn sin_repo_encontrado_no_hay_nada_que_aceptar() {
+    let mut r = con_posible(None);
+    assert!(aceptar_posible(&mut r, ID).is_err());
+    assert!(descartar_posible(&mut r, ID).is_err());
+}
+
+#[test]
+fn pegar_el_link_reemplaza_al_posible() {
+    let mut r = con_posible(Some("https://github.com/ejemplo/statusline"));
+    pegar_link(&mut r, ID, "https://github.com/otro/repo").unwrap();
+    let x = r.item(ID).unwrap();
+    assert!(x.posible.is_none());
+    assert_eq!(x.fuente.as_ref().unwrap().via, Via::Manual);
+}

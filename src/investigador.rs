@@ -1,5 +1,7 @@
 use crate::escaner::normalizar_url;
-use crate::modelo::{Estado, Fuente, Item, Modo, PaqueteSistema, Paso, Recetario, Tipo, Via};
+use crate::modelo::{
+    Estado, Fuente, Item, Modo, PaqueteSistema, Paso, Posible, Recetario, Tipo, Via,
+};
 use crate::proceso::ejecutar;
 use crate::rutas::expandir;
 use anyhow::{Context, Result, anyhow, bail};
@@ -23,6 +25,9 @@ pub const ESQUEMA: &str = r#"{"type":"object","additionalProperties":false,"requ
   "cmd":{"type":"string"},"modo":{"type":"string","enum":["auto","manual"]},"por_perfil":{"type":"boolean"},"cita":{"type":"string"},"nota":{"type":"string"}}}},
 "requiere":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tipo","nombre"],"properties":{
   "tipo":{"type":"string","enum":["herramienta","plugin","marketplace","skill","sistema"]},"nombre":{"type":"string"}}}}}}"#;
+
+pub const ESQUEMA_ORIGEN: &str = r#"{"type":"object","additionalProperties":false,"required":["repo","motivo"],"properties":{
+"repo":{"type":"string"},"motivo":{"type":"string"}}}"#;
 
 const REGLAS: &str = "Reglas:
 1. Usá la instalación que documenta el repo (README o docs). No inventes comandos: cada paso lleva en `cita` la línea literal de la doc de donde sale.
@@ -88,6 +93,10 @@ pub fn modelo() -> String {
 }
 
 pub fn argumentos(prompt: &str, modelo: &str) -> Vec<String> {
+    argumentos_con(prompt, modelo, ESQUEMA)
+}
+
+fn argumentos_con(prompt: &str, modelo: &str, esquema: &str) -> Vec<String> {
     [
         "-p",
         prompt,
@@ -103,7 +112,7 @@ pub fn argumentos(prompt: &str, modelo: &str) -> Vec<String> {
         "--output-format",
         "json",
         "--json-schema",
-        ESQUEMA,
+        esquema,
     ]
     .iter()
     .map(|s| s.to_string())
@@ -142,6 +151,12 @@ pub fn trabajo_para(r: &Recetario, item: &Item, home: &Path) -> Trabajo {
     }
     prompt.push('\n');
     prompt.push_str(REGLAS);
+    if item.tipo == Tipo::Mcp {
+        let nombre = item.id.trim_start_matches("mcp:");
+        prompt.push_str(&format!(
+            "\n9. Es un servidor MCP: los pasos instalan el programa que lo sirve y el último lo registra en Claude Code con `claude mcp add --scope user {nombre} -- <el comando de la pista>` (o `--transport http {nombre} <url>` si la pista es una URL). Todos los pasos van con modo \"manual\": los corre el usuario."
+        ));
+    }
     Trabajo {
         id: item.id.clone(),
         prompt,
@@ -267,6 +282,34 @@ pub fn investigar(t: &Trabajo, claude: &str, tope: Duration) -> Result<Receta> {
 }
 
 pub fn parsear_salida(stdout: &str) -> Result<Receta> {
+    let r: Respuesta = serde_json::from_value(estructurada(stdout)?)
+        .map_err(|e| anyhow!("la respuesta no cumple el formato: {e}"))?;
+    if r.pasos.iter().any(|p| p.cmd.trim().is_empty()) {
+        bail!("la respuesta no cumple el formato: hay un paso sin comando");
+    }
+    let doc = primera_url(&r.doc)
+        .ok_or_else(|| anyhow!("la respuesta no trae la URL de la doc: {}", r.doc))?;
+    Ok(Receta {
+        repo: r.repo,
+        doc,
+        verificar: r.verificar.filter(|v| !v.trim().is_empty()),
+        requiere: r.requiere,
+        pasos: r
+            .pasos
+            .into_iter()
+            .map(|p| Paso {
+                cmd: p.cmd,
+                modo: p.modo,
+                por_perfil: p.por_perfil,
+                cita: Some(p.cita),
+                nota: p.nota,
+            })
+            .collect(),
+    })
+}
+
+/// El `structured_output` de la respuesta de `claude -p`, si terminó bien y pudo usar la web.
+fn estructurada(stdout: &str) -> Result<Value> {
     // stdout y stderr llegan mezclados: el resultado es la última línea JSON de tipo "result".
     let resultado: Value = stdout
         .lines()
@@ -294,34 +337,10 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
     if !denegados.is_empty() {
         bail!("claude no tuvo permiso para usar {}", denegados.join(", "));
     }
-    let estructurada = resultado
+    resultado
         .get("structured_output")
         .cloned()
-        .ok_or_else(|| anyhow!("la respuesta no trae structured_output"))?;
-    let r: Respuesta = serde_json::from_value(estructurada)
-        .map_err(|e| anyhow!("la respuesta no cumple el formato: {e}"))?;
-    if r.pasos.iter().any(|p| p.cmd.trim().is_empty()) {
-        bail!("la respuesta no cumple el formato: hay un paso sin comando");
-    }
-    let doc = primera_url(&r.doc)
-        .ok_or_else(|| anyhow!("la respuesta no trae la URL de la doc: {}", r.doc))?;
-    Ok(Receta {
-        repo: r.repo,
-        doc,
-        verificar: r.verificar.filter(|v| !v.trim().is_empty()),
-        requiere: r.requiere,
-        pasos: r
-            .pasos
-            .into_iter()
-            .map(|p| Paso {
-                cmd: p.cmd,
-                modo: p.modo,
-                por_perfil: p.por_perfil,
-                cita: Some(p.cita),
-                nota: p.nota,
-            })
-            .collect(),
-    })
+        .ok_or_else(|| anyhow!("la respuesta no trae structured_output"))
 }
 
 pub fn en_paralelo(
@@ -330,25 +349,131 @@ pub fn en_paralelo(
     tope: Duration,
     paralelo: usize,
 ) -> mpsc::Receiver<(String, Result<Receta>)> {
-    let (tx, rx) = mpsc::channel();
     let mut trabajos = trabajos;
     // La fila se toma desde el final: las directas van ahí para no esperar a las de Claude.
     trabajos.sort_by_key(|t| t.directa.is_some());
+    en_hilos(trabajos, paralelo, move |t| {
+        let r = investigar(&t, &claude, tope);
+        (t.id, r)
+    })
+}
+
+/// Busca el posible origen de cada `(id, prompt)`, de a `paralelo` por vez.
+pub fn buscar_origenes(
+    trabajos: Vec<(String, String)>,
+    claude: String,
+    tope: Duration,
+    paralelo: usize,
+) -> mpsc::Receiver<(String, Result<Posible>)> {
+    en_hilos(trabajos, paralelo, move |(id, prompt)| {
+        let r = buscar_origen(&prompt, &claude, tope);
+        (id, r)
+    })
+}
+
+fn en_hilos<T, R, F>(trabajos: Vec<T>, paralelo: usize, f: F) -> mpsc::Receiver<(String, R)>
+where
+    T: Send + 'static,
+    R: Send + 'static,
+    F: Fn(T) -> (String, R) + Send + Sync + 'static,
+{
+    let (tx, rx) = mpsc::channel();
     let cola = Arc::new(Mutex::new(trabajos));
+    let f = Arc::new(f);
     for _ in 0..paralelo.max(1) {
-        let (tx, cola, claude) = (tx.clone(), Arc::clone(&cola), claude.clone());
+        let (tx, cola, f) = (tx.clone(), Arc::clone(&cola), Arc::clone(&f));
         thread::spawn(move || {
             loop {
                 let siguiente = cola.lock().unwrap_or_else(|e| e.into_inner()).pop();
                 let Some(t) = siguiente else { break };
-                let resultado = investigar(&t, &claude, tope);
-                if tx.send((t.id, resultado)).is_err() {
+                if tx.send(f(t)).is_err() {
                     break;
                 }
             }
         });
     }
     rx
+}
+
+/// Pregunta corta: solo de qué repo viene, sin receta. Lo que vuelve espera el OK de Denis.
+pub fn prompt_origen(item: &Item, home: &Path) -> String {
+    let mut prompt = format!(
+        "Buscá en la web de qué repositorio público viene UNA cosa del setup de Claude Code de un usuario en Linux. No armes la receta de instalación.\n\nÍtem: {}\nTipo: {:?}\nPista: {}\n",
+        item.id,
+        item.tipo,
+        item.pista.as_deref().unwrap_or("ninguna"),
+    );
+    if let Some(cabeza) = cabeza_de_archivo(item, home) {
+        prompt.push_str(&format!(
+            "\nPrimeras líneas del archivo:\n```\n{cabeza}\n```\n"
+        ));
+    }
+    prompt.push_str("\nDevolvé en `repo` la URL https del repositorio oficial (p. ej. https://github.com/dueño/repo), o vacío si no estás seguro: es mejor no proponer nada que proponer uno equivocado. En `motivo`, una oración con la evidencia que lo une al ítem. Nunca incluyas tokens, claves ni datos personales.");
+    prompt
+}
+
+pub fn buscar_origen(prompt: &str, claude: &str, tope: Duration) -> Result<Posible> {
+    let mut cmd = Command::new(claude);
+    cmd.args(argumentos_con(prompt, &modelo(), ESQUEMA_ORIGEN))
+        .current_dir(std::env::temp_dir());
+    let salida = ejecutar(&mut cmd, tope, &mut |_| {})
+        .with_context(|| format!("no pude ejecutar {claude}: ¿está instalado?"))?;
+    if salida.vencido {
+        bail!("la búsqueda superó {} segundos", tope.as_secs_f32());
+    }
+    parsear_origen(&salida.texto).with_context(|| match salida.codigo {
+        Some(0) => "claude respondió algo inesperado".to_string(),
+        c => format!("claude terminó con código {c:?}"),
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RespuestaOrigen {
+    repo: String,
+    motivo: String,
+}
+
+pub fn parsear_origen(stdout: &str) -> Result<Posible> {
+    let r: RespuestaOrigen = serde_json::from_value(estructurada(stdout)?)
+        .map_err(|e| anyhow!("la respuesta no cumple el formato: {e}"))?;
+    let motivo = r.motivo.trim().to_string();
+    let repo = normalizar_url(&r.repo);
+    if repo.is_empty() {
+        return Ok(Posible {
+            repo: None,
+            motivo,
+            descartado: false,
+        });
+    }
+    // El repo termina en un `sh -c` si se acepta: lo raro ni se propone.
+    if !es_repo_seguro(&repo) {
+        return Ok(Posible {
+            repo: None,
+            motivo: "lo que encontró no es un link https válido".into(),
+            descartado: false,
+        });
+    }
+    Ok(Posible {
+        repo: Some(repo),
+        motivo,
+        descartado: false,
+    })
+}
+
+/// Guarda lo que encontró la búsqueda, salvo que Denis ya haya resuelto el origen o lo excluyó.
+pub fn aplicar_posible(r: &mut Recetario, id: &str, resultado: Result<Posible>) {
+    let Some(item) = r.item_mut(id) else { return };
+    if item.fuente.is_some() || item.estado == Estado::Excluida {
+        return;
+    }
+    match resultado {
+        Ok(p) => {
+            item.posible = Some(p);
+            item.error = None;
+        }
+        Err(e) => item.error = Some(format!("{e:#}")),
+    }
 }
 
 pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str) {
@@ -376,6 +501,15 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
     });
     item.pasos = receta.pasos;
     item.verificar = receta.verificar;
+    if item.tipo == Tipo::Mcp {
+        // Los corre Denis después de leerlos; el instalador igual los saltea.
+        for p in &mut item.pasos {
+            p.modo = Modo::Manual;
+        }
+        let nombre = item.id.trim_start_matches("mcp:");
+        item.verificar =
+            es_identificador(nombre).then(|| format!("claude mcp get '{nombre}' >/dev/null 2>&1"));
+    }
     item.estado = Estado::PorRevisar;
     item.investigado = Some(hoy.into());
     item.error = None;

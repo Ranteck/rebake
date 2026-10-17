@@ -138,7 +138,7 @@ fn statusline(entorno: &Entorno, perfil: &str, comando: &str, salida: &mut Escan
 }
 
 /// `None` si el binario es de pacman (es del sistema) o no está en el PATH (con aviso).
-fn herramienta(
+pub(super) fn herramienta(
     entorno: &Entorno,
     palabra: &str,
     origen: &str,

@@ -34,6 +34,7 @@ pub enum Tipo {
     Hook,
     Statusline,
     Herramienta,
+    Mcp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,8 +108,29 @@ pub struct Item {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "es_falso")]
     pub ausente: bool,
+    /// Origen que encontró la búsqueda web; espera que Denis lo acepte.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub posible: Option<Posible>,
     #[serde(default, rename = "paso", skip_serializing_if = "Vec::is_empty")]
     pub pasos: Vec<Paso>,
+}
+
+/// Se guarda aunque no se haya encontrado o Denis lo descarte: `t` no vuelve a gastar una búsqueda.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Posible {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    pub motivo: String,
+    #[serde(default, skip_serializing_if = "es_falso")]
+    pub descartado: bool,
+}
+
+impl Posible {
+    /// Hay un repo que todavía espera respuesta.
+    pub fn pendiente(&self) -> Option<&str> {
+        self.repo.as_deref().filter(|_| !self.descartado)
+    }
 }
 
 fn es_falso(b: &bool) -> bool {
@@ -186,6 +208,7 @@ impl Item {
             motivo: None,
             error: None,
             ausente: false,
+            posible: None,
             pasos: vec![],
         }
     }

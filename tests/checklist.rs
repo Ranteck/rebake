@@ -132,3 +132,44 @@ fn valores_con_forma_de_secreto_ocultos() {
     }
     assert_eq!(valor(&a, "theme").as_deref(), Some("dark"));
 }
+
+#[test]
+fn los_servidores_mcp_aprobados_van_a_pendientes() {
+    let mut r = Recetario::nuevo();
+    let mut con_pasos = Item::nuevo("mcp:serena", Tipo::Mcp);
+    con_pasos.estado = Estado::Aprobada;
+    con_pasos.pasos = vec![Paso {
+        cmd: "uv tool install -p 3.13 serena-agent".into(),
+        modo: Modo::Manual,
+        por_perfil: false,
+        cita: None,
+        nota: None,
+    }];
+    let mut sin_pasos = Item::nuevo("mcp:remoto", Tipo::Mcp);
+    sin_pasos.estado = Estado::Aprobada;
+    sin_pasos.pista = Some("servidor MCP: https://mcp.ejemplo.com".into());
+    let mut pendiente = Item::nuevo("mcp:otro", Tipo::Mcp);
+    pendiente.pista = Some("servidor MCP: otro".into());
+    r.items = vec![con_pasos, sin_pasos, pendiente];
+
+    assert_eq!(
+        checklist::servidores_mcp(&r),
+        vec![
+            (
+                "revisá serena (servidor MCP)".to_string(),
+                vec!["uv tool install -p 3.13 serena-agent".to_string()]
+            ),
+            (
+                "revisá remoto (servidor MCP)".to_string(),
+                vec!["servidor MCP: https://mcp.ejemplo.com".to_string()]
+            ),
+        ]
+    );
+    // No se repiten como pasos manuales sueltos.
+    assert!(checklist::pasos_manuales(&r).is_empty());
+    let texto = rebake::servicio::texto_checklist(&r);
+    assert!(texto.contains("Servidores MCP (rebake no los instala)"));
+    assert!(texto.contains("[ ] revisá serena (servidor MCP)"));
+    assert!(texto.contains("uv tool install -p 3.13 serena-agent"));
+    assert!(!texto.contains("otro"));
+}

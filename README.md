@@ -9,8 +9,9 @@ en tu **cookbook**, un archivo TOML que revisás y versionás. En una PC nueva, 
 recetas aprobadas y te deja una lista de pendientes de lo que falta hacer a mano.
 
 Cubre plugins, marketplaces, skills, imports de `CLAUDE.md`, hooks, statusline y las
-herramientas que usan, en todos tus perfiles (`~/.claude` y `~/.claude-*`). No copia
-memorias, historial ni credenciales, ni instala paquetes del sistema.
+herramientas que usan, en todos tus perfiles (`~/.claude` y `~/.claude-*`). Los servidores MCP
+(como Serena) no los instala: arma sus pasos y te los deja en Pendientes. No copia memorias,
+historial ni credenciales, ni instala paquetes del sistema.
 
 ## Instalar
 
@@ -99,7 +100,8 @@ ajustes que rebake no hace por vos). Con `NO_COLOR` la pantalla no usa colores.
 | Tecla | Acción |
 |---|---|
 | `s` | escanear |
-| `i` / `t` | investigar la receta (sin origen, pide el link) / todas las sin receta con origen |
+| `i` / `t` | investigar la receta / todas las sin receta; sin origen, primero buscan de dónde viene |
+| Enter / `n` | aceptar o descartar el posible origen que encontró la búsqueda |
 | espacio / `a` | aprobar o desaprobar (solo una receta investigada o editada); queda guardado en el cookbook |
 | `x` | excluir, con motivo; sobre una excluida, la vuelve a incluir |
 | `l` | pegar el link del repo cuando no se encontró |
@@ -134,16 +136,23 @@ En la pestaña Instalación:
 3. Para el resto, `claude -p --restricted` (con Sonnet; `REBAKE_MODELO` lo cambia) lee la
    documentación de instalación de ese repo, sin poder ejecutar comandos ni escribir archivos,
    y devuelve los pasos con la **cita** literal de la doc de la que sale cada comando.
-4. Sin origen conocido no investiga sola: la cabecera muestra cuántas quedan sin origen, `i`
-   te pide el link, y con Enter vacío lo busca en la web (la receta dice "origen buscado en la
-   web").
-5. Vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
+4. Sin origen conocido no investiga sola. `i` (o `t`, para todas) busca en la web de qué repo
+   viene, con un spinner mientras tanto, y el panel de la derecha te lo propone con el motivo:
+   Enter lo acepta (la receta dice "origen buscado en la web"), `n` lo descarta e `i` te deja
+   pegar el link. `t` busca una sola vez por receta; para volver a buscar, `i` y Enter vacío.
+   Nada se investiga ni se instala con un origen sin aceptar.
+5. Un servidor MCP sale de la doc de su repo como cualquier receta, pero todos sus pasos son
+   manuales, incluido el `claude mcp add --scope user` final: después de instalar, Pendientes
+   dice "revisá serena" con los pasos. `c` comprueba si ya está registrado.
+6. Vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
 
 ## Seguridad
 
 - La investigación corre sin Bash, sin escritura, sin tus hooks, plugins ni MCP, y lo que se le
   manda pasa antes por el filtro de secretos.
-- El escaneo nunca lee `.credentials.json`, `~/.codex/auth.json` ni `.claude.json`.
+- El escaneo nunca lee `.credentials.json` ni `~/.codex/auth.json`. De `.claude.json` lee solo
+  `mcpServers`, y de cada servidor solo el comando, sus argumentos o el host de su URL; `env`,
+  headers, la cuenta y los proyectos se descartan al leerlo.
 - En el cookbook se ocultan como `‹oculto›` las variables de `env`, las claves que contienen
   `token`, `secret`, `key`, `password`, `auth`, `credential`, `cookie` o `header`, los valores
   con forma de token y las credenciales o rutas de las URLs.

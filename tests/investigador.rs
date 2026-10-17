@@ -495,3 +495,124 @@ fn las_directas_salen_antes_que_las_que_esperan_a_claude() {
     let ids: Vec<String> = rx.iter().map(|(id, _)| id).collect();
     assert_eq!(ids, ["marketplace:directa", "skill:lenta"]);
 }
+
+fn serena() -> (Recetario, &'static str) {
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(Perfil {
+        nombre: "laburo".into(),
+        dir: "~/.claude".into(),
+    });
+    let mut item = Item::nuevo("mcp:serena", Tipo::Mcp);
+    item.perfiles = vec!["laburo".into()];
+    item.pista = Some("servidor MCP: serena start-mcp-server".into());
+    item.fuente = Some(Fuente {
+        repo: "https://github.com/oraios/serena".into(),
+        via: Via::Metadatos,
+        doc: None,
+    });
+    r.items.push(item);
+    (r, "mcp:serena")
+}
+
+#[test]
+fn un_servidor_mcp_va_a_claude_y_sus_pasos_quedan_manuales() {
+    let (r, id) = serena();
+    let t = trabajo_para(&r, r.item(id).unwrap(), std::path::Path::new("/home/x"));
+    assert!(t.directa.is_none());
+    assert!(t.prompt.contains("servidor MCP: serena start-mcp-server"));
+    assert!(t.prompt.contains("claude mcp add --scope user serena"));
+
+    let h = HomeFalso::nuevo();
+    let claude = claude_falso(&h, VALIDA);
+    let mut r = r;
+    let receta = investigar(&t, &claude, Duration::from_secs(10));
+    aplicar(&mut r, id, receta, "2026-10-17");
+    let x = r.item(id).unwrap();
+    assert_eq!(x.estado, Estado::PorRevisar);
+    assert!(x.pasos.iter().all(|p| p.modo == Modo::Manual));
+    assert_eq!(
+        x.verificar.as_deref(),
+        Some("claude mcp get 'serena' >/dev/null 2>&1")
+    );
+}
+
+#[test]
+fn un_servidor_mcp_sin_origen_no_se_investiga_en_lote() {
+    let (mut r, id) = serena();
+    r.item_mut(id).unwrap().fuente = None;
+    let t = rebake::servicio::trabajos(&r, &[], std::path::Path::new("/home/x")).unwrap();
+    assert!(t.is_empty());
+    assert_eq!(rebake::servicio::sin_origen(&r), [id]);
+}
+
+fn origen(estructurada: &str) -> String {
+    format!(
+        r#"{{"type":"result","subtype":"success","is_error":false,"result":"ok","structured_output":{estructurada}}}"#
+    )
+}
+
+#[test]
+fn la_busqueda_de_origen_pide_solo_el_repo() {
+    let (mut r, id) = serena();
+    r.item_mut(id).unwrap().fuente = None;
+    let prompt = prompt_origen(r.item(id).unwrap(), std::path::Path::new("/home/x"));
+    assert!(prompt.contains("mcp:serena"));
+    assert!(prompt.contains("servidor MCP: serena start-mcp-server"));
+    assert!(prompt.contains("No armes la receta"));
+    assert!(!prompt.contains("Reglas:"));
+
+    let h = HomeFalso::nuevo();
+    let claude = claude_falso(
+        &h,
+        &origen(
+            r#"{"repo":"https://github.com/oraios/serena.git","motivo":"el paquete serena-agent es de oraios"}"#,
+        ),
+    );
+    let posible = buscar_origen(&prompt, &claude, Duration::from_secs(10)).unwrap();
+    assert_eq!(
+        posible.repo.as_deref(),
+        Some("https://github.com/oraios/serena")
+    );
+    aplicar_posible(&mut r, id, Ok(posible));
+    let x = r.item(id).unwrap();
+    // Solo queda propuesto: ni origen, ni receta, ni cambio de estado.
+    assert!(x.fuente.is_none());
+    assert!(x.pasos.is_empty());
+    assert_eq!(x.estado, Estado::Pendiente);
+    assert_eq!(
+        x.posible.as_ref().unwrap().motivo,
+        "el paquete serena-agent es de oraios"
+    );
+}
+
+#[test]
+fn un_repo_vacio_o_raro_no_se_propone() {
+    let vacio = parsear_origen(&origen(r#"{"repo":"","motivo":"no hay nada claro"}"#)).unwrap();
+    assert!(vacio.repo.is_none());
+    assert_eq!(vacio.motivo, "no hay nada claro");
+    let raro = parsear_origen(&origen(
+        r#"{"repo":"https://github.com/x/y;rm -rf ~","motivo":"confiá"}"#,
+    ))
+    .unwrap();
+    assert!(raro.repo.is_none());
+    assert!(parsear_origen(&origen(r#"{"repo":"x"}"#)).is_err());
+}
+
+#[test]
+fn un_posible_no_pisa_un_origen_ya_resuelto_ni_un_excluido() {
+    let (mut r, id) = serena();
+    let posible = || {
+        Ok(Posible {
+            repo: Some("https://github.com/otro/repo".into()),
+            motivo: "x".into(),
+            descartado: false,
+        })
+    };
+    aplicar_posible(&mut r, id, posible());
+    assert!(r.item(id).unwrap().posible.is_none());
+    let x = r.item_mut(id).unwrap();
+    x.fuente = None;
+    x.estado = Estado::Excluida;
+    aplicar_posible(&mut r, id, posible());
+    assert!(r.item(id).unwrap().posible.is_none());
+}

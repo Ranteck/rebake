@@ -66,6 +66,16 @@ pub fn texto_checklist(r: &Recetario) -> String {
             let _ = writeln!(s, "  [ ] {id}: {}{nota}", p.cmd);
         }
     }
+    let servidores = checklist::servidores_mcp(r);
+    if !servidores.is_empty() {
+        s.push_str("\nServidores MCP (rebake no los instala)\n");
+        for (titulo, pasos) in servidores {
+            let _ = writeln!(s, "  [ ] {titulo}");
+            for p in pasos {
+                let _ = writeln!(s, "        {p}");
+            }
+        }
+    }
     if !r.checklist.ajustes.is_empty() {
         s.push_str("\nAjustes\n");
         for a in &r.checklist.ajustes {
