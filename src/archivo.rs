@@ -16,7 +16,19 @@ pub fn leer(ruta: &Path) -> Result<Recetario> {
 pub fn parsear(texto: &str, nombre: &str) -> Result<Recetario> {
     let r: Recetario = toml::from_str(texto).map_err(|e| {
         let (linea, columna) = e.span().map(|s| posicion(texto, s.start)).unwrap_or((1, 1));
-        anyhow!("{nombre}:{linea}:{columna}: {}", e.message())
+        // El modelo es estricto a propósito: lo desconocido se rechaza. Si viene de un rebake
+        // más nuevo, la pantalla no llega a abrir para ofrecer `u`: se dice cómo actualizar.
+        let mensaje = e.message();
+        let desconocido = mensaje.starts_with("unknown variant") || mensaje.starts_with("unknown field");
+        let ayuda = if desconocido {
+            format!(
+                "\nsi lo escribió un rebake más nuevo, actualizá con: curl -fsSL {}/latest/download/install.sh | sh",
+                crate::actualizar::base()
+            )
+        } else {
+            String::new()
+        };
+        anyhow!("{nombre}:{linea}:{columna}: {mensaje}{ayuda}")
     })?;
     validar(&r).with_context(|| format!("{nombre} no es válido"))?;
     Ok(r)

@@ -144,3 +144,23 @@ fn crear_privado_es_0600_y_no_sigue_symlinks() {
     assert!(archivo::crear_privado(&trampa, "malicioso").is_err());
     assert_eq!(fs::read_to_string(&victima).unwrap(), "original");
 }
+
+#[test]
+fn algo_desconocido_dice_como_actualizar_y_lo_mal_escrito_no() {
+    let nuevo =
+        "version = 1\n\n[[item]]\nid = \"x:y\"\ntipo = \"futuro\"\nestado = \"pendiente\"\n";
+    let err = format!(
+        "{:#}",
+        archivo::parsear(nuevo, "cookbook.toml").unwrap_err()
+    );
+    assert!(err.starts_with("cookbook.toml:5:"), "{err}");
+    assert!(err.contains("futuro"), "{err}");
+    assert!(
+        err.contains("si lo escribió un rebake más nuevo, actualizá con: curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | sh"),
+        "{err}"
+    );
+    // Un error de sintaxis no es de otra versión: no se sugiere actualizar.
+    let roto = "version = 1\n[[item]\n";
+    let err = format!("{:#}", archivo::parsear(roto, "cookbook.toml").unwrap_err());
+    assert!(!err.contains("actualizá"), "{err}");
+}
