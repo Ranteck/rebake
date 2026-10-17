@@ -18,9 +18,12 @@ plugins cuyo comando rebake ya conoce: una corrida de Claude por cada una es cuo
 4. La receta directa dice de dónde salió y trae su comprobación, para que `c` diga si ya está
    instalada.
 5. Lo que investiga Claude corre con Sonnet, cambiable con `REBAKE_MODELO`.
-6. Sin origen conocido, la pantalla pide el link. Si Denis no lo sabe, puede pedir que lo busque
-   en la web, y la receta dice que su origen fue buscado. Sin link ni búsqueda no se investiga y
-   no se instala.
+6. Sin origen conocido, investigar primero busca en la web de dónde podría venir y lo muestra
+   como "posible origen", con el motivo, para que Denis lo acepte o no; también al investigar
+   todas, y entonces cada una espera su respuesta en el panel de la derecha. Mientras busca,
+   la pantalla lo indica con un spinner. Aceptado, la receta dice que su origen fue buscado.
+   Si no se encuentra o Denis lo rechaza, puede pegar el link. Sin origen aceptado no se
+   investiga y no se instala.
 
 ## Usuarios y sistemas afectados
 Denis y su cookbook; el paso "investigar" de rebake; Claude Code y skills.sh.
@@ -44,3 +47,7 @@ Ninguna.
   lotes. Decisión de Denis tras probar tres modelos: dos inventaron el repo de la statusline.
 - 2026-10-14: aviso si falta `npx` o el marketplace (punto 1) y búsqueda web a pedido cuando no
   se sabe el link (punto 6). Decisión de Denis.
+- 2026-10-17: sin origen, investigar (`i` y también `t`) busca primero un "posible origen" y
+  pide aceptarlo o no en el panel de la derecha, con spinner mientras busca (punto 6). Antes se
+  pedía el link primero. Lo pidió Denis: "que busque qué podría ser y te muestre un posible".
+  La confirmación mantiene la decisión del 2026-10-14: ningún repo adivinado entra sin su OK.

@@ -67,3 +67,25 @@ Workers de orquestar en worktrees desde la rama; yo reviso, commiteo e integro.
   (REQ-1 a REQ-3, REQ-10).
 - En la pantalla real: `i` sobre la statusline pide el link, Esc no cambia nada, Enter vacío
   investiga (REQ-8, REQ-9), y `c` marca "instalada" los plugins que ya tenés (REQ-6).
+
+## Cambios 2026-10-17 (aprobado por Denis): posible origen (REQ-11 a REQ-16)
+Sale junto con `servidores-mcp` en v0.8.0, como T4 de ese plan.
+- **Archivos:** `src/modelo.rs` (campo `posible = { repo, motivo }` del ítem, opcional: un
+  cookbook viejo se lee igual), `src/investigador.rs` (búsqueda corta: prompt y esquema JSON
+  propios, `WebSearch`/`WebFetch` sin Bash ni escritura, mismo filtro de secretos que hoy;
+  el repo pasa por `normalizar_url` y `es_repo_seguro`), `src/acciones.rs` (aceptar y
+  descartar), `src/tui/app.rs` (`i` y `t` lanzan la búsqueda; Enter y `n` sobre un posible),
+  `src/tui/mod.rs` (canal de resultados como el de investigar; cuadro a cuadro del spinner con
+  el `poll` de 100 ms que ya existe), `src/tui/vista.rs` (spinner en la fila y en el panel;
+  panel con el posible y sus teclas), `README.md`.
+- **Tests:** `tests/investigador.rs`: con un `claude` falso, la búsqueda guarda el posible y no
+  escribe receta (REQ-11); un repo inseguro devuelto por Claude se descarta (REQ-11).
+  `tests/acciones.rs`: aceptar mueve el posible a la fuente con vía búsqueda y lo borra;
+  descartar lo borra (REQ-13, REQ-14). `tests/tui.rs`: `i` sin origen devuelve el efecto de
+  buscar (REQ-11); `t` incluye los sin origen (REQ-12); el panel muestra posible, motivo y
+  teclas (REQ-13); Enter sobre un posible investiga, `n` no (REQ-14); con una búsqueda en
+  curso la fila y el panel cambian de cuadro entre dos dibujos (REQ-15); un ítem con posible
+  no se instala ni se investiga solo (REQ-14). `tests/cli.rs`: `rebake investigar` sin ids
+  no busca orígenes (REQ-16). `tests/archivo.rs`: el posible sobrevive guardar y leer (REQ-13).
+- **Riesgo:** la búsqueda corta usa la web y puede tardar; corre en el mismo pool en paralelo
+  que investigar, así que no bloquea la pantalla.

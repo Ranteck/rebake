@@ -65,3 +65,27 @@ Investigar escribe, sin `claude -p`, un paso por perfil (Origen de REQ-1 a REQ-3
 - 2026-10-14 (v0.6.2): REQ-10 también se cumple en la cabecera, que muestra fijo
   "○ N pendientes (M sin origen)"; el aviso de `I` queda corto y ya no se repite al cerrar el
   lote. Aprobado.
+- 2026-10-17 (aprobado por Denis): "posible origen". REQ-8 y REQ-10 quedan reemplazados por:
+  - REQ-11 MUST: `i` sobre un ítem sin origen no pide el link: lanza una búsqueda corta en la
+    web (`claude -p`, solo lectura) que devuelve un repo y el motivo, sin receta. Origen:
+    Resultado 6, "primero busca en la web de dónde podría venir".
+  - REQ-12 MUST: `t` hace lo mismo para todos los pendientes sin origen, además de investigar
+    los que tienen origen. Origen: Resultado 6, "también al investigar todas".
+  - REQ-13 MUST: el posible origen queda guardado en el cookbook hasta que Denis responda, y el
+    panel de la derecha lo muestra con su motivo y las teclas: Enter lo acepta, `n` lo descarta,
+    `i` pide otro link. Origen: Resultado 6, "lo acepte o no… en el panel de la derecha".
+  - REQ-14 MUST: aceptado, pasa a ser el origen ("origen buscado en la web", REQ-9) y sigue el
+    camino normal: receta directa si corresponde, si no `claude -p`. Descartado o no
+    encontrado, el panel ofrece pegar el link. Nunca se investiga ni instala con un posible sin
+    aceptar. Origen: Resultado 6, "Sin origen aceptado no se investiga y no se instala".
+  - REQ-15 MUST: mientras busca, la fila y el panel muestran un spinner animado y "buscando de
+    dónde viene…". Origen: Resultado 6, "lo indica con un spinner".
+  - REQ-16 SHOULD: `rebake investigar` sin ids sigue salteando los sin origen, como hoy (la
+    confirmación solo existe en la pantalla). Origen: Resultado 6, "Denis lo acepte o no".
+  - Escenarios: GIVEN `mcp:serena` sin origen — WHEN `i` — THEN spinner, y luego el panel dice
+    "Posible origen: https://github.com/oraios/serena (motivo) · Enter acepta · n descarta ·
+    i otro link". GIVEN ese posible — WHEN Enter — THEN se investiga desde ese repo. GIVEN ese
+    posible — WHEN `n` — THEN queda sin origen y no se investigó. GIVEN 3 sin origen — WHEN `t`
+    — THEN las 3 muestran spinner y después su posible; ninguna se investiga sola. GIVEN un
+    posible sin responder — WHEN salgo y vuelvo a abrir — THEN sigue ahí.
+  - Concern: `t` con muchos sin origen gasta una búsqueda por cada uno.
