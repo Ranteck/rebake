@@ -139,9 +139,28 @@ pub fn servidores_mcp(r: &Recetario) -> Vec<(String, Vec<String>)> {
             let pasos = if i.pasos.is_empty() {
                 i.pista.iter().cloned().collect()
             } else {
-                i.pasos.iter().map(|p| p.cmd.clone()).collect()
+                i.pasos
+                    .iter()
+                    .flat_map(|p| {
+                        if !p.por_perfil || i.perfiles.is_empty() {
+                            return vec![p.cmd.clone()];
+                        }
+                        i.perfiles.iter().map(|n| en_perfil(r, n, &p.cmd)).collect()
+                    })
+                    .collect()
             };
             (format!("revisá {nombre} (servidor MCP)"), pasos)
         })
         .collect()
+}
+
+/// El perfil por defecto va sin la variable: con ella Claude Code leería `~/.claude/.claude.json`
+/// en vez de `~/.claude.json`. El `export` cubre también lo que viene después de un `||`.
+fn en_perfil(r: &Recetario, nombre: &str, cmd: &str) -> String {
+    match r.perfiles.iter().find(|p| p.nombre == nombre) {
+        Some(p) if p.dir != "~/.claude" => {
+            format!("[{nombre}] (export CLAUDE_CONFIG_DIR={}; {cmd})", p.dir)
+        }
+        _ => format!("[{nombre}] {cmd}"),
+    }
 }

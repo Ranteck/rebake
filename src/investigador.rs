@@ -154,7 +154,7 @@ pub fn trabajo_para(r: &Recetario, item: &Item, home: &Path) -> Trabajo {
     if item.tipo == Tipo::Mcp {
         let nombre = item.id.trim_start_matches("mcp:");
         prompt.push_str(&format!(
-            "\n9. Es un servidor MCP: los pasos instalan el programa que lo sirve y el último lo registra en Claude Code con `claude mcp add --scope user {nombre} -- <el comando de la pista>` (o `--transport http {nombre} <url>` si la pista es una URL). Todos los pasos van con modo \"manual\": los corre el usuario."
+            "\n9. Es un servidor MCP: los pasos instalan el programa que lo sirve y el último lo registra en Claude Code con `claude mcp add --scope user {nombre} -- <el comando de la pista>` (o `--transport http {nombre} <url>` si la pista es una URL). Todos los pasos van con modo \"manual\": los corre el usuario. No pongas CLAUDE_CONFIG_DIR en los comandos ni en las notas: rebake arma la línea de cada perfil."
         ));
     }
     Trabajo {

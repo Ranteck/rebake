@@ -521,6 +521,7 @@ fn un_servidor_mcp_va_a_claude_y_sus_pasos_quedan_manuales() {
     assert!(t.directa.is_none());
     assert!(t.prompt.contains("servidor MCP: serena start-mcp-server"));
     assert!(t.prompt.contains("claude mcp add --scope user serena"));
+    assert!(t.prompt.contains("No pongas CLAUDE_CONFIG_DIR"));
 
     let h = HomeFalso::nuevo();
     let claude = claude_falso(&h, VALIDA);

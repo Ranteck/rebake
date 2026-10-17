@@ -173,3 +173,45 @@ fn los_servidores_mcp_aprobados_van_a_pendientes() {
     assert!(texto.contains("uv tool install -p 3.13 serena-agent"));
     assert!(!texto.contains("otro"));
 }
+
+#[test]
+fn el_registro_de_un_servidor_mcp_sale_una_vez_por_perfil() {
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        Perfil {
+            nombre: "claude".into(),
+            dir: "~/.claude".into(),
+        },
+        Perfil {
+            nombre: "personal".into(),
+            dir: "~/.claude-personal".into(),
+        },
+    ];
+    let paso = |cmd: &str, por_perfil| Paso {
+        cmd: cmd.into(),
+        modo: Modo::Manual,
+        por_perfil,
+        cita: None,
+        nota: None,
+    };
+    let mut serena = Item::nuevo("mcp:serena", Tipo::Mcp);
+    serena.estado = Estado::Aprobada;
+    serena.perfiles = vec!["claude".into(), "personal".into()];
+    serena.pasos = vec![
+        paso("uv tool install serena-agent", false),
+        paso(
+            "claude mcp get serena || claude mcp add --scope user serena -- serena",
+            true,
+        ),
+    ];
+    r.items = vec![serena];
+    assert_eq!(
+        checklist::servidores_mcp(&r)[0].1,
+        [
+            "uv tool install serena-agent",
+            // Sin la variable: así Claude Code usa `~/.claude.json`.
+            "[claude] claude mcp get serena || claude mcp add --scope user serena -- serena",
+            "[personal] (export CLAUDE_CONFIG_DIR=~/.claude-personal; claude mcp get serena || claude mcp add --scope user serena -- serena)",
+        ]
+    );
+}
