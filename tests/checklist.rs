@@ -65,7 +65,7 @@ fn titulos_sin_imports() {
 }
 
 #[test]
-fn logins_y_pasos_manuales() {
+fn logins_y_pasos_a_mano() {
     let mut r = Recetario::nuevo();
     r.perfiles = vec![
         Perfil {
@@ -99,10 +99,66 @@ fn logins_y_pasos_manuales() {
             .any(|l| l.contains("CLAUDE_CONFIG_DIR=~/.claude-personal"))
     );
     assert_eq!(logins.len(), 3);
+    // Solo la aprobada; un comando de Claude sin perfiles dice cómo abrirlo.
     assert_eq!(
-        checklist::pasos_manuales(&r),
-        vec![("plugin:codex@openai-codex".to_string(), manual)]
+        checklist::a_mano(&r),
+        vec![(
+            "revisá codex@openai-codex (plugin): instalada, pero falta esto".to_string(),
+            vec!["abrí `claude` y corré /codex:setup".to_string()]
+        )]
     );
+}
+
+#[test]
+fn un_comando_de_claude_por_perfil_dice_como_abrir_cada_perfil() {
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        Perfil {
+            nombre: "claude".into(),
+            dir: "~/.claude".into(),
+        },
+        Perfil {
+            nombre: "personal".into(),
+            dir: "~/.claude-personal".into(),
+        },
+    ];
+    let mut ge = Item::nuevo("skill:graph-engineer", Tipo::Skill);
+    ge.estado = Estado::Aprobada;
+    ge.perfiles = vec!["claude".into(), "personal".into()];
+    ge.pasos = vec![
+        Paso {
+            cmd: "npx skills add x".into(),
+            modo: Modo::Auto,
+            por_perfil: true,
+            cita: None,
+            nota: None,
+        },
+        Paso {
+            cmd: "/codex:setup".into(),
+            modo: Modo::Manual,
+            por_perfil: true,
+            cita: None,
+            nota: None,
+        },
+    ];
+    r.items = vec![ge];
+    assert_eq!(
+        checklist::a_mano(&r),
+        vec![(
+            "revisá graph-engineer (skill): instalada, pero falta esto".to_string(),
+            vec![
+                "[claude] abrí `claude` y corré /codex:setup".to_string(),
+                "[personal] abrí `CLAUDE_CONFIG_DIR=~/.claude-personal claude` y corré /codex:setup"
+                    .to_string(),
+            ]
+        )]
+    );
+    let texto = rebake::servicio::texto_checklist(&r);
+    assert!(
+        texto.contains("Pasos a mano (rebake no los corre)"),
+        "{texto}"
+    );
+    assert!(!texto.contains("npx skills add"), "{texto}");
 }
 
 #[test]
@@ -153,7 +209,7 @@ fn los_servidores_mcp_aprobados_van_a_pendientes() {
     r.items = vec![con_pasos, sin_pasos, pendiente];
 
     assert_eq!(
-        checklist::servidores_mcp(&r),
+        checklist::a_mano(&r),
         vec![
             (
                 "revisá serena (servidor MCP)".to_string(),
@@ -165,10 +221,9 @@ fn los_servidores_mcp_aprobados_van_a_pendientes() {
             ),
         ]
     );
-    // No se repiten como pasos manuales sueltos.
-    assert!(checklist::pasos_manuales(&r).is_empty());
     let texto = rebake::servicio::texto_checklist(&r);
-    assert!(texto.contains("Servidores MCP (rebake no los instala)"));
+    assert!(texto.contains("Pasos a mano (rebake no los corre)"));
+    assert_eq!(texto.matches("uv tool install").count(), 1, "{texto}");
     assert!(texto.contains("[ ] revisá serena (servidor MCP)"));
     assert!(texto.contains("uv tool install -p 3.13 serena-agent"));
     assert!(!texto.contains("otro"));
@@ -206,7 +261,7 @@ fn el_registro_de_un_servidor_mcp_sale_una_vez_por_perfil() {
     ];
     r.items = vec![serena];
     assert_eq!(
-        checklist::servidores_mcp(&r)[0].1,
+        checklist::a_mano(&r)[0].1,
         [
             "uv tool install serena-agent",
             // Sin la variable: así Claude Code usa `~/.claude.json`.

@@ -7,7 +7,7 @@ use rebake::investigador::{self, aplicar, en_paralelo};
 use rebake::modelo::Tipo;
 use rebake::secretos::sin_credenciales_url;
 use rebake::servicio::Novedad;
-use rebake::{acciones, archivo, rutas, servicio, sincro};
+use rebake::{acciones, archivo, checklist, rutas, servicio, sincro};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -370,9 +370,14 @@ fn instalar(
     });
     let mut todo_bien = true;
     for (id, res) in &resultados {
-        let mcp = r.item(id).is_some_and(|i| i.tipo == Tipo::Mcp);
+        let item = r.item(id);
         let texto = match res {
-            Resultado::Ok if mcp => "a mano: mirá la checklist".to_string(),
+            Resultado::Ok if item.is_some_and(|i| i.tipo == Tipo::Mcp) => {
+                "a mano: mirá la checklist".to_string()
+            }
+            Resultado::Ok if item.is_some_and(checklist::tiene_pasos_a_mano) => {
+                "instalado; faltan pasos a mano (checklist)".to_string()
+            }
             Resultado::Ok => "instalado".to_string(),
             Resultado::Salteado => "salteado (ya estaba)".to_string(),
             Resultado::Simulado => "simulado".to_string(),

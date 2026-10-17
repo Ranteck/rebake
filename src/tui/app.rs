@@ -598,12 +598,7 @@ impl App {
     pub fn lineas_checklist(&self) -> Vec<String> {
         let r = &self.recetario;
         let mut l: Vec<String> = checklist::logins(r);
-        l.extend(
-            checklist::pasos_manuales(r)
-                .into_iter()
-                .map(|(id, p)| format!("{id}: {}", p.cmd)),
-        );
-        for (titulo, pasos) in checklist::servidores_mcp(r) {
+        for (titulo, pasos) in checklist::a_mano(r) {
             l.push(titulo);
             l.extend(pasos.into_iter().map(|p| format!("    {p}")));
         }
@@ -691,9 +686,24 @@ impl App {
         let salteadas = contar(|r| matches!(r, Resultado::Salteado));
         let error = contar(|r| matches!(r, Resultado::Fallo(_)));
         let bloqueadas = contar(|r| matches!(r, Resultado::Bloqueado(_)));
+        let a_mano = self
+            .instalacion
+            .iter()
+            .filter(|(id, r)| {
+                matches!(r, Some(Resultado::Ok | Resultado::Salteado))
+                    && self
+                        .recetario
+                        .item(id)
+                        .is_some_and(checklist::tiene_pasos_a_mano)
+            })
+            .count();
+        let a_mano = match a_mano {
+            0 => String::new(),
+            n => format!(" · {n} con pasos a mano: mirá Pendientes"),
+        };
         self.avisar(&format!(
             "Instalación terminada: {ok} instaladas, {salteadas} salteadas, {error} con error, \
-             {bloqueadas} bloqueadas · detalle en la pestaña 3 y en \
+             {bloqueadas} bloqueadas{a_mano} · detalle en la pestaña 3 y en \
              ~/.local/state/rebake/ultima-instalacion.log"
         ));
         self.pestana = Pestana::Checklist;

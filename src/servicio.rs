@@ -58,18 +58,10 @@ pub fn texto_checklist(r: &Recetario) -> String {
     for l in checklist::logins(r) {
         let _ = writeln!(s, "  [ ] {l}");
     }
-    let manuales = checklist::pasos_manuales(r);
-    if !manuales.is_empty() {
-        s.push_str("\nPasos manuales\n");
-        for (id, p) in manuales {
-            let nota = p.nota.map(|n| format!(" ({n})")).unwrap_or_default();
-            let _ = writeln!(s, "  [ ] {id}: {}{nota}", p.cmd);
-        }
-    }
-    let servidores = checklist::servidores_mcp(r);
-    if !servidores.is_empty() {
-        s.push_str("\nServidores MCP (rebake no los instala)\n");
-        for (titulo, pasos) in servidores {
+    let a_mano = checklist::a_mano(r);
+    if !a_mano.is_empty() {
+        s.push_str("\nPasos a mano (rebake no los corre)\n");
+        for (titulo, pasos) in a_mano {
             let _ = writeln!(s, "  [ ] {titulo}");
             for p in pasos {
                 let _ = writeln!(s, "        {p}");

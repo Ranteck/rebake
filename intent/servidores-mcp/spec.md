@@ -70,3 +70,13 @@ Estado: aceptado
   archivo equivocado mezclaría perfiles.
 - La investigación puede devolver pasos con `curl … | sh`; como son manuales, los corre Denis
   después de leerlos.
+
+## Cambios
+- 2026-10-17 (v0.8.1): los pasos por perfil salen una línea por perfil, el perfil por defecto
+  sin `CLAUDE_CONFIG_DIR` (con ella Claude Code lee `~/.claude/.claude.json`). Bug de REQ-6.
+- 2026-10-17 (v0.8.2): REQ-6 y REQ-7 valen para toda receta aprobada con pasos manuales, no
+  solo los servidores MCP (p. ej. `/codex:setup` de graph-engineer). Pendientes las junta en
+  "Pasos a mano (rebake no los corre)", con "revisá X" y una línea por perfil; un paso que
+  empieza con `/` dice cómo abrir Claude en ese perfil. El resumen de la instalación cuenta
+  cuántas dejaron pasos a mano. Pedido de Denis: "podrían incluir con un aviso o una
+  revisión, similar al caso de serena". Aprobado.

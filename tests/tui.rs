@@ -1155,3 +1155,41 @@ fn mientras_busca_un_spinner_se_mueve_en_la_fila_y_el_panel() {
     assert!(app.buscando.is_empty());
     assert!(pantalla(&app).contains("Posible origen: https://github.com/oraios/serena"));
 }
+
+#[test]
+fn el_resumen_avisa_las_que_dejaron_pasos_a_mano() {
+    use rebake::instalador::{Evento, Resultado};
+    let mut r = recetario();
+    r.item_mut("plugin:codex@openai-codex")
+        .unwrap()
+        .pasos
+        .push(Paso {
+            cmd: "/codex:setup".into(),
+            modo: Modo::Manual,
+            por_perfil: true,
+            cita: None,
+            nota: None,
+        });
+    let mut app = App::nueva(r);
+    app.instalacion = vec![
+        ("claude".into(), None),
+        ("plugin:codex@openai-codex".into(), None),
+    ];
+    app.instalando = true;
+    app.evento_instalacion(Evento::Fin("claude".into(), Resultado::Ok));
+    app.evento_instalacion(Evento::Fin(
+        "plugin:codex@openai-codex".into(),
+        Resultado::Ok,
+    ));
+    let m = app.mensaje.clone().unwrap();
+    assert!(m.contains("1 con pasos a mano: mirá Pendientes"), "{m}");
+    let p = pantalla(&app);
+    assert!(
+        p.contains("revisá codex@openai-codex (plugin): instalada, pero falta esto"),
+        "{p}"
+    );
+    assert!(
+        p.contains("[laburo] abrí `claude` y corré /codex:setup"),
+        "{p}"
+    );
+}

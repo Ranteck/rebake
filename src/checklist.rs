@@ -1,5 +1,7 @@
 use crate::escaner::{Entorno, Escaneo, leer_json};
-use crate::modelo::{Ajuste, Estado, Modo, OCULTO, Paso, Recetario, Tipo, TituloClaudeMd};
+use crate::modelo::{
+    Ajuste, Estado, Item, Modo, OCULTO, Paso, Perfil, Recetario, Tipo, TituloClaudeMd,
+};
 use crate::rutas::contraer;
 use crate::secretos;
 use serde_json::Value;
@@ -101,57 +103,79 @@ pub fn logins(r: &Recetario) -> Vec<String> {
     let mut salida: Vec<String> = r
         .perfiles
         .iter()
-        .map(|p| {
-            if p.dir == "~/.claude" {
-                format!("Perfil {}: abrí `claude` y corré /login", p.nombre)
-            } else {
-                format!(
-                    "Perfil {}: abrí `CLAUDE_CONFIG_DIR={} claude` y corré /login",
-                    p.nombre, p.dir
-                )
-            }
-        })
+        .map(|p| format!("Perfil {}: abrí {} y corré /login", p.nombre, abrir(p)))
         .collect();
     salida.push("GitHub: `gh auth login`".into());
     salida
 }
 
-pub fn pasos_manuales(r: &Recetario) -> Vec<(String, Paso)> {
+/// Cómo abrir Claude Code en un perfil; el por defecto sin la variable (ver `en_perfil`).
+fn abrir(p: &Perfil) -> String {
+    if p.dir == "~/.claude" {
+        "`claude`".into()
+    } else {
+        format!("`CLAUDE_CONFIG_DIR={} claude`", p.dir)
+    }
+}
+
+/// Lo que rebake instala pero no termina solo: un servidor MCP o una receta con pasos manuales.
+pub fn tiene_pasos_a_mano(i: &Item) -> bool {
+    i.tipo == Tipo::Mcp || i.pasos.iter().any(|p| p.modo == Modo::Manual)
+}
+
+/// Recetas aprobadas que dejan algo a mano: "revisá X" y debajo cada paso, una línea por perfil.
+pub fn a_mano(r: &Recetario) -> Vec<(String, Vec<String>)> {
     r.items
         .iter()
-        .filter(|i| i.estado == Estado::Aprobada && i.tipo != Tipo::Mcp)
-        .flat_map(|i| {
-            i.pasos
+        .filter(|i| i.estado == Estado::Aprobada && tiene_pasos_a_mano(i))
+        .map(|i| {
+            let nombre = i.id.split_once(':').map_or(i.id.as_str(), |(_, n)| n);
+            let mcp = i.tipo == Tipo::Mcp;
+            let titulo = if mcp {
+                format!("revisá {nombre} (servidor MCP)")
+            } else {
+                format!(
+                    "revisá {nombre} ({}): instalada, pero falta esto",
+                    format!("{:?}", i.tipo).to_lowercase()
+                )
+            };
+            let pasos: Vec<String> = i
+                .pasos
                 .iter()
-                .filter(|p| p.modo == Modo::Manual)
-                .map(|p| (i.id.clone(), p.clone()))
+                .filter(|p| mcp || p.modo == Modo::Manual)
+                .flat_map(|p| lineas_de(r, i, p))
+                .collect();
+            // Un servidor sin receta muestra al menos el comando que tenía en esta PC.
+            let pasos = if pasos.is_empty() {
+                i.pista.iter().cloned().collect()
+            } else {
+                pasos
+            };
+            (titulo, pasos)
         })
         .collect()
 }
 
-/// Servidores MCP aprobados: "revisá X" y debajo sus pasos, o el comando detectado si no tiene.
-pub fn servidores_mcp(r: &Recetario) -> Vec<(String, Vec<String>)> {
-    r.items
-        .iter()
-        .filter(|i| i.estado == Estado::Aprobada && i.tipo == Tipo::Mcp)
-        .map(|i| {
-            let nombre = i.id.trim_start_matches("mcp:");
-            let pasos = if i.pasos.is_empty() {
-                i.pista.iter().cloned().collect()
-            } else {
-                i.pasos
-                    .iter()
-                    .flat_map(|p| {
-                        if !p.por_perfil || i.perfiles.is_empty() {
-                            return vec![p.cmd.clone()];
-                        }
-                        i.perfiles.iter().map(|n| en_perfil(r, n, &p.cmd)).collect()
-                    })
-                    .collect()
-            };
-            (format!("revisá {nombre} (servidor MCP)"), pasos)
-        })
-        .collect()
+fn lineas_de(r: &Recetario, i: &Item, p: &Paso) -> Vec<String> {
+    // `/x` existe solo dentro de Claude: pegarlo en la terminal no hace nada.
+    if p.cmd.starts_with('/') {
+        let perfiles: Vec<&Perfil> = i
+            .perfiles
+            .iter()
+            .filter_map(|n| r.perfiles.iter().find(|q| &q.nombre == n))
+            .collect();
+        if perfiles.is_empty() {
+            return vec![format!("abrí `claude` y corré {}", p.cmd)];
+        }
+        return perfiles
+            .iter()
+            .map(|q| format!("[{}] abrí {} y corré {}", q.nombre, abrir(q), p.cmd))
+            .collect();
+    }
+    if !p.por_perfil || i.perfiles.is_empty() {
+        return vec![p.cmd.clone()];
+    }
+    i.perfiles.iter().map(|n| en_perfil(r, n, &p.cmd)).collect()
 }
 
 /// El perfil por defecto va sin la variable: con ella Claude Code leería `~/.claude/.claude.json`
