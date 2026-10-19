@@ -1,0 +1,470 @@
+{
+  "Cargo.toml": {
+    "mtime": 1792277018.8101974,
+    "seen": 1792356566.322468,
+    "ast_hash": "24831598344d434bd040911d6fabf375",
+    "semantic_hash": "24831598344d434bd040911d6fabf375"
+  },
+  "install.sh": {
+    "mtime": 1791505853.2349253,
+    "seen": 1792356566.3224711,
+    "ast_hash": "8f39887b9479b1a3a3ee42aa8200e57e",
+    "semantic_hash": "8f39887b9479b1a3a3ee42aa8200e57e"
+  },
+  "src/acciones.rs": {
+    "mtime": 1792270495.3236685,
+    "seen": 1792356566.322473,
+    "ast_hash": "1f710f794235c426b6af33b0c067aea4",
+    "semantic_hash": "1f710f794235c426b6af33b0c067aea4"
+  },
+  "src/actualizar.rs": {
+    "mtime": 1791997143.9301183,
+    "seen": 1792356566.322474,
+    "ast_hash": "0bfcfcb02a2429a81c9eaaa57f1bcf6f",
+    "semantic_hash": "0bfcfcb02a2429a81c9eaaa57f1bcf6f"
+  },
+  "src/archivo.rs": {
+    "mtime": 1792277018.8102474,
+    "seen": 1792356566.3224747,
+    "ast_hash": "1316b0b60b83728c294a3d2c20bcbc53",
+    "semantic_hash": "1316b0b60b83728c294a3d2c20bcbc53"
+  },
+  "src/checklist.rs": {
+    "mtime": 1792275663.4630954,
+    "seen": 1792356566.3224754,
+    "ast_hash": "524a49eb7d982a32c6b31dd9edf6fb6f",
+    "semantic_hash": "524a49eb7d982a32c6b31dd9edf6fb6f"
+  },
+  "src/escaner/archivos.rs": {
+    "mtime": 1792005072.0158129,
+    "seen": 1792356566.3224764,
+    "ast_hash": "be8da8c25f520e2013167586b2478b6b",
+    "semantic_hash": "be8da8c25f520e2013167586b2478b6b"
+  },
+  "src/escaner/comandos.rs": {
+    "mtime": 1792270495.3236685,
+    "seen": 1792356566.3224769,
+    "ast_hash": "fde4be5ef60038f714999e5b3f13bf89",
+    "semantic_hash": "fde4be5ef60038f714999e5b3f13bf89"
+  },
+  "src/escaner/git.rs": {
+    "mtime": 1791421070.6990685,
+    "seen": 1792356566.3224776,
+    "ast_hash": "c4133046fd7e13a36ad78b86ce3731c2",
+    "semantic_hash": "c4133046fd7e13a36ad78b86ce3731c2"
+  },
+  "src/escaner/mcp.rs": {
+    "mtime": 1792270495.3236685,
+    "seen": 1792356566.322478,
+    "ast_hash": "fde3651dbfdf61be19ddf3edbbba8a64",
+    "semantic_hash": "fde3651dbfdf61be19ddf3edbbba8a64"
+  },
+  "src/escaner/mod.rs": {
+    "mtime": 1792270495.3236685,
+    "seen": 1792356566.3224785,
+    "ast_hash": "e30c0b30b89aabddf2143c0d4747ca98",
+    "semantic_hash": "e30c0b30b89aabddf2143c0d4747ca98"
+  },
+  "src/escaner/plugins.rs": {
+    "mtime": 1792005072.0159607,
+    "seen": 1792356566.3224792,
+    "ast_hash": "3c8cf409aacdd89146b593ac759b41f9",
+    "semantic_hash": "3c8cf409aacdd89146b593ac759b41f9"
+  },
+  "src/fusion.rs": {
+    "mtime": 1791421070.6990685,
+    "seen": 1792356566.3224802,
+    "ast_hash": "b78945c7c397e288c8db6e8389e56eb9",
+    "semantic_hash": "b78945c7c397e288c8db6e8389e56eb9"
+  },
+  "src/instalador.rs": {
+    "mtime": 1792270495.3236685,
+    "seen": 1792356566.3224807,
+    "ast_hash": "b7d5c4f55f9f05932eb69f9917cd6c78",
+    "semantic_hash": "b7d5c4f55f9f05932eb69f9917cd6c78"
+  },
+  "src/investigador.rs": {
+    "mtime": 1792275008.84052,
+    "seen": 1792356566.3224812,
+    "ast_hash": "cea9a4076538824666cedace0aee0a7d",
+    "semantic_hash": "cea9a4076538824666cedace0aee0a7d"
+  },
+  "src/lib.rs": {
+    "mtime": 1791995820.9759936,
+    "seen": 1792356566.3224816,
+    "ast_hash": "67fd8b0de534b0bccff586c9a240be90",
+    "semantic_hash": "67fd8b0de534b0bccff586c9a240be90"
+  },
+  "src/main.rs": {
+    "mtime": 1792275663.4630954,
+    "seen": 1792356566.3224823,
+    "ast_hash": "08b60e0d90c5a86c1594e12207b71b0c",
+    "semantic_hash": "08b60e0d90c5a86c1594e12207b71b0c"
+  },
+  "src/modelo.rs": {
+    "mtime": 1792270495.3241954,
+    "seen": 1792356566.322483,
+    "ast_hash": "98691c86c9e53817636391e01de32fb9",
+    "semantic_hash": "98691c86c9e53817636391e01de32fb9"
+  },
+  "src/perfiles.rs": {
+    "mtime": 1791421070.6990685,
+    "seen": 1792356566.3224838,
+    "ast_hash": "5e0b795e28aa77d4dad33ed15fae252f",
+    "semantic_hash": "5e0b795e28aa77d4dad33ed15fae252f"
+  },
+  "src/proceso.rs": {
+    "mtime": 1791421070.6990685,
+    "seen": 1792356566.3224843,
+    "ast_hash": "03b63bbb04aaf8238c0901cfa2ad6639",
+    "semantic_hash": "03b63bbb04aaf8238c0901cfa2ad6639"
+  },
+  "src/rutas.rs": {
+    "mtime": 1791506718.48673,
+    "seen": 1792356566.322485,
+    "ast_hash": "b82aa47e1daf6388f49160eed4d45ec0",
+    "semantic_hash": "b82aa47e1daf6388f49160eed4d45ec0"
+  },
+  "src/secretos.rs": {
+    "mtime": 1791925454.6125672,
+    "seen": 1792356566.3224854,
+    "ast_hash": "12f96125eac1d8f7727ffddf65286fee",
+    "semantic_hash": "12f96125eac1d8f7727ffddf65286fee"
+  },
+  "src/servicio.rs": {
+    "mtime": 1792275663.4630954,
+    "seen": 1792356566.3224862,
+    "ast_hash": "21fce983b4a7efced3cfe7b0bb2919d4",
+    "semantic_hash": "21fce983b4a7efced3cfe7b0bb2919d4"
+  },
+  "src/sincro.rs": {
+    "mtime": 1791944701.0634997,
+    "seen": 1792356566.322487,
+    "ast_hash": "787c4977a24ee04d9a224d6575605bb3",
+    "semantic_hash": "787c4977a24ee04d9a224d6575605bb3"
+  },
+  "src/tui/app.rs": {
+    "mtime": 1792276740.6251478,
+    "seen": 1792356566.3224876,
+    "ast_hash": "65e7b78518aeba13e0b736d0df039080",
+    "semantic_hash": "65e7b78518aeba13e0b736d0df039080"
+  },
+  "src/tui/mod.rs": {
+    "mtime": 1792270495.324398,
+    "seen": 1792356566.3224883,
+    "ast_hash": "fab9409b165f5b8f54cb1cfaa19c24a5",
+    "semantic_hash": "fab9409b165f5b8f54cb1cfaa19c24a5"
+  },
+  "src/tui/vista.rs": {
+    "mtime": 1792276740.6252215,
+    "seen": 1792356566.3224888,
+    "ast_hash": "d6782862080721149b0869462cf6931c",
+    "semantic_hash": "d6782862080721149b0869462cf6931c"
+  },
+  "tests/acciones.rs": {
+    "mtime": 1792270495.324398,
+    "seen": 1792356566.3224895,
+    "ast_hash": "f561a7c38697618905303da52b082476",
+    "semantic_hash": "f561a7c38697618905303da52b082476"
+  },
+  "tests/actualizar.rs": {
+    "mtime": 1791997143.9305165,
+    "seen": 1792356566.3224902,
+    "ast_hash": "a725fe9926ed87881b6c222f5b221c14",
+    "semantic_hash": "a725fe9926ed87881b6c222f5b221c14"
+  },
+  "tests/archivo.rs": {
+    "mtime": 1792277018.8102953,
+    "seen": 1792356566.3224907,
+    "ast_hash": "baf6ec66520eeace2a87aaf6744a080f",
+    "semantic_hash": "baf6ec66520eeace2a87aaf6744a080f"
+  },
+  "tests/checklist.rs": {
+    "mtime": 1792275663.4632962,
+    "seen": 1792356566.3224914,
+    "ast_hash": "422cea404f7a41e24dad3788bc736408",
+    "semantic_hash": "422cea404f7a41e24dad3788bc736408"
+  },
+  "tests/cli.rs": {
+    "mtime": 1791984953.675189,
+    "seen": 1792356566.322492,
+    "ast_hash": "a3133940b5d6b1065115823997b06af5",
+    "semantic_hash": "a3133940b5d6b1065115823997b06af5"
+  },
+  "tests/comun/mod.rs": {
+    "mtime": 1791427512.2710333,
+    "seen": 1792356566.3224926,
+    "ast_hash": "8eaabb171fa31b871d0eb35197b99059",
+    "semantic_hash": "8eaabb171fa31b871d0eb35197b99059"
+  },
+  "tests/escaner_archivos.rs": {
+    "mtime": 1792005072.0161097,
+    "seen": 1792356566.322493,
+    "ast_hash": "23c8d3e412a47a9e071666529df11247",
+    "semantic_hash": "23c8d3e412a47a9e071666529df11247"
+  },
+  "tests/escaner_comandos.rs": {
+    "mtime": 1792005072.0161097,
+    "seen": 1792356566.3224938,
+    "ast_hash": "82f9f6fe980f2af311da8d509eb68dc0",
+    "semantic_hash": "82f9f6fe980f2af311da8d509eb68dc0"
+  },
+  "tests/escaner_mcp.rs": {
+    "mtime": 1792270495.324398,
+    "seen": 1792356566.3224945,
+    "ast_hash": "5f0782f93d56d5c1b49ae7970fb43074",
+    "semantic_hash": "5f0782f93d56d5c1b49ae7970fb43074"
+  },
+  "tests/escaner_plugins.rs": {
+    "mtime": 1791427512.2695262,
+    "seen": 1792356566.322495,
+    "ast_hash": "322d10592d3351eecc355e02572539d1",
+    "semantic_hash": "322d10592d3351eecc355e02572539d1"
+  },
+  "tests/fusion.rs": {
+    "mtime": 1791427512.269743,
+    "seen": 1792356566.3224957,
+    "ast_hash": "f6d72595d08ef42d5fa21032fa906067",
+    "semantic_hash": "f6d72595d08ef42d5fa21032fa906067"
+  },
+  "tests/instalador.rs": {
+    "mtime": 1792270495.324398,
+    "seen": 1792356566.3224962,
+    "ast_hash": "bf7847417b2217aa7154ebe15e14838c",
+    "semantic_hash": "bf7847417b2217aa7154ebe15e14838c"
+  },
+  "tests/instalar_sh.rs": {
+    "mtime": 1791505878.4585412,
+    "seen": 1792356566.3224967,
+    "ast_hash": "74d4be64c8759bc891acaa7ba20bde8e",
+    "semantic_hash": "74d4be64c8759bc891acaa7ba20bde8e"
+  },
+  "tests/investigador.rs": {
+    "mtime": 1792275008.84052,
+    "seen": 1792356566.3224976,
+    "ast_hash": "991bf28f49f6e7a7b25795ccfe8dc081",
+    "semantic_hash": "991bf28f49f6e7a7b25795ccfe8dc081"
+  },
+  "tests/perfiles.rs": {
+    "mtime": 1791427512.270342,
+    "seen": 1792356566.322498,
+    "ast_hash": "f8618149b8639786fe9fb40689b28f21",
+    "semantic_hash": "f8618149b8639786fe9fb40689b28f21"
+  },
+  "tests/proceso.rs": {
+    "mtime": 1791427512.2704504,
+    "seen": 1792356566.3224986,
+    "ast_hash": "f7b2a1159fef9f8c2a48c26aaa06a3f3",
+    "semantic_hash": "f7b2a1159fef9f8c2a48c26aaa06a3f3"
+  },
+  "tests/repo.rs": {
+    "mtime": 1791427512.2705276,
+    "seen": 1792356566.3224998,
+    "ast_hash": "7e30c0269324c57b7330f75b1e502c3c",
+    "semantic_hash": "7e30c0269324c57b7330f75b1e502c3c"
+  },
+  "tests/secretos.rs": {
+    "mtime": 1791925454.612677,
+    "seen": 1792356566.3225005,
+    "ast_hash": "8a9afa8112202378785b2bedcb7a063b",
+    "semantic_hash": "8a9afa8112202378785b2bedcb7a063b"
+  },
+  "tests/servicio.rs": {
+    "mtime": 1791984953.675415,
+    "seen": 1792356566.322501,
+    "ast_hash": "874f8069730020c87ef371d367c05acd",
+    "semantic_hash": "874f8069730020c87ef371d367c05acd"
+  },
+  "tests/sincro.rs": {
+    "mtime": 1791984953.6755068,
+    "seen": 1792356566.3225014,
+    "ast_hash": "a487589bf962a40b2c857a1ced593214",
+    "semantic_hash": "a487589bf962a40b2c857a1ced593214"
+  },
+  "tests/tui.rs": {
+    "mtime": 1792276740.6252215,
+    "seen": 1792356566.3225021,
+    "ast_hash": "6848f2b27829fb28fb974aba695510fc",
+    "semantic_hash": "6848f2b27829fb28fb974aba695510fc"
+  },
+  "tests/tui_arranque.rs": {
+    "mtime": 1791944701.0638826,
+    "seen": 1792356566.3225026,
+    "ast_hash": "19cfd91c65b61a44090097c40b4d5d4f",
+    "semantic_hash": "19cfd91c65b61a44090097c40b4d5d4f"
+  },
+  ".github/workflows/release.yml": {
+    "mtime": 1791505878.5425398,
+    "seen": 1792356566.322503,
+    "ast_hash": "132fe9bad1d7b996542cdb376d014ff5",
+    "semantic_hash": "132fe9bad1d7b996542cdb376d014ff5"
+  },
+  ".serena/project.yml": {
+    "mtime": 1792268665.0713267,
+    "seen": 1792356566.322504,
+    "ast_hash": "838f47a0fde63e10204b95199d1a8241",
+    "semantic_hash": "838f47a0fde63e10204b95199d1a8241"
+  },
+  "README.md": {
+    "mtime": 1792276740.625089,
+    "seen": 1792356566.3225045,
+    "ast_hash": "9af050d927dccba386aefa6e24981f1a",
+    "semantic_hash": "9af050d927dccba386aefa6e24981f1a"
+  },
+  "intent/alternar/intent.md": {
+    "mtime": 1792269878.3278737,
+    "seen": 1792356566.3225052,
+    "ast_hash": "d2db29c9a7b77ae7137d0ff1f4a14eff",
+    "semantic_hash": "d2db29c9a7b77ae7137d0ff1f4a14eff"
+  },
+  "intent/alternar/plan.md": {
+    "mtime": 1792269878.3284674,
+    "seen": 1792356566.3225057,
+    "ast_hash": "f442e583e9246087a8e63f3dac721cac",
+    "semantic_hash": "f442e583e9246087a8e63f3dac721cac"
+  },
+  "intent/alternar/spec.md": {
+    "mtime": 1792269878.3284674,
+    "seen": 1792356566.3225064,
+    "ast_hash": "2bc3ce749370740d40ed299917cf5545",
+    "semantic_hash": "2bc3ce749370740d40ed299917cf5545"
+  },
+  "intent/auto-actualizar/intent.md": {
+    "mtime": 1791997143.9299872,
+    "seen": 1792356566.322507,
+    "ast_hash": "461aff9075f066f64190dce9cf8f732a",
+    "semantic_hash": "461aff9075f066f64190dce9cf8f732a"
+  },
+  "intent/auto-actualizar/plan.md": {
+    "mtime": 1791997143.9300663,
+    "seen": 1792356566.3225076,
+    "ast_hash": "66e2bc119d236dfae527df6173d0b9c8",
+    "semantic_hash": "66e2bc119d236dfae527df6173d0b9c8"
+  },
+  "intent/auto-actualizar/spec.md": {
+    "mtime": 1792008585.3349037,
+    "seen": 1792356566.3225083,
+    "ast_hash": "40cd0cda1a22ae19b288fc204f9dd2e4",
+    "semantic_hash": "40cd0cda1a22ae19b288fc204f9dd2e4"
+  },
+  "intent/cookbook-remoto/intent.md": {
+    "mtime": 1791553350.6614947,
+    "seen": 1792356566.3225088,
+    "ast_hash": "f233621332dae801b3f5b9691f715d46",
+    "semantic_hash": "f233621332dae801b3f5b9691f715d46"
+  },
+  "intent/cookbook-remoto/plan.md": {
+    "mtime": 1791553350.6615686,
+    "seen": 1792356566.3225095,
+    "ast_hash": "fbf67b7920ed0bc8405bb686efa646ac",
+    "semantic_hash": "fbf67b7920ed0bc8405bb686efa646ac"
+  },
+  "intent/cookbook-remoto/spec.md": {
+    "mtime": 1791925454.6124458,
+    "seen": 1792356566.32251,
+    "ast_hash": "ea09829393be0a314a7b3a5210f2cc59",
+    "semantic_hash": "ea09829393be0a314a7b3a5210f2cc59"
+  },
+  "intent/diferencias/intent.md": {
+    "mtime": 1792120321.4861274,
+    "seen": 1792356566.3225105,
+    "ast_hash": "b695ca00de6ce64adb4f22099e1905f8",
+    "semantic_hash": "b695ca00de6ce64adb4f22099e1905f8"
+  },
+  "intent/elegir-que-instalar/intent.md": {
+    "mtime": 1791944701.0630229,
+    "seen": 1792356566.3225114,
+    "ast_hash": "a0f662f96e6dd6253f9b487cb771bd19",
+    "semantic_hash": "a0f662f96e6dd6253f9b487cb771bd19"
+  },
+  "intent/elegir-que-instalar/plan.md": {
+    "mtime": 1791944701.0631568,
+    "seen": 1792356566.322512,
+    "ast_hash": "97e0693355941202dfe581f34d507d03",
+    "semantic_hash": "97e0693355941202dfe581f34d507d03"
+  },
+  "intent/elegir-que-instalar/spec.md": {
+    "mtime": 1791944701.0632076,
+    "seen": 1792356566.3225124,
+    "ast_hash": "d8057cb3ddf4a15c912c1e2e78aff0fc",
+    "semantic_hash": "d8057cb3ddf4a15c912c1e2e78aff0fc"
+  },
+  "intent/evidencia.md": {
+    "mtime": 1791421070.6986105,
+    "seen": 1792356566.322513,
+    "ast_hash": "78b6240f512180d0d8a0649f2b7061a3",
+    "semantic_hash": "78b6240f512180d0d8a0649f2b7061a3"
+  },
+  "intent/intent.md": {
+    "mtime": 1791984953.6736846,
+    "seen": 1792356566.3225138,
+    "ast_hash": "e016edd3875e1c0a2f5618f8288b53db",
+    "semantic_hash": "e016edd3875e1c0a2f5618f8288b53db"
+  },
+  "intent/plan.md": {
+    "mtime": 1791427536.3733387,
+    "seen": 1792356566.3225145,
+    "ast_hash": "05b69339772bcd44daec6c0ac62542f7",
+    "semantic_hash": "05b69339772bcd44daec6c0ac62542f7"
+  },
+  "intent/recetas-directas/intent.md": {
+    "mtime": 1792270495.323444,
+    "seen": 1792356566.3225152,
+    "ast_hash": "b14f92ade36e27070f09e6992154b4ba",
+    "semantic_hash": "b14f92ade36e27070f09e6992154b4ba"
+  },
+  "intent/recetas-directas/plan.md": {
+    "mtime": 1792270495.3235548,
+    "seen": 1792356566.3225157,
+    "ast_hash": "0d2127ff05540f2d615fca63dd71296e",
+    "semantic_hash": "0d2127ff05540f2d615fca63dd71296e"
+  },
+  "intent/recetas-directas/spec.md": {
+    "mtime": 1792270495.3236086,
+    "seen": 1792356566.3225162,
+    "ast_hash": "779f55b7aff11a14beb128faac81c661",
+    "semantic_hash": "779f55b7aff11a14beb128faac81c661"
+  },
+  "intent/servidores-mcp/intent.md": {
+    "mtime": 1792270495.3236086,
+    "seen": 1792356566.322517,
+    "ast_hash": "c6b6ad3b2021baad329ce984c10a91b0",
+    "semantic_hash": "c6b6ad3b2021baad329ce984c10a91b0"
+  },
+  "intent/servidores-mcp/plan.md": {
+    "mtime": 1792270495.3236685,
+    "seen": 1792356566.3225179,
+    "ast_hash": "dc7e5554a38c2aa8e407e9d22e1dbd7d",
+    "semantic_hash": "dc7e5554a38c2aa8e407e9d22e1dbd7d"
+  },
+  "intent/servidores-mcp/spec.md": {
+    "mtime": 1792275663.4630485,
+    "seen": 1792356566.3225183,
+    "ast_hash": "daa96d67b3a5ee693284e5e2f8c9d3e9",
+    "semantic_hash": "daa96d67b3a5ee693284e5e2f8c9d3e9"
+  },
+  "intent/spec.md": {
+    "mtime": 1792270495.3236685,
+    "seen": 1792356566.322519,
+    "ast_hash": "69d858f31f6b5086fb53cc289a94b8a7",
+    "semantic_hash": "69d858f31f6b5086fb53cc289a94b8a7"
+  },
+  "intent/vista-clara/intent.md": {
+    "mtime": 1792120321.4861274,
+    "seen": 1792356566.3225195,
+    "ast_hash": "880f1b3d7075c6e36345a3d38a014afa",
+    "semantic_hash": "880f1b3d7075c6e36345a3d38a014afa"
+  },
+  "intent/vista-clara/plan.md": {
+    "mtime": 1792120321.486239,
+    "seen": 1792356566.3225203,
+    "ast_hash": "1fe7dbd046d043b61f2f02f86c289f76",
+    "semantic_hash": "1fe7dbd046d043b61f2f02f86c289f76"
+  },
+  "intent/vista-clara/spec.md": {
+    "mtime": 1792120321.486239,
+    "seen": 1792356566.3225207,
+    "ast_hash": "3bc1c2bdfdae2de6e128207e067e0525",
+    "semantic_hash": "3bc1c2bdfdae2de6e128207e067e0525"
+  }
+}

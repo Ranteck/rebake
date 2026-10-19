@@ -1,177 +1,341 @@
 # rebake
 
-Tu setup de Claude Code como un libro de cocina: cada plugin, skill o herramienta es una
-receta con su forma de instalación, y en una PC nueva `rebake` las vuelve a hornear.
+Vuelve a dejar tu setup de Claude Code igual en una PC recién formateada: plugins, skills,
+hooks, statusline e imports de `CLAUDE.md`, en todos tus perfiles.
 
-En vez de copiar carpetas (que quedan viejas o rotas), `rebake` mira qué tenés instalado,
-averigua con `claude -p` cómo se instala cada cosa según su propio repo, y guarda esas recetas
-en tu **cookbook**, un archivo TOML que revisás y versionás. En una PC nueva, ejecuta las
-recetas aprobadas y te deja una lista de pendientes de lo que falta hacer a mano.
+En vez de copiar carpetas, que quedan viejas o rotas, rebake mira qué tenés instalado y averigua
+cómo se instala cada cosa según su propio repo. Cada forma de instalar es una **receta**, y las
+recetas se guardan en tu **cookbook**: un archivo TOML que revisás, aprobás y versionás. En la
+PC nueva, rebake ejecuta las recetas aprobadas y te deja una lista de lo que queda a mano.
 
-Cubre plugins, marketplaces, skills, imports de `CLAUDE.md`, hooks, statusline y las
-herramientas que usan, en todos tus perfiles (`~/.claude` y `~/.claude-*`). Los servidores MCP
-(como Serena) no los instala: arma sus pasos y te los deja en Pendientes. No copia memorias,
-historial ni credenciales, ni instala paquetes del sistema.
+```text
+esta PC:   escanear  ›  armar recetas  ›  aprobar        (cookbook.toml, en tu repo privado)
+PC nueva:  rebake <url-del-cookbook>  ›  instalar  ›  Pendientes (lo que queda a mano)
+```
+
+No copia memorias, historial ni credenciales, y no instala paquetes del sistema.
+
+## Contenido
+
+- [Requisitos](#requisitos)
+- [Instalar](#instalar)
+- [Armar el cookbook en tu PC](#armar-el-cookbook-en-tu-pc)
+- [Guardar el cookbook en un repo](#guardar-el-cookbook-en-un-repo)
+- [Instalar todo en una PC nueva](#instalar-todo-en-una-pc-nueva)
+- [Comandos](#comandos)
+- [La pantalla](#la-pantalla)
+- [Cómo arma cada receta](#cómo-arma-cada-receta)
+- [Lo que queda a mano](#lo-que-queda-a-mano)
+- [Configuración](#configuración)
+- [Archivos](#archivos)
+- [Seguridad](#seguridad)
+- [Problemas comunes](#problemas-comunes)
+- [Desarrollo](#desarrollo)
+
+## Requisitos
+
+- Linux x86_64.
+- Claude Code instalado y logueado: rebake lo usa para investigar recetas e instalar plugins.
+- `git` y `curl`.
+- Para las skills de skills.sh, `npx` (Node.js). Si falta, esa receta lo avisa al instalar.
+
+rebake trabaja con todos tus perfiles de Claude Code: `~/.claude` y cada `~/.claude-<nombre>`
+que tenga un `settings.json`. Por ejemplo, `~/.claude-personal` queda como el perfil
+`personal`.
 
 ## Instalar
 
-Requisitos: Claude Code instalado y logueado (rebake lo usa para investigar e instalar), `git`
-y `curl`.
-
-En Linux x86_64, sin necesidad de Rust:
-
-```sh
+```bash
 curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | sh
 ```
 
-Baja el binario del último release, verifica su checksum y lo deja en `~/.local/bin`. Para otra
-carpeta usá `REBAKE_INSTALL_DIR`; para una versión fija, `REBAKE_VERSION=v0.1.0`. Volver a
-correrlo actualiza.
+Baja el binario del último release, verifica su checksum y lo deja en `~/.local/bin/rebake`.
+Al terminar muestra la versión instalada (`rebake 0.8.4`, por ejemplo) y, si esa carpeta no
+está en tu `PATH`, te avisa que la agregues. Volver a correrlo actualiza.
 
-Desde v0.6.1 rebake se fija solo, por debajo y sin demorar el arranque: si hay una versión
-publicada más nueva, la cabecera de la pantalla lo dice y `u` la instala (con el mismo
-`install.sh`, checksum incluido) y vuelve a abrir la pantalla con ella. Los comandos solo avisan
-en una línea si la revisión respondió antes de terminar. Sin red no pasa nada.
+Para instalar en otra carpeta o una versión fija, usá las variables de
+[Configuración](#configuración):
 
-Con Rust instalado también se puede compilar: `cargo install --git https://github.com/Ranteck/rebake`.
-
-## Uso
-
-```sh
-rebake <url>             # trae tu cookbook de su repo git y abre la pantalla en Instalación
-rebake clonar <url>      # lo mismo sin abrir la pantalla (para scripts)
-rebake escanear          # mira esta PC y agrega lo nuevo al cookbook
-rebake                   # abre la TUI para revisar, investigar y aprobar recetas
-rebake investigar        # investiga las recetas pendientes sin abrir la TUI
-rebake instalar --dry-run
-rebake instalar          # en la PC nueva: vuelve a hornear todo
+```bash
+curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | REBAKE_VERSION=v0.8.4 sh
 ```
 
-El cookbook vive en tu carpeta de Documentos: `~/Documentos/rebake/cookbook.toml`
-(`~/Documents/…` en un sistema en inglés), o donde indique `--archivo`. Tiene tus ajustes
-personales, así que si lo versionás, que sea en un repo **privado**.
+Con Rust 1.88 o más nuevo también se puede compilar:
 
-### Cookbook en un repo
-
-Con el cookbook en la raíz de un repo git (puede estar vacío), pasale la URL una vez:
-
-```sh
-rebake clonar https://github.com/vos/mi-cookbook
+```bash
+cargo install --git https://github.com/Ranteck/rebake
 ```
 
-Lo clona en `~/Documentos/rebake/` y desde ahí cada comando trae lo último antes de empezar
-y, si el cookbook cambió, hace un commit solo de ese archivo y lo pushea. Usa tu `git` y tus
-credenciales: para un repo privado en GitHub, `gh auth login` y `gh auth setup-git`, o una
-clave ssh. Si algo de git falla, rebake avisa y sigue: el cookbook queda en disco y lo
-pendiente se sube en la corrida siguiente. Los conflictos entre dos PCs los resolvés vos con
-git en esa carpeta.
+Después rebake se actualiza solo. Cuando hay una versión más nueva, la cabecera de la pantalla
+dice `⬆ rebake X disponible` y `u` la instala, con el mismo `install.sh` y su checksum. La
+revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
 
-En ese repo el cookbook tiene que ser un archivo común: si es un enlace, rebake se niega a
+## Armar el cookbook en tu PC
+
+1. Abrí la pantalla:
+
+   ```bash
+   rebake
+   ```
+
+   Arranca en la pestaña **Recetas**. Con un cookbook vacío, el pie dice
+   `` Siguiente: `s` escanea esta PC ``.
+
+2. Apretá `s` para escanear. Aparece cada cosa instalada en tus perfiles, agrupada por tipo.
+   El cookbook se crea en `~/Documentos/rebake/cookbook.toml` (`~/Documents/…` en un sistema
+   en inglés).
+
+3. Apretá `t` para armar todas las recetas. Las de marketplaces, plugins y skills de skills.sh
+   salen al toque, sin Claude. El resto lo investiga Claude, y lo que no tiene origen conocido
+   primero se busca en la web (ver [Cómo arma cada receta](#cómo-arma-cada-receta)).
+
+4. Revisá cada receta. Elegila con `↑` `↓` y leé en el panel derecho qué va a ejecutar y de
+   qué parte de la documentación sale cada comando.
+
+5. Apretá `a` (o espacio) para aprobarla. Lo que no querés instalar, excluilo con `x`.
+
+6. Salí con `q`. Todo queda guardado en el cookbook.
+
+Lo mismo sin pantalla, para scripts:
+
+```bash
+rebake escanear
+rebake investigar
+```
+
+`rebake escanear` termina con una línea como `91 ítems (91 nuevos) en
+~/Documentos/rebake/cookbook.toml`, y `rebake investigar`, con `N por revisar, 0 con error`.
+Aprobar se hace en la pantalla.
+
+## Guardar el cookbook en un repo
+
+El cookbook tiene tus ajustes personales: versionalo en un repo **privado**.
+
+1. Creá un repo git, vacío o con el cookbook en la raíz.
+2. Clonalo con rebake:
+
+   ```bash
+   rebake clonar https://github.com/<tu-usuario>/<tu-cookbook>
+   ```
+
+   Lo clona en `~/Documentos/rebake/`. La carpeta tiene que estar vacía o no existir.
+
+Desde ahí, cada comando hace `git pull --ff-only` antes de empezar. Si el cookbook cambió,
+al terminar hace un commit solo de ese archivo y lo pushea; verás `cookbook publicado en el
+repo`. Usa tu `git` y tus credenciales: para un repo privado en GitHub, `gh auth login` y
+`gh auth setup-git`, o una clave ssh. Los conflictos entre dos PCs los resolvés con git en esa
+carpeta.
+
+En el repo, el cookbook tiene que ser un archivo común: si es un enlace, rebake se niega a
 usarlo para no escribir fuera del clon.
 
-En una PC nueva:
+Si preferís manejar git a mano, enlazá el archivo. rebake escribe a través del enlace y no toca
+git:
 
-```sh
-curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | sh
-rebake <url-de-tu-cookbook>
-```
-
-Abre la pestaña Instalación con las recetas aprobadas, todas marcadas. `c` comprueba cuáles ya
-están en esta PC, espacio saca las que no querés y `p` instala el resto. Lo que desmarcás vale
-solo para esa instalación: no se guarda en el cookbook. Las recetas que llegaron o cambiaron en
-el repo desde la última vez aparecen como `nueva` o `cambió`; `rebake instalar` las lista igual
-antes de pedir confirmación. Si ya tenés un clon de otra URL, rebake avisa y no toca nada.
-
-Si preferís manejar git a mano, enlazá el archivo; rebake escribe a través del enlace, lo
-conserva y no toca git:
-
-```sh
+```bash
 mkdir -p ~/Documentos/rebake
 ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 ```
 
-### Teclas de la TUI
+## Instalar todo en una PC nueva
 
-La cabecera muestra el camino (escanear › armar recetas › aprobar › instalar) con el paso
-actual entre corchetes, y abajo, la próxima tecla útil. Las pestañas se usan en este orden:
-**Recetas** en esta PC, **Instalación** en la PC nueva y, al final, **Pendientes** (logins y
-ajustes que rebake no hace por vos). Con `NO_COLOR` la pantalla no usa colores.
+1. Instalá Claude Code y logueate.
+2. Instalá rebake (ver [Instalar](#instalar)).
+3. Traé tu cookbook y abrí la pantalla en **Instalación**:
 
-| Tecla | Acción |
+   ```bash
+   rebake https://github.com/<tu-usuario>/<tu-cookbook>
+   ```
+
+   Aparecen las recetas aprobadas, todas marcadas. Las que llegaron o cambiaron en el repo desde
+   la última vez dicen `nueva` o `cambió`.
+
+4. Apretá `c` para comprobar cuáles ya están en esta PC.
+5. Desmarcá con espacio lo que no quieras. Lo que desmarcás vale solo para esta instalación.
+6. Apretá `p` para instalar. Al terminar, la pantalla pasa sola a **Pendientes**.
+7. Seguí la lista de [Lo que queda a mano](#lo-que-queda-a-mano).
+
+Lo mismo sin pantalla:
+
+```bash
+rebake clonar https://github.com/<tu-usuario>/<tu-cookbook>
+rebake instalar --dry-run
+rebake instalar
+```
+
+`--dry-run` muestra los comandos sin ejecutar nada. `rebake instalar` pregunta
+`¿Instalar N recetas en …? [s/N]` (`--si` responde que sí), muestra el resultado de cada
+receta y termina con la lista de pendientes.
+
+## Comandos
+
+| Comando | Qué hace |
 |---|---|
-| `s` | escanear |
-| `i` / `t` | investigar la receta / todas las sin receta; sin origen, primero buscan de dónde viene |
-| Enter / `n` | aceptar o descartar el posible origen que encontró la búsqueda |
-| espacio / `a` | aprobar o desaprobar (solo una receta investigada o editada); queda guardado en el cookbook |
-| `x` | excluir, con motivo; sobre una excluida, la vuelve a incluir |
-| `l` | pegar el link del repo cuando no se encontró |
-| `e` | editar la receta en `$EDITOR` |
-| `r` | reinvestigar |
-| `p` | instalar lo marcado en Instalación (al abrir, todo lo aprobado) |
-| `/` | filtrar |
-| `u` | actualizar rebake cuando la cabecera avisa que hay una versión nueva |
+| `rebake` | Abre la pantalla. |
+| `rebake <url>` | Clona el cookbook la primera vez y abre la pantalla en Instalación. |
+| `rebake clonar <url>` | Clona el cookbook sin abrir la pantalla. |
+| `rebake escanear` | Escanea esta PC y agrega lo nuevo al cookbook. |
+| `rebake investigar [ids…]` | Arma las recetas pendientes que tienen origen, o solo las de esos ids. |
+| `rebake instalar [--dry-run] [--si]` | Instala las recetas aprobadas. |
+| `rebake renombrar-perfil <viejo> <nuevo>` | Cambia el nombre de un perfil en todo el cookbook. |
+
+Todos aceptan `--archivo <ruta>` para usar otro cookbook. Los ids son como los muestra el
+título del panel derecho, por ejemplo `plugin:superpowers@claude-plugins-official` o
+`skill:technical-writer`.
+
+## La pantalla
+
+La cabecera muestra el camino (escanear › armar recetas › aprobar › instalar) con el paso actual
+entre corchetes. El pie muestra las teclas de lo que tenés elegido y la próxima tecla útil. `?`
+abre la ayuda. Ninguna tecla depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
+
+| Tecla | En todas las pestañas |
+|---|---|
 | `1` `2` `3` | Recetas, Pendientes, Instalación |
-| `?` | ayuda: el camino, las marcas y las teclas |
+| `s` | escanear |
+| `p` | instalar lo marcado en Instalación |
+| `u` | actualizar rebake, cuando la cabecera avisa |
+| `?` | ayuda |
 | `q` | salir |
 
-Ninguna tecla depende de Shift: `I`, `P` y `U` siguen andando como `t`, `p` y `u`.
-
-En la pestaña Instalación:
+**Recetas**, en tu PC:
 
 | Tecla | Acción |
 |---|---|
-| `↑` `↓` | moverse; el panel derecho muestra los comandos y la comprobación de la receta |
-| espacio | marcar o desmarcar (arrastra a las recetas que dependen de ella) |
+| `i` / `t` | armar la receta elegida / todas las que no tienen receta |
+| Enter / `n` | aceptar o descartar el posible origen que encontró la búsqueda |
+| `l` | pegar el link del repo |
+| `a` o espacio | aprobar o desaprobar una receta armada |
+| `x` | excluir, con motivo; sobre una excluida, la vuelve a incluir |
+| `e` | editar la receta en `$VISUAL` o `$EDITOR`; queda por revisar |
+| `r` | volver a investigar |
+| `/` | filtrar |
+
+**Instalación**, en la PC nueva:
+
+| Tecla | Acción |
+|---|---|
+| `↑` `↓` | moverse; el panel derecho muestra los comandos y la comprobación |
+| espacio | marcar o desmarcar; arrastra a las recetas que dependen de ella |
 | `t` | marcar todas o ninguna |
 | `c` | comprobar qué está instalado en cada perfil |
 | `Esc` | volver de los resultados al plan |
 
-En la pestaña Pendientes, a la izquierda va la lista y a la derecha lo elegido entero: un
-comando largo se lee completo ahí. Espacio lo tilda (no se guarda en el cookbook) y Enter
-despliega o colapsa los ajustes, que arrancan colapsados; una lista como
-`autoMode.environment` es una sola fila.
+**Pendientes**, después de instalar: la lista va a la izquierda y lo elegido, entero, a la
+derecha. Espacio tilda una línea (no se guarda en el cookbook) y Enter despliega o colapsa los
+ajustes.
 
 ## Cómo arma cada receta
 
-1. Busca el repo de origen: el link que pegaste o los metadatos locales (catálogo del
-   marketplace, symlink a un repo git, lock de skills.sh, URL dentro del binario).
-2. Si es un marketplace, un plugin o una skill de skills.sh, escribe la receta sola con su
+1. **Busca el origen:** el link que pegaste o los metadatos de tu PC (catálogo del marketplace,
+   symlink a un repo git, lock de skills.sh o una URL dentro del binario).
+2. **Receta directa:** si es un marketplace, un plugin o una skill de skills.sh, usa su
    instalador oficial (`claude plugin marketplace add`, `claude plugin install`,
-   `npx skills add`), sin Claude. La receta avisa al instalar si falta `npx` o el marketplace.
-3. Para el resto, `claude -p --restricted` (con Sonnet; `REBAKE_MODELO` lo cambia) lee la
-   documentación de instalación de ese repo, sin poder ejecutar comandos ni escribir archivos,
-   y devuelve los pasos con la **cita** literal de la doc de la que sale cada comando.
-4. Sin origen conocido no investiga sola. `i` (o `t`, para todas) busca en la web de qué repo
-   viene, con un spinner mientras tanto, y el panel de la derecha te lo propone con el motivo:
-   Enter lo acepta (la receta dice "origen buscado en la web"), `n` lo descarta e `i` te deja
-   pegar el link. `t` busca una sola vez por receta; para volver a buscar, `i` y Enter vacío.
-   Nada se investiga ni se instala con un origen sin aceptar.
-5. Un servidor MCP sale de la doc de su repo como cualquier receta, pero todos sus pasos son
-   manuales, incluido el `claude mcp add --scope user` final: después de instalar, Pendientes
-   dice "revisá serena" con los pasos. `c` comprueba si ya está registrado.
-6. Vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
+   `npx skills add`) sin Claude. El paso corre una vez por perfil.
+3. **Investigación:** para el resto, `claude -p --restricted` lee la documentación de
+   instalación de ese repo y devuelve los pasos con la **cita** literal de la que sale cada
+   comando. Corre con Sonnet, sin poder ejecutar comandos ni escribir archivos.
+4. **Sin origen:** `i` o `t` buscan en la web de qué repo viene y el panel te lo propone con el
+   motivo. Enter lo acepta (la receta dice "origen buscado en la web"), `n` lo descarta e `i` te
+   deja pegar el link. `t` busca una sola vez por receta; para buscar de nuevo, `i` y Enter
+   vacío.
+5. **Aprobación:** vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
+
+## Lo que queda a mano
+
+La pestaña Pendientes, y la salida de `rebake instalar`, junta lo que rebake no hace por vos:
+
+- **Logins:** `claude` y `/login` en cada perfil, y `gh auth login`.
+- **Pasos a mano:** un bloque "revisá X" por cada receta que dejó algo para hacer vos, con una
+  línea por perfil:
+  - Los **servidores MCP**, como Serena, nunca se instalan solos. Su receta trae los pasos
+    (por ejemplo `uv tool install …` y el `claude mcp add --scope user …`) para que los corras
+    vos.
+  - Los **comandos de Claude**, como `/codex:setup`, dicen en qué perfil abrir `claude` para
+    correrlos.
+- **Ajustes** de `settings.json` que rebake no copia, para que los pongas a mano si los querés.
+- **Paquetes del sistema** que piden las recetas, como `sudo pacman -S jq`.
+- **Tu texto propio en `CLAUDE.md`**, por título.
+
+## Configuración
+
+| Variable | Default | Para qué |
+|---|---|---|
+| `REBAKE_INSTALL_DIR` | `~/.local/bin` | Carpeta donde `install.sh` deja el binario. |
+| `REBAKE_VERSION` | `latest` | Versión que instala `install.sh`, por ejemplo `v0.8.4`. |
+| `REBAKE_BASE_URL` | `https://github.com/Ranteck/rebake/releases` | De dónde bajan `install.sh` y `u` los releases. |
+| `REBAKE_MODELO` | `sonnet` | Modelo de `claude -p` para investigar y buscar orígenes. |
+| `REBAKE_CLAUDE` | `claude` | Binario de Claude Code que usa rebake. |
+| `VISUAL`, `EDITOR` | `vi` | Editor de `e`. |
+| `NO_COLOR` | sin definir | Con cualquier valor, la pantalla no usa colores. |
+
+## Archivos
+
+| Ruta | Qué es |
+|---|---|
+| `~/Documentos/rebake/cookbook.toml` | El cookbook (`~/Documents/…` en un sistema en inglés). |
+| `~/.local/state/rebake/rebake.log` | Log de rebake. |
+| `~/.local/state/rebake/ultima-instalacion.log` | Cada comando que corrió la última instalación, con su salida. |
 
 ## Seguridad
 
-- La investigación corre sin Bash, sin escritura, sin tus hooks, plugins ni MCP, y lo que se le
+- La investigación corre sin Bash, sin escritura y sin tus hooks, plugins ni MCP. Lo que se le
   manda pasa antes por el filtro de secretos.
 - El escaneo nunca lee `.credentials.json` ni `~/.codex/auth.json`. De `.claude.json` lee solo
-  `mcpServers`, y de cada servidor solo el comando, sus argumentos o el host de su URL; `env`,
+  `mcpServers`, y de cada servidor, el comando, sus argumentos o el host de su URL; `env`,
   headers, la cuenta y los proyectos se descartan al leerlo.
-- En el cookbook se ocultan como `‹oculto›` las variables de `env`, las claves que contienen
-  `token`, `secret`, `key`, `password`, `auth`, `credential`, `cookie` o `header`, los valores
-  con forma de token y las credenciales o rutas de las URLs.
-  En los comandos también la clave de `-u usuario:clave` y la de `-p` en `mysql`, `mariadb`,
-  `sshpass` y `7z`.
-- Ese filtro va por patrones y no reconoce cualquier secreto: cuando agregues un hook con una
+- En el cookbook se ocultan como `‹oculto›`:
+  - las variables de `env`;
+  - las claves que contienen `token`, `secret`, `key`, `password`, `auth`, `credential`,
+    `cookie` o `header`;
+  - los valores con forma de token y las credenciales o rutas de las URLs;
+  - en los comandos, la clave de `-u usuario:clave` y la de `-p` en `mysql`, `mariadb`,
+    `sshpass` y `7z`.
+- Ese filtro va por patrones y no reconoce cualquier secreto. Cuando agregues un hook con una
   credencial en el comando, mirá el diff del cookbook.
-- Instalar ejecuta comandos de terceros (a veces `curl … | sh`): revisá la cita antes de
-  aprobar.
+- Instalar ejecuta comandos de terceros, a veces `curl … | sh`: revisá la cita antes de aprobar.
 - Abrir un cookbook no ejecuta nada suyo. Lo primero que corre son las comprobaciones, cuando
   apretás `c`, y cada una se puede leer antes en el panel de la receta.
-- Quien puede escribir en el repo de tu cookbook decide qué instala rebake en tus PCs: mantenelo
-  privado y con doble factor.
+- Quien puede escribir en el repo de tu cookbook decide qué instala rebake en tus PCs:
+  mantenelo privado y con doble factor.
+
+## Problemas comunes
+
+**`` rebake: …/cookbook.toml:1757:8: unknown variant `mcp`… ``**
+El cookbook lo escribió un rebake más nuevo. Actualizá rebake corriendo otra vez el
+[instalador](#instalar). Desde v0.8.4 el mismo error te muestra ese comando.
+
+**`no pude ejecutar claude: ¿está instalado?`**
+Claude Code no está en el `PATH`. Instalalo y logueate, o apuntá `REBAKE_CLAUDE` a su binario.
+
+**`aviso: … git push falló: …`**
+Falló la sincronización con el repo del cookbook. El comando igual termina y el cookbook queda
+en disco; lo pendiente se sube en la próxima corrida. Revisá tus credenciales de git.
+
+**`no pude abrir la pantalla: la salida no es una terminal`**
+La pantalla necesita una terminal. Para scripts usá los subcomandos (`escanear`, `investigar`,
+`instalar`).
+
+**Una receta falló al instalar.**
+La línea de esa receta dice qué comando falló. El detalle completo está en
+`~/.local/state/rebake/ultima-instalacion.log`.
+
+## Desarrollo
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --locked
+```
+
+Los tests no salen a internet ni tocan tu `~/.claude*`: arman un home falso, un `claude`
+falso y, para la actualización, un servidor local. Para
+publicar, subí la versión en `Cargo.toml` y pusheá el tag `vX.Y.Z`. El workflow
+`.github/workflows/release.yml` verifica que el tag coincida con esa versión, corre los tests,
+compila un binario estático y publica el release con su checksum.
+
+La intención, los requisitos y los planes de cada feature están en [`intent/`](intent/).
 
 ## Licencia
 
-MIT
+MIT. Ver [`LICENSE`](LICENSE).
