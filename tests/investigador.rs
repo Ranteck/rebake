@@ -672,3 +672,34 @@ fn un_repo_sin_item_conocido_se_agrega_como_hasta_ahora() {
     assert_eq!(r.item(ID).unwrap().requiere, ["marketplace:otro/repo"]);
     assert!(r.item("marketplace:otro/repo").is_some());
 }
+
+#[test]
+fn un_repo_con_varios_plugins_no_elige_uno_al_azar() {
+    let mut r = recetario();
+    for id in ["plugin:a@oficial", "plugin:b@oficial"] {
+        let mut p = Item::nuevo(id, Tipo::Plugin);
+        p.fuente = Some(Fuente {
+            repo: "https://github.com/anthropics/claude-plugins-official".into(),
+            via: Via::Metadatos,
+            doc: None,
+        });
+        r.items.push(p);
+    }
+    let receta = Receta {
+        repo: "https://github.com/ejemplo/house-rules".into(),
+        doc: "https://github.com/ejemplo/house-rules#install".into(),
+        pasos: vec![],
+        requiere: vec![Requisito {
+            tipo: "plugin".into(),
+            nombre: "anthropics/claude-plugins-official".into(),
+        }],
+        verificar: None,
+    };
+    aplicar(&mut r, ID, Ok(receta), "2026-10-18");
+    let requiere = &r.item(ID).unwrap().requiere;
+    assert!(
+        !requiere.contains(&"plugin:a@oficial".to_string())
+            && !requiere.contains(&"plugin:b@oficial".to_string()),
+        "{requiere:?}"
+    );
+}

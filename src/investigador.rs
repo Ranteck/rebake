@@ -549,14 +549,19 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         }
         let tipo = tipo_de(&req.tipo);
         let slug = normalizar_url(&nombre).to_lowercase();
-        let existente = slug.contains('/').then(|| {
-            por_repo.iter().find(|(t, repo, _)| {
-                *t == tipo && (repo == &slug || repo.ends_with(&format!("/{slug}")))
+        // Solo si un único ítem de ese tipo tiene ese repo: un marketplace trae muchos plugins.
+        let mismos: Vec<&String> = por_repo
+            .iter()
+            .filter(|(t, repo, _)| {
+                slug.contains('/')
+                    && *t == tipo
+                    && (repo == &slug || repo.ends_with(&format!("/{slug}")))
             })
-        });
-        let rid = match existente.flatten() {
-            Some((_, _, existente)) => existente.clone(),
-            None => format!("{}:{}", req.tipo, nombre),
+            .map(|(_, _, existente)| existente)
+            .collect();
+        let rid = match mismos.as_slice() {
+            [unico] => (*unico).clone(),
+            _ => format!("{}:{}", req.tipo, nombre),
         };
         if rid == id {
             continue;
