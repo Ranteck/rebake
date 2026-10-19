@@ -95,3 +95,12 @@ Estado: aceptado
   código ≠ 0 al fallar. No encontré violaciones que justifiquen cambiarlos acá.
 - El color depende de la paleta de la terminal (Noctalia cambia con el fondo). Por eso el
   color nunca es la única señal.
+
+## Cambios
+- 2026-10-18 (v0.8.5): la pantalla se simplifica porque se sentía "súper cargada" (Denis). La
+  cabecera es una línea y muestra solo los contadores que no son cero; con sus marcas y nombres
+  hacen de leyenda (REQ-1). El camino (REQ-2), la leyenda completa y la línea de para qué es
+  cada pestaña (REQ-10) pasan a la ayuda `?`, que muestra el paso actual entre corchetes. El pie
+  tiene dos líneas: pestañas, `?` y las teclas de lo elegido (REQ-7), y "Siguiente" (REQ-3), que
+  nombra la tecla útil de cada paso. El detalle saca "Estado" (lo dice su primera línea), la
+  fecha de la receta y los perfiles cuando son todos. Aprobado.

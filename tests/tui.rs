@@ -585,7 +585,8 @@ fn el_detalle_dice_que_falta_en_cada_estado() {
 fn la_cabecera_y_el_detalle_dicen_sin_receta() {
     let p = pantalla(&con_un_item(con_fuente("plugin:a@x")));
     assert!(p.contains("· 1 sin receta"), "{p}");
-    assert!(p.contains("Estado: sin receta"), "{p}");
+    // El estado lo dice la primera línea del detalle, en palabras.
+    assert!(p.contains("todavía no hay receta"), "{p}");
     assert!(!p.contains("pendiente"), "{p}");
 }
 
@@ -602,7 +603,7 @@ fn el_siguiente_paso_sigue_al_camino() {
     r.items[1].estado = Estado::PorRevisar;
     let pie = pie(&App::nueva(r));
     assert!(
-        pie[2].contains("Siguiente: 2 recetas por revisar: elegí una y `a` la aprueba"),
+        pie[1].contains("Siguiente: 2 recetas por revisar: elegí una y `a` la aprueba"),
         "{pie:?}"
     );
 }
@@ -631,7 +632,7 @@ fn mientras_investiga_la_pantalla_lo_dice_con_texto() {
 fn pie(app: &App) -> Vec<String> {
     let p = pantalla(app);
     let lineas: Vec<String> = p.lines().map(|l| l.trim_end().to_string()).collect();
-    lineas[lineas.len() - 3..].to_vec()
+    lineas[lineas.len() - 2..].to_vec()
 }
 
 #[test]
@@ -658,14 +659,12 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
         (excluida, " x  volver a incluir   e  editar"),
     ] {
         let pie = pie(&con_un_item(item));
+        // Las teclas de todas las recetas viven en `?`: el pie solo suma la de la ayuda.
         assert!(
-            pie[0].contains("Esta receta:") && pie[0].ends_with(esperado),
+            pie[0].contains(" ?  ayuda ") && pie[0].ends_with(esperado),
             "{pie:?}"
         );
-        assert!(
-            pie[1].contains("Todas:") && pie[1].contains(" t  investigar todas"),
-            "{pie:?}"
-        );
+        assert!(!pie.join("").contains("investigar todas"), "{pie:?}");
     }
 }
 
@@ -674,8 +673,8 @@ fn el_mensaje_va_en_su_propia_linea() {
     let mut app = con_un_item(con_fuente("plugin:a@x"));
     tecla(&mut app, KeyCode::Char('a'));
     let pie = pie(&app);
-    assert!(pie[2].contains("todavía no tiene receta"), "{pie:?}");
-    assert!(!pie[0].contains("todavía") && !pie[1].contains("todavía"));
+    assert!(pie[1].contains("todavía no tiene receta"), "{pie:?}");
+    assert!(!pie[0].contains("todavía"));
 }
 
 #[test]
@@ -692,18 +691,28 @@ fn ninguna_tecla_depende_de_shift() {
         assert_eq!(a.mensaje, b.mensaje, "{minuscula} / {mayuscula}");
         assert_eq!(a.modo, b.modo, "{minuscula} / {mayuscula}");
     }
-    let pie = pie(&App::nueva(recetario()));
-    assert!(pie[1].contains(" t  investigar todas"), "{pie:?}");
-    assert!(pie[1].contains(" p  instalar"), "{pie:?}");
+    let ayuda = con_ayuda(App::nueva(recetario()));
+    assert!(ayuda.contains("t investigar todas"), "{ayuda}");
+    assert!(ayuda.contains("p instalar"), "{ayuda}");
 }
 
-fn camino(app: &App) -> String {
-    pantalla(app).lines().nth(1).unwrap().to_string()
+/// La pantalla con `?` abierto.
+fn con_ayuda(mut app: App) -> String {
+    tecla(&mut app, KeyCode::Char('?'));
+    pantalla_en(&app, 200, 40)
+}
+
+fn camino(app: App) -> String {
+    con_ayuda(app)
+        .lines()
+        .find(|l| l.contains("Camino:"))
+        .unwrap_or_default()
+        .to_string()
 }
 
 #[test]
-fn recetas_muestra_la_leyenda_de_marcas() {
-    let p = pantalla(&App::nueva(recetario()));
+fn la_ayuda_muestra_la_leyenda_de_marcas() {
+    let p = con_ayuda(App::nueva(recetario()));
     for marca in [
         "✓ aprobada",
         "○ por revisar",
@@ -719,15 +728,15 @@ fn recetas_muestra_la_leyenda_de_marcas() {
 
 #[test]
 fn el_camino_resalta_el_primer_paso_con_trabajo() {
-    assert!(camino(&App::nueva(Recetario::nuevo())).contains("[escanear]"));
+    assert!(camino(App::nueva(Recetario::nuevo())).contains("[escanear]"));
     let pendiente = con_un_item(con_fuente("plugin:a@x"));
-    assert!(camino(&pendiente).contains("✓ escanear › [armar recetas]"));
+    assert!(camino(pendiente).contains("✓ escanear › [armar recetas]"));
     let mut revisar = con_fuente("plugin:a@x");
     revisar.estado = Estado::PorRevisar;
-    assert!(camino(&con_un_item(revisar)).contains("› [aprobar] ›"));
+    assert!(camino(con_un_item(revisar)).contains("› [aprobar] ›"));
     let mut aprobada = con_fuente("plugin:a@x");
     aprobada.estado = Estado::Aprobada;
-    let c = camino(&con_un_item(aprobada));
+    let c = camino(con_un_item(aprobada));
     assert!(c.contains("✓ aprobar › [instalar]"), "{c}");
 }
 
@@ -791,7 +800,7 @@ fn el_detalle_habla_en_palabras_simples() {
     let p = pantalla(&con_un_item(mkt));
     for esperado in [
         "Viene de: https://github.com/DietrichGebert/ponytail (lo registró su instalador)",
-        "Cómo se arma: instalador de plugins de Claude Code, sin Claude",
+        "          instalador de plugins de Claude Code, sin Claude",
         "Para saber si ya está: claude plugin marketplace list",
         "Qué va a ejecutar",
         "en cada perfil, automático",
@@ -813,12 +822,17 @@ fn en_80_columnas_la_cabecera_conserva_los_contadores() {
     app.version_nueva = Some("99.0.0".into());
     let p = pantalla_en(&app, 80, 24);
     let cabecera = p.lines().next().unwrap();
-    for contador in ["✓2", "○0", "·0", "?1", "✗1", "u actualiza"] {
+    for contador in ["✓2", "?1", "✗1", "u actualiza"] {
         assert!(
             cabecera.contains(contador),
             "falta {contador:?} en {cabecera:?}"
         );
     }
+    // Los contadores en cero no aparecen.
+    assert!(
+        !cabecera.contains("○0") && !cabecera.contains("·0"),
+        "{cabecera:?}"
+    );
 }
 
 #[test]
@@ -882,18 +896,18 @@ fn el_signo_en_el_filtro_se_escribe() {
 }
 
 #[test]
-fn cada_pestana_dice_para_que_es() {
+fn la_ayuda_dice_para_que_es_cada_pestana() {
+    let ayuda = con_ayuda(App::nueva(recetario()));
+    for texto in [
+        "En esta PC: decidí cómo se instala cada cosa",
+        "Después de instalar: lo que rebake no hace por vos",
+        "En una PC nueva: instalá las recetas aprobadas",
+    ] {
+        assert!(ayuda.contains(texto), "falta {texto:?} en:\n{ayuda}");
+    }
     let mut app = App::nueva(recetario());
-    assert!(pantalla(&app).contains("En esta PC: decidí cómo se instala cada cosa"));
     tecla(&mut app, KeyCode::Char('2'));
-    let p = pantalla(&app);
-    assert!(
-        p.contains("Después de instalar: lo que rebake no hace por vos"),
-        "{p}"
-    );
-    assert!(p.contains("[2]Pendientes"), "{p}");
-    tecla(&mut app, KeyCode::Char('3'));
-    assert!(pantalla(&app).contains("En una PC nueva: instalá las recetas aprobadas"));
+    assert!(pie(&app)[0].contains(" 2 Pendientes "));
 }
 
 #[test]
@@ -1045,7 +1059,7 @@ fn el_panel_muestra_el_posible_origen_con_su_motivo_y_sus_teclas() {
     assert!(p.contains("posible origen│"), "{p}");
     let pie = pie(&app);
     assert!(
-        pie[0].ends_with(" Enter  aceptar origen   n  descartar   i  pegar otro link   x  excluir"),
+        pie[0].contains(" Enter  aceptar origen   n  descartar   i  pegar otro link   x  excluir"),
         "{pie:?}"
     );
 }
@@ -1317,7 +1331,25 @@ fn las_teclas_de_pendientes_entran_enteras_a_80_columnas() {
     let app = con_pendientes();
     let p = pantalla_en(&app, 80, 24);
     assert!(
-        p.contains("↑↓ mover  espacio marcar  Enter despliega/colapsa ajustes  ? ayuda  q salir"),
+        p.contains("2 Pendientes  3 Instalación   espacio tilda  Enter ajustes  ? ayuda"),
         "{p}"
     );
+}
+
+#[test]
+fn siguiente_con_solo_sin_origen_dice_si_falta_buscarlos() {
+    let sin_buscar = Item::nuevo("mcp:serena", Tipo::Mcp);
+    let p = pie(&con_un_item(sin_buscar.clone()));
+    assert!(
+        p[1].contains("Siguiente: 1 sin origen: `t` busca de dónde vienen"),
+        "{p:?}"
+    );
+    let mut buscado = sin_buscar;
+    buscado.posible = Some(Posible {
+        repo: None,
+        motivo: String::new(),
+        descartado: false,
+    });
+    let p = pie(&con_un_item(buscado));
+    assert!(p[1].contains("`i` te deja pegar el link"), "{p:?}");
 }

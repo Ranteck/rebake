@@ -10,20 +10,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-const TECLAS_TODAS: [(&str, &str); 6] = [
-    ("t", "investigar todas"),
-    ("s", "escanear"),
-    ("/", "filtrar"),
-    ("p", "instalar"),
-    ("?", "ayuda"),
-    ("q", "salir"),
-];
 const TECLAS_INSTALACION: &str =
     "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  p instalar  ? ayuda  q salir";
 const TECLAS_SIN_PLAN: &str = "1 volver a Recetas  q salir  ? ayuda";
 const TECLAS_RESULTADOS: &str = "Esc volver al plan  ? ayuda  q salir";
-const TECLAS_PENDIENTES: &str =
-    "↑↓ mover  espacio marcar  Enter despliega/colapsa ajustes  ? ayuda  q salir";
+const TECLAS_PENDIENTES: &str = "espacio tilda  Enter ajustes  ? ayuda";
 const PASOS: [&str; 4] = ["escanear", "armar recetas", "aprobar", "instalar"];
 /// Marca, nombre y estado (para el color) de cada entrada de la leyenda, en el orden del camino.
 const LEYENDA: [(&str, &str, Estado); 5] = [
@@ -35,21 +26,17 @@ const LEYENDA: [(&str, &str, Estado); 5] = [
 ];
 
 pub fn dibujar(f: &mut Frame, app: &App) {
-    let proposito = lineas_proposito(app, f.area().width);
-    let [cabecera, camino, prop, cuerpo, pie] = Layout::vertical([
+    // Lo que no cambia de una sesión a otra (camino, leyenda, para qué es cada pestaña) vive en `?`.
+    let [cabecera, cuerpo, pie] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(proposito.len() as u16),
         Constraint::Min(3),
-        Constraint::Length(3),
+        Constraint::Length(2),
     ])
     .areas(f.area());
     f.render_widget(
         Paragraph::new(texto_cabecera(app, cabecera.width)),
         cabecera,
     );
-    f.render_widget(Paragraph::new(linea_camino(app)), camino);
-    f.render_widget(Paragraph::new(proposito), prop);
     match app.pestana {
         Pestana::Recetas => recetas(f, app, cuerpo),
         Pestana::Checklist => checklist(f, app, cuerpo),
@@ -83,33 +70,6 @@ fn leyenda(app: &App) -> Vec<Span<'static>> {
         Style::default().add_modifier(Modifier::DIM),
     ));
     spans
-}
-
-/// La línea de para qué es la pestaña; en Recetas, con la leyenda al lado o debajo si no entra.
-fn lineas_proposito(app: &App, ancho: u16) -> Vec<Line<'static>> {
-    let texto = match app.pestana {
-        Pestana::Recetas => "En esta PC: decidí cómo se instala cada cosa.",
-        Pestana::Instalacion => "En una PC nueva: instalá las recetas aprobadas.",
-        Pestana::Checklist => {
-            "Después de instalar: lo que rebake no hace por vos (logins y ajustes)."
-        }
-    };
-    let estilo = Style::default().add_modifier(Modifier::ITALIC);
-    let proposito = Span::styled(format!(" {texto}"), estilo);
-    if app.pestana != Pestana::Recetas {
-        return vec![Line::from(proposito)];
-    }
-    let leyenda = leyenda(app);
-    let ancho_leyenda: usize = leyenda.iter().map(|s| s.content.width()).sum();
-    if proposito.content.width() + 4 + ancho_leyenda <= ancho as usize {
-        let mut spans = vec![proposito, Span::raw("    ")];
-        spans.extend(leyenda);
-        vec![Line::from(spans)]
-    } else {
-        let mut spans = vec![Span::raw(" ")];
-        spans.extend(leyenda);
-        vec![Line::from(proposito), Line::from(spans)]
-    }
 }
 
 /// El primer paso del camino que todavía tiene trabajo.
@@ -181,46 +141,35 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
                 )
             }
         });
-    if corta {
-        return format!(
-            "{aviso} rebake · {}  ✓{} ○{} ·{sin_receta}{} ✗{}{}",
-            perfiles.join(" + "),
-            contar(Estado::Aprobada),
-            contar(Estado::PorRevisar),
-            match sin_origen {
-                0 => String::new(),
-                n => format!(" ?{n}"),
-            },
-            contar(Estado::Excluida),
-            match app.investigando.len() {
-                0 => String::new(),
-                n => format!(" …{n}"),
-            } + &match app.buscando.len() {
-                0 => String::new(),
-                n => format!(" {}{n}", spinner(app)),
-            }
-        );
-    }
+    // Los contadores en cero no dicen nada; los que quedan hacen de leyenda de las marcas.
+    let contadores: Vec<String> = [
+        ("✓", contar(Estado::Aprobada), "aprobadas"),
+        ("○", contar(Estado::PorRevisar), "por revisar"),
+        ("·", sin_receta, "sin receta"),
+        ("?", sin_origen, "sin origen"),
+        ("✗", contar(Estado::Excluida), "excluidas"),
+        ("…", app.investigando.len(), "investigando"),
+        (spinner(app), app.buscando.len(), "buscando origen"),
+    ]
+    .into_iter()
+    .filter(|(_, n, _)| *n > 0)
+    .map(|(marca, n, nombre)| {
+        if corta {
+            format!("{marca}{n}")
+        } else {
+            format!("{marca} {n} {nombre}")
+        }
+    })
+    .collect();
+    let separador = if corta { " " } else { "  " };
     // Adelante: en una terminal angosta se corta el final de la línea, no el aviso.
     format!(
-        "{aviso} rebake · {}   ✓ {} aprobadas  ○ {} por revisar  · {sin_receta} sin receta{}  ✗ {} excluidas{}",
+        "{aviso} rebake · {}   {}",
         perfiles.join(" + "),
-        contar(Estado::Aprobada),
-        contar(Estado::PorRevisar),
-        // Fijo acá y no en los avisos: el próximo aviso lo pisaría y es lo que queda a mano.
-        match sin_origen {
-            0 => String::new(),
-            n => format!("  ? {n} sin origen"),
-        },
-        contar(Estado::Excluida),
-        match app.investigando.len() {
-            0 => String::new(),
-            n => format!("  … {n} investigando"),
-        } + &match app.buscando.len() {
-            0 => String::new(),
-            n => format!("  {} {n} buscando origen", spinner(app)),
-        }
+        contadores.join(separador)
     )
+    .trim_end()
+    .to_string()
 }
 
 fn grupo(t: Tipo) -> &'static str {
@@ -245,15 +194,6 @@ fn marca(i: &Item) -> &'static str {
         Estado::Pendiente if i.fuente.is_none() => "?",
         Estado::Pendiente => "·",
         Estado::Excluida => "✗",
-    }
-}
-
-fn nombre_estado(e: Estado) -> &'static str {
-    match e {
-        Estado::Aprobada => "aprobada",
-        Estado::PorRevisar => "por revisar",
-        Estado::Pendiente => "sin receta",
-        Estado::Excluida => "excluida",
     }
 }
 
@@ -444,15 +384,10 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
         primera.insert(0, Span::raw(format!("{} ", spinner(app))));
     }
     let mut l = vec![Line::from(primera)];
-    l.push(Line::from(format!(
-        "Estado: {}   Perfiles: {}",
-        nombre_estado(item.estado),
-        if item.perfiles.is_empty() {
-            "—".to_string()
-        } else {
-            item.perfiles.join(", ")
-        }
-    )));
+    // La primera línea ya dice el estado; los perfiles importan solo si no son todos.
+    if !item.perfiles.is_empty() && item.perfiles.len() < app.recetario.perfiles.len() {
+        l.push(Line::from(format!("Solo en: {}", item.perfiles.join(", "))));
+    }
     let doc = item.fuente.as_ref().and_then(|f| f.doc.as_deref());
     match &item.fuente {
         Some(f) => {
@@ -462,9 +397,9 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
                 nombre_via(f.via)
             )));
             match doc.map(|d| d.strip_prefix(DIRECTA).ok_or(d)) {
-                Some(Ok(instalador)) => l.push(Line::from(format!(
-                    "Cómo se arma: {instalador}, sin Claude"
-                ))),
+                Some(Ok(instalador)) => {
+                    l.push(Line::from(format!("          {instalador}, sin Claude")))
+                }
                 Some(Err(d)) => l.push(Line::from(format!("Documentación: {d}"))),
                 None => {}
             }
@@ -513,11 +448,7 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
         }
         _ => {}
     }
-    for (etiqueta, valor) in [
-        ("Motivo", &item.motivo),
-        ("Error", &item.error),
-        ("Receta armada el", &item.investigado),
-    ] {
+    for (etiqueta, valor) in [("Motivo", &item.motivo), ("Error", &item.error)] {
         if let Some(v) = valor {
             l.push(Line::from(format!("{etiqueta}: {v}")));
         }
@@ -817,7 +748,14 @@ fn siguiente_paso(app: &App) -> String {
             servicio::sin_origen(r).len(),
         ) {
             (0, 0) => String::new(),
-            (0, n) => format!("Siguiente: {n} sin origen: elegí una y `i` te pide el link"),
+            (0, n)
+                if r.items.iter().any(|i| {
+                    i.estado == Estado::Pendiente && i.fuente.is_none() && i.posible.is_none()
+                }) =>
+            {
+                format!("Siguiente: {n} sin origen: `t` busca de dónde vienen")
+            }
+            (0, n) => format!("Siguiente: {n} sin origen: elegí una; `i` te deja pegar el link"),
             (n, _) => format!("Siguiente: en una PC nueva, `3` y `p` instalan las {n} aprobadas"),
         },
     }
@@ -835,7 +773,7 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
             "rebake guarda en un cookbook cómo se instala cada cosa de tu Claude Code, para rehacerlo en una PC nueva.",
         ),
         Line::from(""),
-        titulo("Camino"),
+        linea_camino(app),
         Line::from("1. escanear (s): busca lo que tiene esta PC."),
         Line::from("2. armar recetas (i, t): de qué repo viene cada cosa y cómo se instala."),
         Line::from(
@@ -849,15 +787,17 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         Line::from(leyenda(app)),
         Line::from(""),
         titulo("Pestañas"),
-        Line::from("1 Recetas: en esta PC, armar y aprobar recetas."),
-        Line::from("2 Pendientes: logins y ajustes que rebake no hace por vos."),
+        Line::from("1 Recetas. En esta PC: decidí cómo se instala cada cosa."),
         Line::from(
-            "3 Instalación: en una PC nueva, comprobar (c), marcar (espacio, solo para esa instalación) e instalar (p).",
+            "2 Pendientes. Después de instalar: lo que rebake no hace por vos (logins y ajustes).",
+        ),
+        Line::from(
+            "3 Instalación. En una PC nueva: instalá las recetas aprobadas. c comprueba, espacio marca (solo para esa instalación) y p instala.",
         ),
         Line::from(""),
         titulo("Otras teclas"),
         Line::from(
-            "↑↓ o j k mover  / filtrar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
+            "↑↓ o j k mover  t investigar todas  s escanear  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
         ),
     ];
     f.render_widget(Clear, area);
@@ -873,9 +813,9 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
 
 fn lineas_pie(app: &App) -> Vec<Line<'static>> {
     let pestanas = [
-        (Pestana::Recetas, "[1]Recetas"),
-        (Pestana::Checklist, "[2]Pendientes"),
-        (Pestana::Instalacion, "[3]Instalación"),
+        (Pestana::Recetas, "1 Recetas"),
+        (Pestana::Checklist, "2 Pendientes"),
+        (Pestana::Instalacion, "3 Instalación"),
     ];
     let mut spans: Vec<Span> = Vec::new();
     for (p, texto) in pestanas {
@@ -886,21 +826,20 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         };
         spans.push(Span::styled(format!(" {texto} "), estilo));
     }
-    let mut todas: Vec<Span> = Vec::new();
     if app.pestana == Pestana::Recetas {
-        // Solo lo que hace algo sobre la receta elegida, en el orden en que conviene hacerlo.
+        // Solo lo que hace algo sobre la receta elegida; el resto está en `?` y "Siguiente" nombra
+        // la tecla que hace falta en cada paso.
+        // `?` va primero: en una terminal angosta se cortan las otras, no la que explica todo.
+        spans.push(Span::raw(" "));
+        spans.extend(teclas(&[("?", "ayuda")]));
         if let Some(item) = app.seleccionado()
             && !app.investigando.contains(&item.id)
             && !app.buscando.contains(&item.id)
         {
-            spans.push(Span::raw("  Esta receta:"));
             spans.extend(teclas(&teclas_de_receta(item)));
         }
-        todas.push(Span::raw(" Todas:      "));
-        todas.extend(teclas(&TECLAS_TODAS));
     } else if app.pestana == Pestana::Checklist {
-        // Al lado de las pestañas no entra a 80 columnas; la segunda línea está libre.
-        todas.push(Span::raw(format!(" {TECLAS_PENDIENTES}")));
+        spans.push(Span::raw(format!("  {TECLAS_PENDIENTES}")));
     } else {
         let texto = if app.viendo_plan() && app.plan().is_empty() {
             TECLAS_SIN_PLAN
@@ -931,5 +870,5 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             app.mensaje.clone().unwrap_or_else(|| siguiente_paso(app))
         ),
     };
-    vec![Line::from(spans), Line::from(todas), Line::from(segunda)]
+    vec![Line::from(spans), Line::from(segunda)]
 }

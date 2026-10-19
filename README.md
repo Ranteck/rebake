@@ -185,9 +185,11 @@ título del panel derecho, por ejemplo `plugin:superpowers@claude-plugins-offici
 
 ## La pantalla
 
-La cabecera muestra el camino (escanear › armar recetas › aprobar › instalar) con el paso actual
-entre corchetes. El pie muestra las teclas de lo que tenés elegido y la próxima tecla útil. `?`
-abre la ayuda. Ninguna tecla depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
+La cabecera cuenta las recetas por estado; las marcas de esos contadores (`✓ ○ · ? ✗`) son las
+mismas de la lista. El pie muestra las teclas de lo que tenés elegido y, debajo, la próxima tecla
+útil. `?` abre la ayuda: el camino (escanear › armar recetas › aprobar › instalar) con tu paso
+actual, qué significa cada marca, para qué es cada pestaña y todas las teclas. Ninguna tecla
+depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
 
 | Tecla | En todas las pestañas |
 |---|---|
