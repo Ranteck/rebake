@@ -617,3 +617,58 @@ fn un_posible_no_pisa_un_origen_ya_resuelto_ni_un_excluido() {
     aplicar_posible(&mut r, id, posible());
     assert!(r.item(id).unwrap().posible.is_none());
 }
+
+#[test]
+fn un_requisito_con_forma_de_repo_usa_el_item_que_ya_tiene_ese_repo() {
+    let mut r = recetario();
+    let mut mkt = Item::nuevo("marketplace:openai-codex", Tipo::Marketplace);
+    mkt.fuente = Some(Fuente {
+        repo: "https://github.com/openai/codex-plugin-cc".into(),
+        via: Via::Metadatos,
+        doc: None,
+    });
+    r.items.push(mkt);
+    let antes = r.items.len();
+    let receta = Receta {
+        repo: "https://github.com/ejemplo/house-rules".into(),
+        doc: "https://github.com/ejemplo/house-rules#install".into(),
+        pasos: vec![],
+        requiere: vec![
+            Requisito {
+                tipo: "marketplace".into(),
+                nombre: "openai/codex-plugin-cc".into(),
+            },
+            Requisito {
+                tipo: "marketplace".into(),
+                nombre: "https://github.com/OpenAI/codex-plugin-cc.git".into(),
+            },
+            // Claude Code es requisito de rebake, no una receta.
+            Requisito {
+                tipo: "herramienta".into(),
+                nombre: "claude".into(),
+            },
+        ],
+        verificar: None,
+    };
+    aplicar(&mut r, ID, Ok(receta), "2026-10-18");
+    assert_eq!(r.item(ID).unwrap().requiere, ["marketplace:openai-codex"]);
+    assert_eq!(r.items.len(), antes, "se creó un ítem de más");
+}
+
+#[test]
+fn un_repo_sin_item_conocido_se_agrega_como_hasta_ahora() {
+    let mut r = recetario();
+    let receta = Receta {
+        repo: "https://github.com/ejemplo/house-rules".into(),
+        doc: "https://github.com/ejemplo/house-rules#install".into(),
+        pasos: vec![],
+        requiere: vec![Requisito {
+            tipo: "marketplace".into(),
+            nombre: "otro/repo".into(),
+        }],
+        verificar: None,
+    };
+    aplicar(&mut r, ID, Ok(receta), "2026-10-18");
+    assert_eq!(r.item(ID).unwrap().requiere, ["marketplace:otro/repo"]);
+    assert!(r.item("marketplace:otro/repo").is_some());
+}

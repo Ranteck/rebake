@@ -477,6 +477,16 @@ pub fn aplicar_posible(r: &mut Recetario, id: &str, resultado: Result<Posible>) 
 }
 
 pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str) {
+    // El repo de cada ítem ya está verificado: un requisito que llega como `dueño/repo` se
+    // resuelve contra él en vez de crear un ítem con el nombre mal armado.
+    let por_repo: Vec<(Tipo, String, String)> = r
+        .items
+        .iter()
+        .filter_map(|i| {
+            let f = i.fuente.as_ref()?;
+            Some((i.tipo, normalizar_url(&f.repo).to_lowercase(), i.id.clone()))
+        })
+        .collect();
     let Some(item) = r.item_mut(id) else { return };
     let receta = match resultado {
         Ok(receta) => receta,
@@ -533,14 +543,28 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
             });
             continue;
         }
-        let rid = format!("{}:{}", req.tipo, nombre);
+        // Claude Code es requisito de rebake, no una receta (desde v0.6.2).
+        if nombre == "claude" {
+            continue;
+        }
+        let tipo = tipo_de(&req.tipo);
+        let slug = normalizar_url(&nombre).to_lowercase();
+        let existente = slug.contains('/').then(|| {
+            por_repo.iter().find(|(t, repo, _)| {
+                *t == tipo && (repo == &slug || repo.ends_with(&format!("/{slug}")))
+            })
+        });
+        let rid = match existente.flatten() {
+            Some((_, _, existente)) => existente.clone(),
+            None => format!("{}:{}", req.tipo, nombre),
+        };
         if rid == id {
             continue;
         }
         if !item.requiere.contains(&rid) {
             item.requiere.push(rid.clone());
         }
-        nuevos.push((rid, tipo_de(&req.tipo)));
+        nuevos.push((rid, tipo));
     }
     for (rid, tipo) in nuevos {
         // Si ya existe (aunque esté excluido) no se toca: lo decidido por Denis se respeta.
