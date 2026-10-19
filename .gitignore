@@ -1,2 +1,6 @@
 /target
 cookbook.toml
+
+# Salidas locales de herramientas: graphify (grafo del código) y Serena (config del proyecto).
+graphify-out/
+.serena/
