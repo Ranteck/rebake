@@ -51,3 +51,5 @@ Ninguna.
   pide aceptarlo o no en el panel de la derecha, con spinner mientras busca (punto 6). Antes se
   pedía el link primero. Lo pidió Denis: "que busque qué podría ser y te muestre un posible".
   La confirmación mantiene la decisión del 2026-10-14: ningún repo adivinado entra sin su OK.
+- 2026-10-22: `t` sigue buscando orígenes, pero por tandas de 5 con confirmación
+  (`cuidar-cuota`). Lo pidió Denis para cuidar la cuota: "hay poco tokens".
