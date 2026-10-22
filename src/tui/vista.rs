@@ -718,7 +718,7 @@ fn teclas_de_receta(item: &Item) -> Vec<(&'static str, &'static str)> {
 }
 
 /// La tecla en video inverso se lee como un botón, separada de lo que hace.
-fn teclas(lista: &[(&'static str, &'static str)]) -> Vec<Span<'static>> {
+fn teclas(lista: &[(&str, &str)]) -> Vec<Span<'static>> {
     let resaltada = Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD);
     let mut spans = Vec::new();
     for (tecla, accion) in lista {
@@ -827,11 +827,36 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         spans.push(Span::styled(format!(" {texto} "), estilo));
     }
     if app.pestana == Pestana::Recetas {
-        // Solo lo que hace algo sobre la receta elegida; el resto está en `?` y "Siguiente" nombra
-        // la tecla que hace falta en cada paso.
         // `?` va primero: en una terminal angosta se cortan las otras, no la que explica todo.
         spans.push(Span::raw(" "));
         spans.extend(teclas(&[("?", "ayuda")]));
+        let cantidad = app
+            .recetario
+            .items
+            .iter()
+            .filter(|i| {
+                armable(app, i)
+                    || (i.estado == Estado::Pendiente
+                        && i.fuente.is_none()
+                        && i.posible.is_none()
+                        && !app.buscando.contains(&i.id))
+            })
+            .count();
+        match paso_actual(app) {
+            0 => spans.extend(teclas(&[("s", "escanear")])),
+            _ if cantidad > 0 => {
+                spans.extend(teclas(&[("t", &format!("armar todas ({cantidad})"))]));
+            }
+            3 if app
+                .recetario
+                .items
+                .iter()
+                .any(|i| i.estado == Estado::Aprobada) =>
+            {
+                spans.extend(teclas(&[("3", "ir a instalar")]));
+            }
+            _ => {}
+        }
         if let Some(item) = app.seleccionado()
             && !app.investigando.contains(&item.id)
             && !app.buscando.contains(&item.id)

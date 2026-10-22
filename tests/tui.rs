@@ -669,6 +669,115 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
 }
 
 #[test]
+fn el_pie_conserva_el_paso_tras_el_mensaje_de_escaneo_y_cuenta_lo_disponible() {
+    let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
+    app.recetario.items.extend([
+        con_fuente("plugin:a@x"),
+        con_fuente("plugin:b@x"),
+        con_fuente("plugin:armando@x"),
+        Item::nuevo("mcp:sin-buscar", Tipo::Mcp),
+        Item::nuevo("mcp:buscando", Tipo::Mcp),
+    ]);
+    app.investigando.insert("plugin:armando@x".into());
+    app.buscando.insert("mcp:buscando".into());
+    app.filtro = "serena".into();
+    app.mensaje = Some("Escaneo terminado".into());
+    let pie = pie(&app);
+    assert!(pie[0].contains(" t  armar todas (3) "), "{pie:?}");
+    assert!(pie[1].contains("Escaneo terminado"), "{pie:?}");
+    assert!(
+        pie[0].find(" ?  ayuda ").unwrap() < pie[0].find(" t  armar todas (3) ").unwrap(),
+        "{pie:?}"
+    );
+    assert!(
+        pie[0].find(" t  armar todas (3) ").unwrap()
+            < pie[0].find(" Enter  aceptar origen ").unwrap(),
+        "{pie:?}"
+    );
+}
+
+#[test]
+fn el_pie_del_cookbook_vacio_ofrece_escanear() {
+    let pie = pie(&App::nueva(Recetario::nuevo()));
+    assert!(pie[0].ends_with(" s  escanear"), "{pie:?}");
+}
+
+#[test]
+fn el_pie_con_todo_aprobado_ofrece_ir_a_instalar() {
+    let mut item = con_fuente("plugin:a@x");
+    item.estado = Estado::Aprobada;
+    let pie = pie(&con_un_item(item));
+    assert!(pie[0].contains(" 3  ir a instalar "), "{pie:?}");
+}
+
+#[test]
+fn el_pie_con_solo_por_revisar_no_ofrece_otra_tecla_del_paso() {
+    let mut item = con_fuente("plugin:a@x");
+    item.estado = Estado::PorRevisar;
+    let pie = pie(&con_un_item(item));
+    for tecla in [" t  ", " s  ", " 3  "] {
+        assert!(!pie[0].contains(tecla), "{pie:?}");
+    }
+    assert!(pie[0].contains(" espacio/a  aprobar "), "{pie:?}");
+}
+
+#[test]
+fn el_pie_de_instalacion_no_ofrece_armar_todas() {
+    let mut app = con_un_item(con_fuente("plugin:a@x"));
+    app.pestana = Pestana::Instalacion;
+    assert!(!pie(&app)[0].contains("armar todas"));
+}
+
+#[test]
+fn el_pie_conserva_ayuda_y_armar_todas_a_80_columnas_con_receta_elegida() {
+    let app = con_un_item(con_fuente("plugin:a@x"));
+    assert!(app.seleccionado().is_some());
+    let p = pantalla_en(&app, 80, 24);
+    let primera = p.lines().nth(22).unwrap();
+    assert!(primera.contains("?  ayuda"), "{p}");
+    assert!(primera.contains("t  armar todas (1)"), "{p}");
+}
+
+#[test]
+fn el_pie_ofrece_buscar_sin_origen_aunque_haya_recetas_por_revisar_o_aprobadas() {
+    for estado in [Estado::PorRevisar, Estado::Aprobada] {
+        let mut app = con_un_item(Item::nuevo("mcp:sin-buscar", Tipo::Mcp));
+        let mut item = con_fuente("plugin:a@x");
+        item.estado = estado;
+        app.recetario.items.push(item);
+        let pie = pie(&app);
+        assert!(pie[0].contains(" t  armar todas (1) "), "{pie:?}");
+        assert!(!pie[0].contains(" 3  ir a instalar "), "{pie:?}");
+    }
+}
+
+#[test]
+fn el_pie_no_ofrece_pasos_sin_trabajo_disponible() {
+    let mut excluida = con_fuente("plugin:excluida@x");
+    excluida.estado = Estado::Excluida;
+    for app in [
+        con_un_item(excluida),
+        con_posible(None, false),
+        con_posible(Some("https://github.com/oraios/serena"), false),
+        {
+            let mut app = con_un_item(con_fuente("plugin:armando@x"));
+            app.investigando.insert("plugin:armando@x".into());
+            app
+        },
+        {
+            let mut app = con_un_item(Item::nuevo("mcp:buscando", Tipo::Mcp));
+            app.buscando.insert("mcp:buscando".into());
+            app
+        },
+    ] {
+        let pie = pie(&app);
+        for tecla in [" t  ", " s  ", " 3  "] {
+            assert!(!pie[0].contains(tecla), "{pie:?}");
+        }
+    }
+}
+
+#[test]
 fn el_mensaje_va_en_su_propia_linea() {
     let mut app = con_un_item(con_fuente("plugin:a@x"));
     tecla(&mut app, KeyCode::Char('a'));
