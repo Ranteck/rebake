@@ -104,3 +104,7 @@ Estado: aceptado
   tiene dos líneas: pestañas, `?` y las teclas de lo elegido (REQ-7), y "Siguiente" (REQ-3), que
   nombra la tecla útil de cada paso. El detalle saca "Estado" (lo dice su primera línea), la
   fecha de la receta y los perfiles cuando son todos. Aprobado.
+- 2026-10-22 (v0.8.8): en Recetas, la línea 1 del pie muestra siempre la tecla del paso del
+  camino (`s escanear`, `t armar todas (N)` o `3 ir a instalar`) después de `?`: un mensaje en la
+  línea 2 ya no la esconde. Pedido de Denis ("no me entero que tengo que hacer t"); propuesta
+  revisada con Codex y Antigravity. Aprobado.
