@@ -1703,6 +1703,8 @@ fn una_directa_en_hilos_no_bloquea_la_pregunta_de_claude() {
 #[test]
 fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
     use rebake::investigador::Receta;
+    use rebake::tui::app::Corrida;
+    use std::collections::HashSet;
     let mut app = con_cuota(0, 3, 4);
     tecla(&mut app, KeyCode::Char('t'));
     let Efecto::Lote(inv, bus) = tecla(&mut app, KeyCode::Char('s')) else {
@@ -1713,7 +1715,17 @@ fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
         tecla(&mut app, KeyCode::Char('i')),
         Efecto::Buscar(vec!["mcp:bus-003".into()])
     );
-    assert_eq!(app.tanda_en_curso.len(), 5);
+    assert_eq!(
+        Efecto::Lote(inv.clone(), bus.clone()),
+        Efecto::Lote(
+            vec![
+                "mcp:inv-000".into(),
+                "mcp:inv-001".into(),
+                "mcp:inv-002".into()
+            ],
+            vec!["mcp:bus-000".into(), "mcp:bus-001".into()],
+        )
+    );
     assert_eq!(app.claude_en_curso.len(), 6);
     app.registrar_investigacion(
         &inv[0],
@@ -1730,12 +1742,20 @@ fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
         app.registrar_investigacion(id, Err(anyhow::anyhow!("sin cuota")), "2026-10-22");
     }
     app.registrar_busqueda(&bus[0], Err(anyhow::anyhow!("sin cuota")));
-    assert_eq!(app.tanda_en_curso.len(), 1);
+    assert_eq!(
+        app.claude_en_curso,
+        HashSet::from([
+            Corrida::Buscar("mcp:bus-001".into()),
+            Corrida::Buscar("mcp:bus-003".into()),
+        ])
+    );
     assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
     assert!(pie(&app)[1].contains("esperá"));
     app.registrar_busqueda(&bus[1], Err(anyhow::anyhow!("sin cuota")));
-    assert!(app.tanda_en_curso.is_empty());
-    assert_eq!(app.claude_en_curso.len(), 1);
+    assert_eq!(
+        app.claude_en_curso,
+        HashSet::from([Corrida::Buscar("mcp:bus-003".into())])
+    );
     assert_eq!(app.buscando.len(), 1);
     assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);

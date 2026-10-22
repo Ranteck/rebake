@@ -418,7 +418,6 @@ mod tests {
         );
         assert!(app.investigando.is_empty());
         assert!(app.claude_en_curso.is_empty());
-        assert!(app.tanda_en_curso.is_empty());
         assert!(
             app.mensaje
                 .as_deref()
@@ -426,6 +425,22 @@ mod tests {
                 .contains("no existe el ítem")
         );
         assert!(rx.try_recv().is_err());
+        app.recetario = pendiente().recetario;
+        assert_eq!(
+            app.tecla(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
+            Efecto::Nada
+        );
+        assert_eq!(
+            app.modo,
+            Modo::ConfirmarTanda {
+                investigar: vec!["mcp:privado".into()],
+                buscar: vec![],
+            }
+        );
+        assert_eq!(
+            app.tecla(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
+            Efecto::Investigar(vec!["mcp:privado".into()])
+        );
     }
 
     struct Captura(Arc<Mutex<Vec<u8>>>);

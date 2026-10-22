@@ -109,7 +109,6 @@ pub struct App {
     pub buscando: HashSet<String>,
     /// `investigando` incluye recetas directas en hilos; estas no gastan Claude.
     pub claude_en_curso: HashSet<Corrida>,
-    pub tanda_en_curso: HashSet<Corrida>,
     /// Avanza en cada vuelta del bucle: el cuadro del spinner.
     pub cuadro: usize,
     pub instalacion: Vec<(String, Option<Resultado>)>,
@@ -145,7 +144,6 @@ impl App {
             investigando: HashSet::new(),
             buscando: HashSet::new(),
             claude_en_curso: HashSet::new(),
-            tanda_en_curso: HashSet::new(),
             cuadro: 0,
             instalacion: vec![],
             en_curso: None,
@@ -270,10 +268,6 @@ impl App {
                     .into_iter()
                     .filter(|id| pendientes_bus.contains(id))
                     .collect();
-                self.tanda_en_curso
-                    .extend(inv.iter().cloned().map(Corrida::Investigar));
-                self.tanda_en_curso
-                    .extend(bus.iter().cloned().map(Corrida::Buscar));
                 match (self.investigar(inv), self.buscar(bus)) {
                     (Efecto::Investigar(a), Efecto::Buscar(b)) => Efecto::Lote(a, b),
                     (Efecto::Nada, b) => b,
@@ -606,7 +600,6 @@ impl App {
     pub fn registrar_busqueda(&mut self, id: &str, resultado: anyhow::Result<Posible>) {
         self.buscando.remove(id);
         self.claude_en_curso.remove(&Corrida::Buscar(id.into()));
-        self.tanda_en_curso.remove(&Corrida::Buscar(id.into()));
         let texto = match &resultado {
             Ok(p) if p.repo.is_some() => {
                 format!("{id}: posible origen, mirá el panel de la derecha")
@@ -770,7 +763,6 @@ impl App {
     ) {
         self.investigando.remove(id);
         self.claude_en_curso.remove(&Corrida::Investigar(id.into()));
-        self.tanda_en_curso.remove(&Corrida::Investigar(id.into()));
         let texto = match &resultado {
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),
