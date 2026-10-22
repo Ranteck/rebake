@@ -418,6 +418,7 @@ fn los_demas_casos_no_son_directos() {
     let repo = Some("https://github.com/a/b");
     for item in [
         item_con("skill:x", Tipo::Skill, repo, Via::Symlink),
+        item_con("skill:x", Tipo::Skill, repo, Via::Busqueda),
         item_con("herramienta:x", Tipo::Herramienta, repo, Via::Metadatos),
         item_con("skill:x", Tipo::Skill, None, Via::Metadatos),
         item_con("plugin:x;rm@m", Tipo::Plugin, repo, Via::Metadatos),

@@ -8,9 +8,9 @@ use crate::modelo::Posible;
 use crate::servicio::{self, Novedad};
 use crate::{acciones, actualizar, archivo, rutas};
 use anyhow::{Context, Result, bail};
-use app::{App, Efecto, Pestana};
+use app::{App, Efecto, Modo, Pestana};
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::Path;
@@ -103,7 +103,7 @@ fn bucle(
         if tecla.kind != KeyEventKind::Press {
             continue;
         }
-        match app.tecla(tecla) {
+        match tecla_registrada(app, tecla) {
             Efecto::Nada => {}
             Efecto::Salir => return Ok(()),
             Efecto::Guardar => guardar(app, ruta),
@@ -120,6 +120,48 @@ fn bucle(
             Efecto::Instalar => rx_inst = instalar(app, home).or(rx_inst.take()),
         }
     }
+}
+
+fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
+    let confirmando = matches!(app.modo, Modo::ConfirmarTanda { .. });
+    let armando = app.modo == Modo::Normal
+        && app.pestana == Pestana::Recetas
+        && matches!(tecla.code, KeyCode::Char('t' | 'I'));
+    let efecto = app.tecla(tecla);
+    if armando || confirmando {
+        let (inv, bus) = match &efecto {
+            Efecto::Investigar(ids) => (ids.len(), 0),
+            Efecto::Buscar(ids) => (0, ids.len()),
+            Efecto::Lote(inv, bus) => (inv.len(), bus.len()),
+            _ => (0, 0),
+        };
+        let decision = if confirmando {
+            if tecla.code == KeyCode::Char('s') {
+                "confirmar"
+            } else {
+                "cancelar"
+            }
+        } else if matches!(app.modo, Modo::ConfirmarTanda { .. }) {
+            "preguntar"
+        } else if !app.claude_en_curso.is_empty() {
+            "esperar"
+        } else {
+            "sin_claude"
+        };
+        let corridas = match &app.modo {
+            Modo::ConfirmarTanda { investigar, buscar } => investigar.len() + buscar.len(),
+            _ if confirmando => inv + bus,
+            _ => 0,
+        };
+        tracing::info!(
+            accion = "armar_todas",
+            decision,
+            gratis = if confirmando { 0 } else { inv },
+            corridas,
+            en_curso = app.claude_en_curso.len(),
+        );
+    }
+    efecto
 }
 
 fn guardar(app: &mut App, ruta: &Path) {
@@ -152,6 +194,10 @@ fn investigar(
     ids: Vec<String>,
     tx: &mpsc::Sender<Investigado>,
 ) {
+    // `trabajos` interpreta IDs vacíos como todas las pendientes de la CLI.
+    if ids.is_empty() {
+        return;
+    }
     guardar(app, ruta);
     match servicio::trabajos(&app.recetario, &ids, home) {
         Ok(trabajos) => {
@@ -171,15 +217,22 @@ fn investigar(
             });
         }
         Err(e) => {
+            tracing::error!(
+                accion = "investigar",
+                cantidad = ids.len(),
+                "no pude preparar las investigaciones"
+            );
             for id in &ids {
-                app.investigando.remove(id);
+                app.registrar_investigacion(id, Err(anyhow::anyhow!("{e:#}")), &rutas::hoy());
             }
-            app.mensaje = Some(format!("{e:#}"));
         }
     }
 }
 
 fn buscar(app: &App, home: &Path, ids: Vec<String>, tx: &mpsc::Sender<Buscado>) {
+    if ids.is_empty() {
+        return;
+    }
     let trabajos = ids
         .iter()
         .filter_map(|id| app.recetario.item(id))
@@ -322,4 +375,107 @@ fn editar(
         tracing::warn!(ruta = %temporal.display(), error = %e, "no pude borrar el temporal de edición");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modelo::{Fuente, Item, Recetario, Tipo, Via};
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+
+    fn pendiente() -> App {
+        let mut r = Recetario::nuevo();
+        let mut i = Item::nuevo("mcp:privado", Tipo::Mcp);
+        i.fuente = Some(Fuente {
+            repo: "https://github.com/a/b".into(),
+            via: Via::Manual,
+            doc: None,
+        });
+        r.items.push(i);
+        App::nueva(r)
+    }
+
+    #[test]
+    fn error_al_preparar_la_tanda_libera_todos_sus_ids() {
+        let mut app = pendiente();
+        app.tecla(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE));
+        let Efecto::Investigar(ids) =
+            app.tecla(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE))
+        else {
+            panic!()
+        };
+        app.recetario.items.clear();
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, rx) = mpsc::channel();
+        investigar(
+            &mut app,
+            &dir.path().join("cookbook.toml"),
+            dir.path(),
+            ids,
+            &tx,
+        );
+        assert!(app.investigando.is_empty());
+        assert!(app.claude_en_curso.is_empty());
+        assert!(app.tanda_en_curso.is_empty());
+        assert!(
+            app.mensaje
+                .as_deref()
+                .unwrap()
+                .contains("no existe el ítem")
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    struct Captura(Arc<Mutex<Vec<u8>>>);
+    impl Write for Captura {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn las_decisiones_de_cuota_registran_contadores_sin_datos_del_item() {
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        let escritor = salida.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || Captura(escritor.clone()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            let mut app = pendiente();
+            for c in ['t', 'i', 't', 's'] {
+                tecla_registrada(
+                    &mut app,
+                    KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE),
+                );
+            }
+            let mut gratis = Item::nuevo("plugin:privado@x", Tipo::Plugin);
+            gratis.fuente = Some(Fuente {
+                repo: "https://github.com/a/b".into(),
+                via: Via::Metadatos,
+                doc: None,
+            });
+            app.recetario.items.push(gratis);
+            tecla_registrada(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE),
+            );
+        });
+        let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        assert_eq!(log.lines().count(), 5, "{log}");
+        for decision in ["preguntar", "cancelar", "confirmar", "esperar"] {
+            assert!(log.contains(&format!("decision=\"{decision}\"")), "{log}");
+        }
+        assert!(log.contains("corridas=1"), "{log}");
+        assert!(log.contains("gratis=0"), "{log}");
+        assert!(log.contains("gratis=1"), "{log}");
+        assert!(!log.contains("privado") && !log.contains("github"), "{log}");
+    }
 }

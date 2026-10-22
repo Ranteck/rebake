@@ -180,7 +180,7 @@ fn es_repo_seguro(s: &str) -> bool {
 }
 
 /// Lo que tiene instalador conocido no necesita a Claude; si algo no es seguro, se investiga.
-fn receta_directa(item: &Item) -> Option<Receta> {
+pub(crate) fn receta_directa(item: &Item) -> Option<Receta> {
     let fuente = item.fuente.as_ref()?;
     let repo = fuente.repo.as_str();
     if !es_repo_seguro(repo) {

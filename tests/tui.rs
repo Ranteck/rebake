@@ -135,10 +135,13 @@ fn investigar_todo_investiga_las_con_fuente_y_busca_el_origen_de_las_otras() {
     let mut app = App::nueva(r);
     assert_eq!(
         tecla(&mut app, KeyCode::Char('I')),
-        Efecto::Lote(
-            vec!["plugin:pendiente@x".into()],
-            vec!["statusline:statusline.sh".into()]
-        )
+        Efecto::Investigar(vec!["plugin:pendiente@x".into()])
+    );
+    // cuidar-cuota: la directa sigue inmediata; la búsqueda exige confirmar la tanda.
+    assert!(app.buscando.is_empty());
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('s')),
+        Efecto::Buscar(vec!["statusline:statusline.sh".into()])
     );
     assert!(app.investigando.contains("plugin:pendiente@x"));
     assert!(app.buscando.contains("statusline:statusline.sh"));
@@ -595,10 +598,7 @@ fn el_siguiente_paso_sigue_al_camino() {
     let mut r = Recetario::nuevo();
     r.items = vec![con_fuente("plugin:a@x"), con_fuente("plugin:b@x")];
     let p = pantalla(&App::nueva(r.clone()));
-    assert!(
-        p.contains("Siguiente: `t` arma 2 recetas (las que tienen origen)"),
-        "{p}"
-    );
+    assert!(p.contains("Siguiente: `t` arma 2 recetas gratis"), "{p}");
     r.items[0].estado = Estado::PorRevisar;
     r.items[1].estado = Estado::PorRevisar;
     let pie = pie(&App::nueva(r));
@@ -683,14 +683,14 @@ fn el_pie_conserva_el_paso_tras_el_mensaje_de_escaneo_y_cuenta_lo_disponible() {
     app.filtro = "serena".into();
     app.mensaje = Some("Escaneo terminado".into());
     let pie = pie(&app);
-    assert!(pie[0].contains(" t  armar todas (3) "), "{pie:?}");
+    assert!(pie[0].contains(" t  armar 2 + 1 Claude "), "{pie:?}");
     assert!(pie[1].contains("Escaneo terminado"), "{pie:?}");
     assert!(
-        pie[0].find(" ?  ayuda ").unwrap() < pie[0].find(" t  armar todas (3) ").unwrap(),
+        pie[0].find(" ?  ayuda ").unwrap() < pie[0].find(" t  armar 2 + 1 Claude ").unwrap(),
         "{pie:?}"
     );
     assert!(
-        pie[0].find(" t  armar todas (3) ").unwrap()
+        pie[0].find(" t  armar 2 + 1 Claude ").unwrap()
             < pie[0].find(" Enter  aceptar origen ").unwrap(),
         "{pie:?}"
     );
@@ -725,7 +725,7 @@ fn el_pie_con_solo_por_revisar_no_ofrece_otra_tecla_del_paso() {
 fn el_pie_de_instalacion_no_ofrece_armar_todas() {
     let mut app = con_un_item(con_fuente("plugin:a@x"));
     app.pestana = Pestana::Instalacion;
-    assert!(!pie(&app)[0].contains("armar todas"));
+    assert!(!pie(&app)[0].contains(" t  armar "));
 }
 
 #[test]
@@ -735,7 +735,7 @@ fn el_pie_conserva_ayuda_y_armar_todas_a_80_columnas_con_receta_elegida() {
     let p = pantalla_en(&app, 80, 24);
     let primera = p.lines().nth(22).unwrap();
     assert!(primera.contains("?  ayuda"), "{p}");
-    assert!(primera.contains("t  armar todas (1)"), "{p}");
+    assert!(primera.contains(" t  armar 1 "), "{p}");
 }
 
 #[test]
@@ -746,7 +746,7 @@ fn el_pie_ofrece_buscar_sin_origen_aunque_haya_recetas_por_revisar_o_aprobadas()
         item.estado = estado;
         app.recetario.items.push(item);
         let pie = pie(&app);
-        assert!(pie[0].contains(" t  armar todas (1) "), "{pie:?}");
+        assert!(pie[0].contains(" t  armar 1 Claude "), "{pie:?}");
         assert!(!pie[0].contains(" 3  ir a instalar "), "{pie:?}");
     }
 }
@@ -801,7 +801,7 @@ fn ninguna_tecla_depende_de_shift() {
         assert_eq!(a.modo, b.modo, "{minuscula} / {mayuscula}");
     }
     let ayuda = con_ayuda(App::nueva(recetario()));
-    assert!(ayuda.contains("t investigar todas"), "{ayuda}");
+    assert!(ayuda.contains("t armar todas"), "{ayuda}");
     assert!(ayuda.contains("p instalar"), "{ayuda}");
 }
 
@@ -1237,8 +1237,11 @@ fn t_busca_una_sola_vez_por_item() {
     });
     r.items = vec![nunca, esperando, no_encontrado, descartado];
     let mut app = App::nueva(r);
+    // cuidar-cuota: se conserva el único elegible, pero ahora se confirma antes de buscar.
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(app.buscando.is_empty());
     assert_eq!(
-        tecla(&mut app, KeyCode::Char('t')),
+        tecla(&mut app, KeyCode::Char('s')),
         Efecto::Buscar(vec!["mcp:nunca".into()])
     );
     // Mientras busca, otro `t` no la vuelve a lanzar.
@@ -1450,7 +1453,7 @@ fn siguiente_con_solo_sin_origen_dice_si_falta_buscarlos() {
     let sin_buscar = Item::nuevo("mcp:serena", Tipo::Mcp);
     let p = pie(&con_un_item(sin_buscar.clone()));
     assert!(
-        p[1].contains("Siguiente: 1 sin origen: `t` busca de dónde vienen"),
+        p[1].contains("Siguiente: `t` pregunta por hasta 1 de 1 corridas de Claude"),
         "{p:?}"
     );
     let mut buscado = sin_buscar;
@@ -1461,4 +1464,445 @@ fn siguiente_con_solo_sin_origen_dice_si_falta_buscarlos() {
     });
     let p = pie(&con_un_item(buscado));
     assert!(p[1].contains("`i` te deja pegar el link"), "{p:?}");
+}
+
+#[test]
+fn clasifica_lo_armable_con_el_criterio_real_y_en_orden_de_pantalla() {
+    let mut gratis = con_fuente("plugin:z@x");
+    gratis.estado = Estado::Pendiente;
+    let mut inseguro = con_fuente("plugin:a;rm@x");
+    inseguro.fuente.as_mut().unwrap().repo = "https://github.com/a/$(id)".into();
+    let mut skill = Item::nuevo("skill:b", Tipo::Skill);
+    skill.fuente = Some(Fuente {
+        repo: "https://github.com/a/b".into(),
+        via: Via::Symlink,
+        doc: None,
+    });
+    let mut app = con_un_item(gratis);
+    app.recetario.items.extend([
+        Item::nuevo("mcp:z", Tipo::Mcp),
+        skill,
+        inseguro,
+        Item::nuevo("mcp:a", Tipo::Mcp),
+    ]);
+    app.filtro = "plugin:z".into();
+    assert_eq!(
+        app.por_armar(),
+        (
+            vec!["plugin:z@x".into()],
+            vec!["plugin:a;rm@x".into(), "skill:b".into()],
+            vec!["mcp:a".into(), "mcp:z".into()],
+        )
+    );
+    app.investigando.insert("plugin:z@x".into());
+    app.buscando.insert("mcp:a".into());
+    app.recetario.item_mut("skill:b").unwrap().estado = Estado::Excluida;
+    app.recetario.item_mut("mcp:z").unwrap().posible = Some(Posible {
+        repo: None,
+        motivo: "no encontrado".into(),
+        descartado: false,
+    });
+    assert_eq!(
+        app.por_armar(),
+        (vec![], vec!["plugin:a;rm@x".into()], vec![])
+    );
+}
+
+fn con_cuota(gratis: usize, investigaciones: usize, busquedas: usize) -> App {
+    let mut r = Recetario::nuevo();
+    for n in 0..gratis {
+        r.items.push(con_fuente(&format!("plugin:gratis-{n:03}@x")));
+    }
+    for n in 0..investigaciones {
+        let mut i = Item::nuevo(&format!("mcp:inv-{n:03}"), Tipo::Mcp);
+        i.fuente = Some(Fuente {
+            repo: "https://github.com/a/b".into(),
+            via: Via::Manual,
+            doc: None,
+        });
+        r.items.push(i);
+    }
+    for n in 0..busquedas {
+        r.items
+            .push(Item::nuevo(&format!("mcp:bus-{n:03}"), Tipo::Mcp));
+    }
+    App::nueva(r)
+}
+
+fn terminar_directas(app: &mut App, ids: &[String]) {
+    for id in ids {
+        let t = rebake::investigador::trabajo_para(
+            &app.recetario,
+            app.recetario.item(id).unwrap(),
+            std::path::Path::new("/nada"),
+        );
+        app.registrar_investigacion(id, Ok(t.directa.unwrap()), "2026-10-22");
+    }
+}
+
+#[test]
+fn t_arma_25_gratis_y_pregunta_por_cinco_sin_lanzar_claude() {
+    let mut app = con_cuota(25, 0, 41);
+    let Efecto::Investigar(ids) = tecla(&mut app, KeyCode::Char('t')) else {
+        panic!("t debe despachar solamente las directas");
+    };
+    assert_eq!(ids.len(), 25);
+    assert!(ids.iter().all(|id| id.starts_with("plugin:gratis-")));
+    assert!(app.buscando.is_empty());
+    assert!(pie(&app)[1].contains("¿Gastar 5 corridas de Claude?"));
+    terminar_directas(&mut app, &ids);
+    assert!(
+        ids.iter()
+            .all(|id| app.recetario.item(id).unwrap().estado == Estado::PorRevisar)
+    );
+    assert!(pie(&app)[1].contains("¿Gastar 5 corridas de Claude?"));
+}
+
+#[test]
+fn pregunta_por_el_minimo_entre_cinco_y_lo_pendiente() {
+    for (pagas, pregunta) in [
+        (0, None),
+        (1, Some(1)),
+        (4, Some(4)),
+        (5, Some(5)),
+        (6, Some(5)),
+    ] {
+        let mut app = con_cuota(0, 0, pagas);
+        assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+        assert!(app.buscando.is_empty());
+        match pregunta {
+            Some(n) => {
+                assert!(pie(&app)[1].contains(&format!("¿Gastar {n} corridas de Claude?")));
+                let Efecto::Buscar(ids) = tecla(&mut app, KeyCode::Char('s')) else {
+                    panic!()
+                };
+                assert_eq!(ids.len(), n);
+            }
+            None => assert!(!pie(&app)[1].contains("¿Gastar")),
+        }
+    }
+}
+
+#[test]
+fn confirma_primero_tres_investigaciones_y_despues_dos_busquedas() {
+    let mut app = con_cuota(0, 3, 38);
+    app.recetario.items.reverse();
+    tecla(&mut app, KeyCode::Char('t'));
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('s')),
+        Efecto::Lote(
+            vec![
+                "mcp:inv-000".into(),
+                "mcp:inv-001".into(),
+                "mcp:inv-002".into()
+            ],
+            vec!["mcp:bus-000".into(), "mcp:bus-001".into()],
+        )
+    );
+    assert_eq!(app.investigando.len(), 3);
+    assert_eq!(app.buscando.len(), 2);
+}
+
+#[test]
+fn confirmar_no_rellena_huecos_ni_agrega_items_nuevos() {
+    let mut app = con_cuota(0, 3, 6);
+    tecla(&mut app, KeyCode::Char('t'));
+    app.recetario.item_mut("mcp:inv-000").unwrap().estado = Estado::PorRevisar;
+    app.recetario.item_mut("mcp:inv-001").unwrap().estado = Estado::Excluida;
+    app.recetario.items.retain(|i| i.id != "mcp:inv-002");
+    app.buscando.insert("mcp:bus-000".into());
+    app.recetario
+        .items
+        .push(Item::nuevo("mcp:aaa-nuevo", Tipo::Mcp));
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('s')),
+        Efecto::Buscar(vec!["mcp:bus-001".into()])
+    );
+    assert_eq!(app.investigando.len(), 0);
+    assert_eq!(app.buscando.len(), 2);
+}
+
+#[test]
+fn confirmar_todos_resueltos_no_despacha_un_lote_vacio() {
+    let mut app = con_cuota(0, 1, 1);
+    tecla(&mut app, KeyCode::Char('t'));
+    for i in &mut app.recetario.items {
+        i.estado = Estado::Excluida;
+    }
+    assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Nada);
+    assert!(app.investigando.is_empty());
+    assert!(app.buscando.is_empty());
+}
+
+#[test]
+fn cualquier_otra_tecla_cancela_sin_hacer_su_accion_y_conserva_gratis() {
+    for k in [
+        KeyCode::Enter,
+        KeyCode::Esc,
+        KeyCode::Char('i'),
+        KeyCode::Char('t'),
+        KeyCode::Char('q'),
+        KeyCode::Char('S'),
+        KeyCode::Char('3'),
+        KeyCode::Char('?'),
+    ] {
+        let mut app = con_cuota(1, 0, 6);
+        let Efecto::Investigar(ids) = tecla(&mut app, KeyCode::Char('t')) else {
+            panic!()
+        };
+        terminar_directas(&mut app, &ids);
+        assert_eq!(tecla(&mut app, k), Efecto::Nada, "{k:?}");
+        assert_eq!(app.pestana, Pestana::Recetas);
+        assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+        assert!(pie(&app)[1].contains("no se gastó nada"), "{k:?}");
+        assert!(app.buscando.is_empty());
+        assert_eq!(
+            app.recetario.item(&ids[0]).unwrap().estado,
+            Estado::PorRevisar
+        );
+    }
+}
+
+#[test]
+fn t_espera_a_claude_individual_pero_arma_lo_gratis() {
+    for con_origen in [true, false] {
+        let mut app = if con_origen {
+            con_cuota(1, 2, 0)
+        } else {
+            con_cuota(1, 0, 2)
+        };
+        app.filtro = if con_origen { "inv-000" } else { "bus-000" }.into();
+        let efecto = tecla(&mut app, KeyCode::Char('i'));
+        assert!(matches!(efecto, Efecto::Investigar(_) | Efecto::Buscar(_)));
+        app.filtro.clear();
+        assert_eq!(
+            tecla(&mut app, KeyCode::Char('t')),
+            Efecto::Investigar(vec!["plugin:gratis-000@x".into()])
+        );
+        assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+        assert!(pie(&app)[1].contains("esperá"));
+        assert!(!pie(&app)[1].contains("¿Gastar"));
+    }
+}
+
+#[test]
+fn una_directa_en_hilos_no_bloquea_la_pregunta_de_claude() {
+    let mut app = con_cuota(2, 0, 1);
+    app.filtro = "gratis-000".into();
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('i')),
+        Efecto::Investigar(vec!["plugin:gratis-000@x".into()])
+    );
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('t')),
+        Efecto::Investigar(vec!["plugin:gratis-001@x".into()])
+    );
+    assert!(pie(&app)[1].contains("¿Gastar 1 corridas de Claude?"));
+}
+
+#[test]
+fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
+    use rebake::investigador::Receta;
+    let mut app = con_cuota(0, 3, 4);
+    tecla(&mut app, KeyCode::Char('t'));
+    let Efecto::Lote(inv, bus) = tecla(&mut app, KeyCode::Char('s')) else {
+        panic!()
+    };
+    app.filtro = "bus-003".into();
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('i')),
+        Efecto::Buscar(vec!["mcp:bus-003".into()])
+    );
+    assert_eq!(app.tanda_en_curso.len(), 5);
+    assert_eq!(app.claude_en_curso.len(), 6);
+    app.registrar_investigacion(
+        &inv[0],
+        Ok(Receta {
+            repo: "https://github.com/a/b".into(),
+            doc: "https://github.com/a/b#install".into(),
+            pasos: vec![],
+            requiere: vec![],
+            verificar: None,
+        }),
+        "2026-10-22",
+    );
+    for id in &inv[1..] {
+        app.registrar_investigacion(id, Err(anyhow::anyhow!("sin cuota")), "2026-10-22");
+    }
+    app.registrar_busqueda(&bus[0], Err(anyhow::anyhow!("sin cuota")));
+    assert_eq!(app.tanda_en_curso.len(), 1);
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(pie(&app)[1].contains("esperá"));
+    app.registrar_busqueda(&bus[1], Err(anyhow::anyhow!("sin cuota")));
+    assert!(app.tanda_en_curso.is_empty());
+    assert_eq!(app.claude_en_curso.len(), 1);
+    assert_eq!(app.buscando.len(), 1);
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(pie(&app)[1].contains("esperá"));
+    app.registrar_busqueda(
+        "mcp:bus-003",
+        Ok(Posible {
+            repo: None,
+            motivo: "no encontrado".into(),
+            descartado: false,
+        }),
+    );
+    assert!(app.claude_en_curso.is_empty());
+    assert!(app.buscando.is_empty());
+    assert!(app.investigando.is_empty());
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(pie(&app)[1].contains("¿Gastar 5 corridas de Claude?"));
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('s')),
+        Efecto::Lote(
+            vec!["mcp:inv-001".into(), "mcp:inv-002".into()],
+            vec![
+                "mcp:bus-000".into(),
+                "mcp:bus-001".into(),
+                "mcp:bus-002".into()
+            ],
+        )
+    );
+}
+
+#[test]
+fn el_pie_mide_80_columnas_con_cuentas_de_tres_cifras_incluso_con_filtro() {
+    use unicode_width::UnicodeWidthStr;
+    for (g, c, texto, ancho) in [
+        (107, 141, " t  armar 107 + 141 Claude ", 80),
+        (999, 999, " t  armar 999 + 999 Claude ", 80),
+        (999, 0, " t  armar 999 ", 67),
+        (0, 999, " t  armar 999 Claude ", 74),
+    ] {
+        let mut app = con_cuota(g, 0, c);
+        app.filtro = "bus-000".into();
+        app.mensaje = Some("Escaneo terminado".into());
+        let grande = pantalla_en(&app, 200, 24);
+        let linea = grande.lines().nth(22).unwrap();
+        let fin = linea
+            .find(texto)
+            .unwrap_or_else(|| panic!("{linea}"))
+            .checked_add(texto.len())
+            .unwrap();
+        assert_eq!(UnicodeWidthStr::width(&linea[..fin]), ancho, "{linea}");
+        let chica = pantalla_en(&app, 80, 24);
+        let pie = chica.lines().nth(22).unwrap();
+        for esperado in [
+            "1 Recetas",
+            "2 Pendientes",
+            "3 Instalación",
+            " ?  ayuda ",
+            texto,
+        ] {
+            assert!(pie.contains(esperado), "falta {esperado:?}: {pie}");
+        }
+        assert!(chica.lines().nth(23).unwrap().contains("Escaneo terminado"));
+    }
+}
+
+#[test]
+fn el_panel_anticipa_el_costo_real_de_aceptar_sin_mutar_el_origen() {
+    for (id, tipo, repo, gratis) in [
+        ("plugin:a@x", Tipo::Plugin, "https://github.com/a/b", true),
+        (
+            "marketplace:x",
+            Tipo::Marketplace,
+            "https://github.com/a/b",
+            true,
+        ),
+        ("mcp:a", Tipo::Mcp, "https://github.com/a/b", false),
+        ("skill:a", Tipo::Skill, "https://github.com/a/b", false),
+        (
+            "plugin:a;rm@x",
+            Tipo::Plugin,
+            "https://github.com/a/b",
+            false,
+        ),
+        (
+            "marketplace:x",
+            Tipo::Marketplace,
+            "https://github.com/a/$(id)",
+            false,
+        ),
+    ] {
+        let mut i = Item::nuevo(id, tipo);
+        i.posible = Some(Posible {
+            repo: Some(repo.into()),
+            motivo: "un candidato".into(),
+            descartado: false,
+        });
+        let mut app = con_un_item(i);
+        let antes = app.recetario.clone();
+        let p = pantalla_en(&app, 80, 24);
+        let costo = if gratis {
+            "Aceptar: gratis, sin Claude"
+        } else {
+            "Aceptar: 1 corrida de Claude"
+        };
+        assert!(p.contains(costo), "{id}: {p}");
+        assert_eq!(app.recetario, antes);
+        assert_eq!(
+            tecla(&mut app, KeyCode::Enter),
+            Efecto::Investigar(vec![id.into()])
+        );
+        assert_eq!(app.claude_en_curso.len(), usize::from(!gratis));
+        assert_eq!(
+            app.recetario.item(id).unwrap().fuente.as_ref().unwrap().via,
+            Via::Busqueda
+        );
+    }
+}
+
+#[test]
+fn la_ayuda_explica_gratis_tandas_y_confirmacion() {
+    let p = con_ayuda(con_cuota(1, 0, 1));
+    for texto in ["gratis", "5 corridas", "s confirma", "otra tecla cancela"] {
+        assert!(p.contains(texto), "falta {texto}: {p}");
+    }
+}
+
+#[test]
+fn una_tanda_con_seis_investigaciones_no_gasta_la_sexta_ni_busca() {
+    let mut app = con_cuota(0, 6, 1);
+    tecla(&mut app, KeyCode::Char('t'));
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('s')),
+        Efecto::Investigar(vec![
+            "mcp:inv-000".into(),
+            "mcp:inv-001".into(),
+            "mcp:inv-002".into(),
+            "mcp:inv-003".into(),
+            "mcp:inv-004".into(),
+        ])
+    );
+    assert!(!app.investigando.contains("mcp:inv-005"));
+    assert!(app.buscando.is_empty());
+}
+
+#[test]
+fn terminar_una_investigacion_no_cierra_la_busqueda_del_mismo_item() {
+    let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
+    tecla(&mut app, KeyCode::Char('i'));
+    assert_eq!(
+        tecla(&mut app, KeyCode::Enter),
+        Efecto::Buscar(vec!["mcp:serena".into()])
+    );
+    assert_eq!(
+        tecla(&mut app, KeyCode::Enter),
+        Efecto::Investigar(vec!["mcp:serena".into()])
+    );
+    assert_eq!(app.claude_en_curso.len(), 2);
+    app.registrar_investigacion(
+        "mcp:serena",
+        Err(anyhow::anyhow!("sin cuota")),
+        "2026-10-22",
+    );
+    assert_eq!(app.claude_en_curso.len(), 1);
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(pie(&app)[1].contains("esperá"));
+    app.registrar_busqueda("mcp:serena", Err(anyhow::anyhow!("sin cuota")));
+    assert!(app.claude_en_curso.is_empty());
+    tecla(&mut app, KeyCode::Char('t'));
+    assert!(pie(&app)[1].contains("¿Gastar 1 corridas de Claude?"));
 }

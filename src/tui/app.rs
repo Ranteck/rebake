@@ -1,7 +1,7 @@
 use crate::acciones;
 use crate::checklist;
 use crate::instalador::{self, Evento, Presencia, Resultado};
-use crate::investigador::{Receta, aplicar, aplicar_posible};
+use crate::investigador::{Receta, aplicar, aplicar_posible, receta_directa};
 use crate::modelo::{Ajuste, Estado, Item, Posible, Recetario};
 use crate::servicio::Novedad;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -28,8 +28,15 @@ pub enum Entrada {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modo {
     Normal,
-    Escribiendo { para: Entrada, texto: String },
+    Escribiendo {
+        para: Entrada,
+        texto: String,
+    },
     ConfirmarInstalacion,
+    ConfirmarTanda {
+        investigar: Vec<String>,
+        buscar: Vec<String>,
+    },
     ConfirmarSalida,
     Ayuda,
 }
@@ -85,6 +92,12 @@ pub enum Efecto {
     Salir,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Corrida {
+    Investigar(String),
+    Buscar(String),
+}
+
 pub struct App {
     pub recetario: Recetario,
     pub pestana: Pestana,
@@ -94,6 +107,9 @@ pub struct App {
     pub mensaje: Option<String>,
     pub investigando: HashSet<String>,
     pub buscando: HashSet<String>,
+    /// `investigando` incluye recetas directas en hilos; estas no gastan Claude.
+    pub claude_en_curso: HashSet<Corrida>,
+    pub tanda_en_curso: HashSet<Corrida>,
     /// Avanza en cada vuelta del bucle: el cuadro del spinner.
     pub cuadro: usize,
     pub instalacion: Vec<(String, Option<Resultado>)>,
@@ -128,6 +144,8 @@ impl App {
             mensaje: None,
             investigando: HashSet::new(),
             buscando: HashSet::new(),
+            claude_en_curso: HashSet::new(),
+            tanda_en_curso: HashSet::new(),
             cuadro: 0,
             instalacion: vec![],
             en_curso: None,
@@ -204,6 +222,32 @@ impl App {
         self.visibles().get(self.seleccion).copied()
     }
 
+    /// Gratis, investigaciones y búsquedas: alcance global, orden de la lista.
+    pub fn por_armar(&self) -> (Vec<String>, Vec<String>, Vec<String>) {
+        let mut items: Vec<&Item> = self
+            .recetario
+            .items
+            .iter()
+            .filter(|i| {
+                i.estado == Estado::Pendiente
+                    && !self.investigando.contains(&i.id)
+                    && !self.buscando.contains(&i.id)
+            })
+            .collect();
+        items.sort_by(|a, b| (a.tipo, &a.id).cmp(&(b.tipo, &b.id)));
+        let (mut gratis, mut investigar, mut buscar) = (vec![], vec![], vec![]);
+        for item in items {
+            if receta_directa(item).is_some() {
+                gratis.push(item.id.clone());
+            } else if item.fuente.is_some() {
+                investigar.push(item.id.clone());
+            } else if item.posible.is_none() {
+                buscar.push(item.id.clone());
+            }
+        }
+        (gratis, investigar, buscar)
+    }
+
     fn id_seleccionado(&self) -> Option<String> {
         self.seleccionado().map(|i| i.id.clone())
     }
@@ -211,6 +255,31 @@ impl App {
     pub fn tecla(&mut self, k: KeyEvent) -> Efecto {
         match self.modo.clone() {
             Modo::Escribiendo { para, texto } => self.escribiendo(k.code, para, texto),
+            Modo::ConfirmarTanda { investigar, buscar } => {
+                self.modo = Modo::Normal;
+                if k.code != KeyCode::Char('s') {
+                    self.avisar("tanda cancelada; no se gastó nada");
+                    return Efecto::Nada;
+                }
+                let (_, pendientes_inv, pendientes_bus) = self.por_armar();
+                let inv: Vec<String> = investigar
+                    .into_iter()
+                    .filter(|id| pendientes_inv.contains(id))
+                    .collect();
+                let bus: Vec<String> = buscar
+                    .into_iter()
+                    .filter(|id| pendientes_bus.contains(id))
+                    .collect();
+                self.tanda_en_curso
+                    .extend(inv.iter().cloned().map(Corrida::Investigar));
+                self.tanda_en_curso
+                    .extend(bus.iter().cloned().map(Corrida::Buscar));
+                match (self.investigar(inv), self.buscar(bus)) {
+                    (Efecto::Investigar(a), Efecto::Buscar(b)) => Efecto::Lote(a, b),
+                    (Efecto::Nada, b) => b,
+                    (a, _) => a,
+                }
+            }
             Modo::ConfirmarInstalacion => {
                 self.modo = Modo::Normal;
                 if k.code == KeyCode::Char('s') {
@@ -470,40 +539,14 @@ impl App {
                 };
             }
             (KeyCode::Char('t' | 'I'), _) => {
-                let pendientes: Vec<&Item> = self
-                    .recetario
-                    .items
-                    .iter()
-                    .filter(|i| i.estado == Estado::Pendiente)
-                    .collect();
-                let con_origen: Vec<String> = pendientes
-                    .iter()
-                    .filter(|i| i.fuente.is_some())
-                    .map(|i| i.id.clone())
-                    .collect();
-                // Una búsqueda por ítem: lo ya buscado (encontrado, no o descartado) solo con `i`.
-                let a_buscar: Vec<String> = pendientes
-                    .iter()
-                    .filter(|i| i.fuente.is_none() && i.posible.is_none())
-                    .map(|i| i.id.clone())
-                    .collect();
-                let investigar = if con_origen.is_empty() {
-                    Efecto::Nada
-                } else {
-                    self.investigar(con_origen)
-                };
-                let efecto = match (investigar, self.buscar(a_buscar)) {
-                    (Efecto::Investigar(a), Efecto::Buscar(b)) => Efecto::Lote(a, b),
-                    (Efecto::Nada, b) => b,
-                    (a, _) => a,
-                };
-                let (inv, bus) = (self.investigando.len(), self.buscando.len());
-                match (inv, bus) {
-                    (0, 0) => self.avisar("no hay nada para investigar"),
-                    (_, 0) => self.avisar(&format!("investigando {inv} ítems…")),
-                    _ => self.avisar(&format!(
-                        "investigando {inv} y buscando de dónde vienen {bus}…"
-                    )),
+                let (gratis, mut investigar, mut buscar) = self.por_armar();
+                let efecto = self.investigar(gratis);
+                if !self.claude_en_curso.is_empty() {
+                    self.avisar("esperá que terminen las corridas de Claude");
+                } else if !investigar.is_empty() || !buscar.is_empty() {
+                    investigar.truncate(5);
+                    buscar.truncate(5 - investigar.len());
+                    self.modo = Modo::ConfirmarTanda { investigar, buscar };
                 }
                 return efecto;
             }
@@ -554,12 +597,16 @@ impl App {
             return Efecto::Nada;
         }
         self.buscando.extend(ids.iter().cloned());
+        self.claude_en_curso
+            .extend(ids.iter().cloned().map(Corrida::Buscar));
         self.avisar(&format!("buscando de dónde vienen {} ítems…", ids.len()));
         Efecto::Buscar(ids)
     }
 
     pub fn registrar_busqueda(&mut self, id: &str, resultado: anyhow::Result<Posible>) {
         self.buscando.remove(id);
+        self.claude_en_curso.remove(&Corrida::Buscar(id.into()));
+        self.tanda_en_curso.remove(&Corrida::Buscar(id.into()));
         let texto = match &resultado {
             Ok(p) if p.repo.is_some() => {
                 format!("{id}: posible origen, mirá el panel de la derecha")
@@ -590,6 +637,16 @@ impl App {
             return Efecto::Nada;
         }
         self.investigando.extend(ids.iter().cloned());
+        self.claude_en_curso.extend(
+            ids.iter()
+                .filter(|id| {
+                    self.recetario
+                        .item(id)
+                        .is_some_and(|i| receta_directa(i).is_none())
+                })
+                .cloned()
+                .map(Corrida::Investigar),
+        );
         self.avisar(&format!("investigando {} ítems…", ids.len()));
         Efecto::Investigar(ids)
     }
@@ -712,6 +769,8 @@ impl App {
         hoy: &str,
     ) {
         self.investigando.remove(id);
+        self.claude_en_curso.remove(&Corrida::Investigar(id.into()));
+        self.tanda_en_curso.remove(&Corrida::Investigar(id.into()));
         let texto = match &resultado {
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),

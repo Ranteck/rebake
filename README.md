@@ -86,8 +86,10 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    en inglés).
 
 3. Apretá `t` para armar todas las recetas. Las de marketplaces, plugins y skills de skills.sh
-   salen al toque, sin Claude. El resto lo investiga Claude, y lo que no tiene origen conocido
-   primero se busca en la web (ver [Cómo arma cada receta](#cómo-arma-cada-receta)).
+   salen al toque, sin Claude. El resto va por tandas de hasta 5 corridas de Claude: el pie
+   pregunta antes de cada tanda, `s` confirma y cualquier otra tecla cancela. Las tandas no
+   se encadenan. Cada búsqueda de origen también cuenta como una corrida
+   (ver [Cómo arma cada receta](#cómo-arma-cada-receta)).
 
 4. Revisá cada receta. Elegila con `↑` `↓` y leé en el panel derecho qué va a ejecutar y de
    qué parte de la documentación sale cada comando.
@@ -191,6 +193,11 @@ mismas de la lista. El pie muestra las teclas de lo que tenés elegido y, debajo
 actual, qué significa cada marca, para qué es cada pestaña y todas las teclas. Ninguna tecla
 depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
 
+En Recetas, el pie separa las cuentas: `t armar 25 + 41 Claude` son 25 recetas gratis y
+41 corridas pendientes; cuenta corridas, no tokens ni porcentaje de cuota. Mientras haya
+corridas de Claude en curso, `t` sigue armando gratis y pide esperar. `i` sigue de a una y
+no consume lugares de la tanda.
+
 | Tecla | En todas las pestañas |
 |---|---|
 | `1` `2` `3` | Recetas, Pendientes, Instalación |
@@ -204,8 +211,8 @@ depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
 
 | Tecla | Acción |
 |---|---|
-| `i` / `t` | armar la receta elegida / todas las que no tienen receta |
-| Enter / `n` | aceptar o descartar el posible origen que encontró la búsqueda |
+| `i` / `t` | armar la elegida / las gratis y preguntar por hasta 5 corridas de Claude |
+| Enter / `n` | aceptar o descartar el posible origen; el panel avisa si aceptar sale gratis o gasta otra corrida |
 | `l` | pegar el link del repo |
 | `a` o espacio | aprobar o desaprobar una receta armada |
 | `x` | excluir, con motivo; sobre una excluida, la vuelve a incluir |
@@ -237,10 +244,11 @@ ajustes.
 3. **Investigación:** para el resto, `claude -p --restricted` lee la documentación de
    instalación de ese repo y devuelve los pasos con la **cita** literal de la que sale cada
    comando. Corre con Sonnet, sin poder ejecutar comandos ni escribir archivos.
-4. **Sin origen:** `i` o `t` buscan en la web de qué repo viene y el panel te lo propone con el
-   motivo. Enter lo acepta (la receta dice "origen buscado en la web"), `n` lo descarta e `i` te
-   deja pegar el link. `t` busca una sola vez por receta; para buscar de nuevo, `i` y Enter
-   vacío.
+4. **Sin origen:** `i` o una tanda confirmada de `t` buscan en la web de qué repo viene y el
+   panel te lo propone con el motivo. Enter lo acepta (la receta dice "origen buscado en la
+   web"), `n` lo descarta e `i` te deja pegar el link. `t` saltea los posibles pendientes,
+   descartados o no encontrados; si una corrida falla, vuelve a contar para la próxima tanda.
+   Para volver a buscar un origen ya buscado, `i` y Enter vacío.
 5. **Aprobación:** vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
 
 ## Lo que queda a mano

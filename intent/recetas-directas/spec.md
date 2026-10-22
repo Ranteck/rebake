@@ -92,3 +92,5 @@ Investigar escribe, sin `claude -p`, un paso por perfil (Origen de REQ-1 a REQ-3
     responder y los ya buscados (no encontrado o descartado). Solo `i` vuelve a buscar. Origen:
     Resultado 6; cuidar la cuota (nota del 2026-10-17).
   - Concern: el primer `t` gasta una búsqueda por cada ítem sin origen (hoy 18).
+
+- 2026-10-22 (aprobado por Denis): REQ-12/17: `t` arma gratis y confirma tandas de hasta 5 corridas; los errores vuelven a contar; ver [cuidar-cuota](../cuidar-cuota/spec.md).

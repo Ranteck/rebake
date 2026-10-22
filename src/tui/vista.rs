@@ -1,7 +1,7 @@
 use super::app::{App, ClaseFila, Entrada, Modo, Pestana};
 use crate::instalador::{self, Presencia, Resultado};
-use crate::investigador::PISTA_REQUISITO;
-use crate::modelo::{Estado, Item, Modo as ModoPaso, Tipo, Via};
+use crate::investigador::{PISTA_REQUISITO, receta_directa};
+use crate::modelo::{Estado, Fuente, Item, Modo as ModoPaso, Tipo, Via};
 use crate::servicio::{self, Novedad};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -76,20 +76,16 @@ fn leyenda(app: &App) -> Vec<Span<'static>> {
 fn paso_actual(app: &App) -> usize {
     let items = &app.recetario.items;
     let hay = |f: &dyn Fn(&Item) -> bool| items.iter().any(f);
+    let (gratis, investigar, buscar) = app.por_armar();
     if items.is_empty() {
         0
-    } else if hay(&|i| armable(app, i)) {
+    } else if !gratis.is_empty() || !investigar.is_empty() || !buscar.is_empty() {
         1
     } else if hay(&|i| i.estado == Estado::PorRevisar) {
         2
     } else {
         3
     }
-}
-
-/// Sin receta, con origen y sin investigación en curso: lo que `t` arma.
-fn armable(app: &App, i: &Item) -> bool {
-    i.estado == Estado::Pendiente && i.fuente.is_some() && !app.investigando.contains(&i.id)
 }
 
 fn linea_camino(app: &App) -> Line<'static> {
@@ -419,7 +415,18 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
         if !p.motivo.is_empty() {
             l.push(Line::from(format!("Por qué: {}", p.motivo)));
         }
-        if p.pendiente().is_some() {
+        if let Some(repo) = p.pendiente() {
+            let mut aceptado = item.clone();
+            aceptado.fuente = Some(Fuente {
+                repo: repo.into(),
+                via: Via::Busqueda,
+                doc: None,
+            });
+            l.push(Line::from(if receta_directa(&aceptado).is_some() {
+                "Aceptar: gratis, sin Claude"
+            } else {
+                "Aceptar: 1 corrida de Claude"
+            }));
             l.push(Line::from(teclas(&[
                 ("Enter", "aceptar"),
                 ("n", "descartar"),
@@ -733,12 +740,21 @@ fn teclas(lista: &[(&str, &str)]) -> Vec<Span<'static>> {
 fn siguiente_paso(app: &App) -> String {
     let r = &app.recetario;
     let contar = |f: &dyn Fn(&Item) -> bool| r.items.iter().filter(|i| f(i)).count();
+    let (gratis, investigar, buscar) = app.por_armar();
+    let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
     match paso_actual(app) {
         0 => "Siguiente: `s` escanea esta PC".into(),
-        1 => format!(
-            "Siguiente: `t` arma {} recetas (las que tienen origen)",
-            contar(&|i| armable(app, i))
-        ),
+        1 => match (gratis, claude) {
+            (n, 0) => format!("Siguiente: `t` arma {n} recetas gratis"),
+            (0, n) => format!(
+                "Siguiente: `t` pregunta por hasta {} de {n} corridas de Claude",
+                n.min(5)
+            ),
+            (g, c) => format!(
+                "Siguiente: `t` arma {g} gratis; Claude: {} de {c}, con `s`",
+                c.min(5)
+            ),
+        },
         2 => format!(
             "Siguiente: {} recetas por revisar: elegí una y `a` la aprueba",
             contar(&|i| i.estado == Estado::PorRevisar)
@@ -748,13 +764,6 @@ fn siguiente_paso(app: &App) -> String {
             servicio::sin_origen(r).len(),
         ) {
             (0, 0) => String::new(),
-            (0, n)
-                if r.items.iter().any(|i| {
-                    i.estado == Estado::Pendiente && i.fuente.is_none() && i.posible.is_none()
-                }) =>
-            {
-                format!("Siguiente: {n} sin origen: `t` busca de dónde vienen")
-            }
             (0, n) => format!("Siguiente: {n} sin origen: elegí una; `i` te deja pegar el link"),
             (n, _) => format!("Siguiente: en una PC nueva, `3` y `p` instalan las {n} aprobadas"),
         },
@@ -775,7 +784,10 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         Line::from(""),
         linea_camino(app),
         Line::from("1. escanear (s): busca lo que tiene esta PC."),
-        Line::from("2. armar recetas (i, t): de qué repo viene cada cosa y cómo se instala."),
+        Line::from("2. armar recetas (i, t): el pie separa gratis + corridas de Claude."),
+        Line::from(
+            "t arma gratis y pregunta antes de cada tanda de hasta 5 corridas; s confirma, otra tecla cancela. i sigue de a una.",
+        ),
         Line::from(
             "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; x excluye y vuelve a incluir, e edita.",
         ),
@@ -797,7 +809,7 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         Line::from(""),
         titulo("Otras teclas"),
         Line::from(
-            "↑↓ o j k mover  t investigar todas  s escanear  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
+            "↑↓ o j k mover  t armar todas  s escanear  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
         ),
     ];
     f.render_widget(Clear, area);
@@ -830,22 +842,17 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         // `?` va primero: en una terminal angosta se cortan las otras, no la que explica todo.
         spans.push(Span::raw(" "));
         spans.extend(teclas(&[("?", "ayuda")]));
-        let cantidad = app
-            .recetario
-            .items
-            .iter()
-            .filter(|i| {
-                armable(app, i)
-                    || (i.estado == Estado::Pendiente
-                        && i.fuente.is_none()
-                        && i.posible.is_none()
-                        && !app.buscando.contains(&i.id))
-            })
-            .count();
+        let (gratis, investigar, buscar) = app.por_armar();
+        let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
         match paso_actual(app) {
             0 => spans.extend(teclas(&[("s", "escanear")])),
-            _ if cantidad > 0 => {
-                spans.extend(teclas(&[("t", &format!("armar todas ({cantidad})"))]));
+            _ if gratis + claude > 0 => {
+                let accion = match (gratis, claude) {
+                    (n, 0) => format!("armar {n}"),
+                    (0, n) => format!("armar {n} Claude"),
+                    (g, c) => format!("armar {g} + {c} Claude"),
+                };
+                spans.extend(teclas(&[("t", &accion)]));
             }
             3 if app
                 .recetario
@@ -878,6 +885,10 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         spans.push(Span::raw(format!("  {texto}")));
     }
     let segunda = match &app.modo {
+        Modo::ConfirmarTanda { investigar, buscar } => format!(
+            " ¿Gastar {} corridas de Claude? s confirma; otra tecla cancela",
+            investigar.len() + buscar.len()
+        ),
         Modo::Escribiendo { para, texto } => {
             let etiqueta = match para {
                 Entrada::Link { .. } => "Link del repo",

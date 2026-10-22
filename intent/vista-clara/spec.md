@@ -108,3 +108,5 @@ Estado: aceptado
   camino (`s escanear`, `t armar todas (N)` o `3 ir a instalar`) después de `?`: un mensaje en la
   línea 2 ya no la esconde. Pedido de Denis ("no me entero que tengo que hacer t"); propuesta
   revisada con Codex y Antigravity. Aprobado.
+
+- 2026-10-22 (aprobado por Denis): el pie de Recetas separa gratis y Claude; la pregunta de tanda persiste hasta responder; ver [cuidar-cuota](../cuidar-cuota/spec.md).
