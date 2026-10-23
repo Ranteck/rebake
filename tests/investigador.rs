@@ -21,14 +21,24 @@ fn cuenta_se_comparte_entre_lanzadores_en_cada_proceso() {
             })
             .collect();
         let rx = en_paralelo(trabajos, claude.clone(), Duration::from_secs(5), 2);
-        assert_eq!(rx.iter().map(|(_, r)| r.unwrap()).count(), 2);
+        assert_eq!(
+            rx.iter()
+                .inspect(|(_, r)| assert!(r.is_ok(), "{r:?}"))
+                .count(),
+            2
+        );
         let rx = buscar_origenes(
             vec![("a".into(), "x".into()), ("b".into(), "x".into())],
             claude,
             Duration::from_secs(5),
             2,
         );
-        assert_eq!(rx.iter().map(|(_, r)| r.unwrap()).count(), 2);
+        assert_eq!(
+            rx.iter()
+                .inspect(|(_, r)| assert!(r.is_ok(), "{r:?}"))
+                .count(),
+            2
+        );
         return;
     }
     for (caso, perfil, esperado) in [
