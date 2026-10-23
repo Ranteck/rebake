@@ -25,6 +25,7 @@ Denis y su `.zshrc`; la CLI (`investigar`) y la TUI (`i`, `t` y aceptar un posib
   sigue armando cada perfil con el suyo.
 - Sin configurar nada nuevo en la shell ni en el cookbook.
 - La shell se consulta una sola vez, no en cada corrida.
+- Solo acepta alias o funciones de nombre simple (letras, números, guion o guion bajo, sin empezar con guion): nunca ejecuta un programa ni un texto con espacios o ;
 
 ## Fuera de alcance
 - Pasar solo a otra cuenta cuando una se queda sin cuota.
@@ -34,3 +35,4 @@ Denis y su `.zshrc`; la CLI (`investigar`) y la TUI (`i`, `t` y aceptar un posib
 Ninguna.
 
 ## Cambios
+- 2026-10-23: solo alias o funciones de nombre simple, para no ejecutar programas al resolver --profile; lo marcó Antigravity. Aprobado por Denis con el OK de Codex y Antigravity.

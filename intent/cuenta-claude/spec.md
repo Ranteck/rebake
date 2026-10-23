@@ -1,5 +1,5 @@
 # Spec: elegir con qué cuenta corre Claude (desde intent.md 2026-10-23)
-Estado: borrador
+Estado: aceptado
 
 ## Requisitos
 - REQ-1 MUST: aceptar `rebake --profile clp` y `rebake investigar --profile clp`.
@@ -12,10 +12,9 @@ Estado: borrador
 - REQ-3 MUST: aceptar nombres no vacíos con letras ASCII, números, guion o guion bajo,
   sin empezar con guion. Rechazar otros antes de consultar la shell.
   Consultar primero qué es el nombre; invocarlo solo si es alias o función. Nunca ejecutar
-  programas del PATH ni nombres desconocidos. Origen: Restricciones, enmienda propuesta
-  pendiente de aprobación: «Solo acepta alias o funciones de nombre simple (letras, números,
-  guion o guion bajo, sin empezar con guion): nunca ejecuta un programa ni un texto con
-  espacios o ;».
+  programas del PATH ni nombres desconocidos. Origen: Restricciones, «Solo acepta alias o
+  funciones de nombre simple (letras, números, guion o guion bajo, sin empezar con guion):
+  nunca ejecuta un programa ni un texto con espacios o ;».
 - REQ-4 MUST: ante nombre rechazado, alias o función que no llama a `claude`, shell fallida,
   no soportada o `SHELL` vacía, frenar sin corridas y explicar la causa. Origen: Resultado
   esperado 3, «frena antes de gastar nada y lo dice».
