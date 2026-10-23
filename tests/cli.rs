@@ -11,6 +11,7 @@ fn comando(h: &HomeFalso, args: &[&str], claude: Option<&str>) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_rebake"));
     c.args(args)
         .env("HOME", h.ruta())
+        .env("REBAKE_BASE_URL", format!("file://{}", h.ruta().display()))
         .env(
             "PATH",
             format!("{}:/usr/bin:/bin", h.ruta().join("bin").display()),
@@ -218,7 +219,6 @@ fn con_profile(h: &HomeFalso, nombre: &str, shell: &std::path::Path) -> Command 
         ])
         .env("SHELL", shell)
         .env("ZDOTDIR", h.ruta())
-        .env("REBAKE_BASE_URL", format!("file://{}", h.ruta().display()))
         .env_remove("BASH_ENV")
         .env_remove("ENV");
     c
