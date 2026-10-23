@@ -4,6 +4,10 @@ use rebake::{archivo, modelo::Estado};
 use std::process::{Command, Output};
 
 fn recetario(h: &HomeFalso, args: &[&str], claude: Option<&str>) -> Output {
+    comando(h, args, claude).output().unwrap()
+}
+
+fn comando(h: &HomeFalso, args: &[&str], claude: Option<&str>) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_rebake"));
     c.args(args)
         .env("HOME", h.ruta())
@@ -15,7 +19,7 @@ fn recetario(h: &HomeFalso, args: &[&str], claude: Option<&str>) -> Output {
     if let Some(cl) = claude {
         c.env("REBAKE_CLAUDE", cl);
     }
-    c.output().unwrap()
+    c
 }
 
 fn texto(o: &Output) -> String {
@@ -126,4 +130,71 @@ fn investigar_en_lote_salta_las_sin_origen_y_las_lista() {
     let salida = String::from_utf8_lossy(&o.stdout);
     assert!(salida.contains("1 sin origen"), "{salida}");
     assert!(salida.contains("  huerfana"), "{salida}");
+}
+
+#[test]
+fn profile_es_global_para_investigar_y_la_entrada_tui() {
+    let h = HomeFalso::nuevo();
+    let ruta = h.ruta().join("cookbook.toml");
+    archivo::guardar(&ruta, &rebake::modelo::Recetario::nuevo()).unwrap();
+    let shell = h.binario("bin/bash", b"#!/bin/sh\nprintf 'REBAKE_PROFILE:\\n'\n");
+    for args in [
+        vec!["--profile", "clp", "investigar"],
+        vec!["investigar", "--profile", "clp"],
+    ] {
+        let o = comando(&h, &args, None)
+            .args(["--archivo", ruta.to_str().unwrap()])
+            .env("SHELL", &shell)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", texto(&o));
+    }
+    let o = comando(&h, &["--profile", "clp"], None)
+        .args(["--archivo", ruta.to_str().unwrap()])
+        .env("SHELL", &shell)
+        .output()
+        .unwrap();
+    assert!(
+        texto(&o).contains("la salida no es una terminal"),
+        "{}",
+        texto(&o)
+    );
+}
+
+#[test]
+fn profile_se_ignora_fuera_de_las_corridas_de_claude() {
+    let h = HomeFalso::nuevo();
+    let ruta = h.ruta().join("cookbook.toml");
+    let mut r = rebake::modelo::Recetario::nuevo();
+    r.perfiles.push(comun::perfil("viejo", "~/.claude"));
+    archivo::guardar(&ruta, &r).unwrap();
+    for args in [
+        vec!["escanear"],
+        vec!["instalar", "--dry-run"],
+        vec!["renombrar-perfil", "viejo", "nuevo"],
+    ] {
+        let o = comando(&h, &args, None)
+            .args([
+                "--profile",
+                "invalido;",
+                "--archivo",
+                ruta.to_str().unwrap(),
+            ])
+            .env("SHELL", "/no/existe/fish")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", texto(&o));
+    }
+    let o = comando(&h, &["clonar", "no-existe"], None)
+        .args([
+            "--profile",
+            "invalido;",
+            "--archivo",
+            h.ruta().join("clon/cookbook.toml").to_str().unwrap(),
+        ])
+        .env("SHELL", "")
+        .output()
+        .unwrap();
+    assert!(texto(&o).contains("no pude clonar"), "{}", texto(&o));
+    assert!(!texto(&o).contains("--profile"), "{}", texto(&o));
 }

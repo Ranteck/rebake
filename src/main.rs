@@ -24,6 +24,9 @@ struct Cli {
     /// Cookbook a usar (por defecto ~/Documentos/rebake/cookbook.toml, la carpeta Documentos de tu sistema)
     #[arg(long, global = true)]
     archivo: Option<PathBuf>,
+    /// Alias o función de zsh/bash cuya cuenta usan las corridas de claude -p
+    #[arg(long, global = true)]
+    profile: Option<String>,
     /// URL del repo de tu cookbook: lo clona la primera vez y abre la pantalla en Instalación
     url: Option<String>,
     #[command(subcommand)]
