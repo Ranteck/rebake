@@ -181,9 +181,30 @@ receta y termina con la lista de pendientes.
 | `rebake instalar [--dry-run] [--si]` | Instala las recetas aprobadas. |
 | `rebake renombrar-perfil <viejo> <nuevo>` | Cambia el nombre de un perfil en todo el cookbook. |
 
-Todos aceptan `--archivo <ruta>` para usar otro cookbook. Los ids son como los muestra el
-título del panel derecho, por ejemplo `plugin:superpowers@claude-plugins-official` o
-`skill:technical-writer`.
+| Opción | Para qué |
+|---|---|
+| `--archivo <ruta>` | Usa otro cookbook. |
+| `--profile <nombre>` | Usa la cuenta del alias o función de tu shell para las corridas de `claude -p`. |
+
+Las opciones van antes o después del subcomando. Los ids son como los muestra el título del
+panel derecho, por ejemplo `plugin:superpowers@claude-plugins-official` o `skill:technical-writer`.
+
+Para elegir la cuenta con la que investigás:
+
+```bash
+rebake --profile clp
+rebake investigar --profile clp
+```
+
+`clp` tiene que ser un alias o función que llame a `claude`, definido en la shell de `SHELL`
+(zsh o bash). Se resuelve una vez al arrancar; esa cuenta se usa en investigación, búsqueda de
+origen y las corridas de `i`, `t` y aceptar un posible origen. Resolver no gasta una corrida.
+El nombre solo admite letras ASCII, números, guion o guion bajo, sin empezar con guion.
+Un programa del `PATH` no sirve como perfil.
+
+Sin `--profile`, la cuenta se hereda como siempre. `escanear`, `clonar`, `instalar` y
+`renombrar-perfil` aceptan e ignoran la opción: el escaneo lee ambos perfiles y la instalación
+conserva la cuenta de cada uno.
 
 ## La pantalla
 
@@ -275,7 +296,9 @@ La pestaña Pendientes, y la salida de `rebake instalar`, junta lo que rebake no
 | `REBAKE_VERSION` | `latest` | Versión que instala `install.sh`, por ejemplo `v0.8.4`. |
 | `REBAKE_BASE_URL` | `https://github.com/Ranteck/rebake/releases` | De dónde bajan `install.sh` y `u` los releases. |
 | `REBAKE_MODELO` | `sonnet` | Modelo de `claude -p` para investigar y buscar orígenes. |
-| `REBAKE_CLAUDE` | `claude` | Binario de Claude Code que usa rebake. |
+| `REBAKE_CLAUDE` | `claude` | Binario de Claude Code que usa rebake, también con `--profile`. |
+| `SHELL` | entorno de tu sesión | Shell que resuelve `--profile`: zsh o bash, leyendo su archivo de inicio interactivo. Solo se necesita con esa opción. |
+| `CLAUDE_CONFIG_DIR` | sin definir | Cuenta heredada sin `--profile`. Con la opción se reemplaza por la del alias o función; si usa la predeterminada, se quita. |
 | `VISUAL`, `EDITOR` | `vi` | Editor de `e`. |
 | `NO_COLOR` | sin definir | Con cualquier valor, la pantalla no usa colores. |
 
@@ -289,6 +312,8 @@ La pestaña Pendientes, y la salida de `rebake instalar`, junta lo que rebake no
 
 ## Seguridad
 
+- Resolver `--profile` ejecuta el archivo de inicio de tu shell y el alias o función propio.
+  Sus otras acciones también se ejecutan: revisalas antes de usarlo.
 - La investigación corre sin Bash, sin escritura y sin tus hooks, plugins ni MCP. Lo que se le
   manda pasa antes por el filtro de secretos.
 - El escaneo nunca lee `.credentials.json` ni `~/.codex/auth.json`. De `.claude.json` lee solo
