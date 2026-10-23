@@ -11,6 +11,7 @@ const MARGEN_DRENADO: Duration = Duration::from_secs(1);
 pub struct Salida {
     pub codigo: Option<i32>,
     pub texto: String,
+    pub stdout: String,
     pub vencido: bool,
 }
 
@@ -30,22 +31,22 @@ pub fn ejecutar(
         .stderr(Stdio::piped())
         .process_group(0);
     let mut hijo = lanzar(cmd)?;
-    let (tx, rx) = mpsc::channel::<String>();
-    let mut fuentes: Vec<Box<dyn Read + Send>> = Vec::new();
+    let (tx, rx) = mpsc::channel::<(bool, String)>();
+    let mut fuentes: Vec<(bool, Box<dyn Read + Send>)> = Vec::new();
     if let Some(s) = hijo.stdout.take() {
-        fuentes.push(Box::new(s));
+        fuentes.push((true, Box::new(s)));
     }
     if let Some(s) = hijo.stderr.take() {
-        fuentes.push(Box::new(s));
+        fuentes.push((false, Box::new(s)));
     }
     let lectores: Vec<_> = fuentes
         .into_iter()
-        .map(|fuente| {
+        .map(|(es_stdout, fuente)| {
             let tx = tx.clone();
             thread::spawn(move || {
                 for linea in BufReader::new(fuente).lines() {
                     let Ok(linea) = linea else { break };
-                    if tx.send(linea).is_err() {
+                    if tx.send((es_stdout, linea)).is_err() {
                         break;
                     }
                 }
@@ -55,8 +56,13 @@ pub fn ejecutar(
     drop(tx);
 
     let mut texto = String::new();
-    let mut recibir = |l: String, texto: &mut String| {
+    let mut stdout = String::new();
+    let mut recibir = |(es_stdout, l): (bool, String), texto: &mut String| {
         al_leer(&l);
+        if es_stdout {
+            stdout.push_str(&l);
+            stdout.push('\n');
+        }
         texto.push_str(&l);
         texto.push('\n');
     };
@@ -91,6 +97,7 @@ pub fn ejecutar(
     Ok(Salida {
         codigo: estado.code(),
         texto,
+        stdout,
         vencido,
     })
 }

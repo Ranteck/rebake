@@ -65,6 +65,19 @@ fn pasa_variables_de_entorno() {
 }
 
 #[test]
+fn stdout_no_incluye_avisos_ni_marcadores_de_stderr() {
+    let s = ejecutar(
+        &mut sh("printf 'REBAKE_PROFILE:correcto\\n'; printf 'REBAKE_PROFILE:incorrecto\\n' >&2"),
+        Duration::from_secs(5),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(s.exito());
+    assert_eq!(s.stdout, "REBAKE_PROFILE:correcto\n");
+    assert!(s.texto.contains("REBAKE_PROFILE:incorrecto"));
+}
+
+#[test]
 fn ejecutable_ocupado_un_instante_se_reintenta() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
