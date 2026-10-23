@@ -198,3 +198,227 @@ fn profile_se_ignora_fuera_de_las_corridas_de_claude() {
     assert!(texto(&o).contains("no pude clonar"), "{}", texto(&o));
     assert!(!texto(&o).contains("--profile"), "{}", texto(&o));
 }
+
+fn home_profile() -> HomeFalso {
+    let h = HomeFalso::nuevo();
+    archivo::guardar(
+        &h.ruta().join("cookbook.toml"),
+        &rebake::modelo::Recetario::nuevo(),
+    )
+    .unwrap();
+    h
+}
+
+fn con_profile(h: &HomeFalso, nombre: &str, shell: &std::path::Path) -> Command {
+    let mut c = comando(h, &["investigar"], None);
+    c.arg(format!("--profile={nombre}"))
+        .args([
+            "--archivo",
+            h.ruta().join("cookbook.toml").to_str().unwrap(),
+        ])
+        .env("SHELL", shell)
+        .env("ZDOTDIR", h.ruta())
+        .env("REBAKE_BASE_URL", format!("file://{}", h.ruta().display()))
+        .env_remove("BASH_ENV")
+        .env_remove("ENV");
+    c
+}
+
+fn shell_profile(h: &HomeFalso, cuerpo: &str) -> std::path::PathBuf {
+    h.binario(
+        "bin/bash",
+        format!("#!/bin/sh\nprintf 'x\\n' >> \"$HOME/consultas\"\n{cuerpo}\n").as_bytes(),
+    )
+}
+
+#[test]
+fn profile_rechaza_nombres_invalidos_sin_consultar_shell() {
+    let h = home_profile();
+    let shell = shell_profile(&h, "printf 'REBAKE_PROFILE:\\n'");
+    for nombre in [
+        "",
+        "-clp",
+        "dos palabras",
+        "clp;reboot",
+        "clp/otro",
+        "ál",
+        "clp\n",
+    ] {
+        let o = con_profile(&h, nombre, &shell).output().unwrap();
+        assert!(!o.status.success(), "{nombre:?}: {}", texto(&o));
+        assert!(texto(&o).contains("nombre"), "{}", texto(&o));
+    }
+    assert!(!h.ruta().join("consultas").exists());
+}
+
+#[test]
+fn profile_rechaza_shell_ausente_incompatible_o_inaccesible() {
+    let h = home_profile();
+    for (shell, mensaje) in [
+        ("", "SHELL"),
+        ("/usr/bin/fish", "soportada"),
+        ("/no/existe/bash", "iniciar"),
+    ] {
+        let o = con_profile(&h, "clp", std::path::Path::new(shell))
+            .output()
+            .unwrap();
+        assert!(!o.status.success());
+        assert!(texto(&o).contains(mensaje), "{}", texto(&o));
+    }
+    let o = con_profile(&h, "clp", std::path::Path::new(""))
+        .env_remove("SHELL")
+        .output()
+        .unwrap();
+    assert!(!o.status.success());
+    assert!(texto(&o).contains("SHELL"), "{}", texto(&o));
+}
+
+#[test]
+fn profile_exige_marcador_unico_de_stdout_y_shell_exitosa() {
+    for (cuerpo, mensaje) in [
+        ("printf 'REBAKE_PROFILE:privado\\n' >&2", "respuesta"),
+        ("printf 'ruido\\n'", "respuesta"),
+        (
+            "printf 'REBAKE_PROFILE:a\\nREBAKE_PROFILE:b\\n'",
+            "respuesta",
+        ),
+        ("printf 'REBAKE_PROFILE:mal\\000dato\\n'", "respuesta"),
+        ("printf 'REBAKE_PROFILE:privado\\n'; exit 1", "falló"),
+        ("exit 64", "programa"),
+        ("exit 65", "no existe"),
+        ("exit 66", "llama a claude"),
+    ] {
+        let h = home_profile();
+        let shell = shell_profile(&h, cuerpo);
+        let o = con_profile(&h, "clp", &shell).output().unwrap();
+        assert!(!o.status.success(), "{cuerpo}: {}", texto(&o));
+        assert!(texto(&o).contains(mensaje), "{}", texto(&o));
+        assert!(!texto(&o).contains("privado"), "{}", texto(&o));
+        assert_eq!(
+            std::fs::read_to_string(h.ruta().join("consultas")).unwrap(),
+            "x\n"
+        );
+    }
+    let h = home_profile();
+    let shell = shell_profile(
+        &h,
+        "printf 'ruido\\nREBAKE_PROFILE:\\n'; printf 'REBAKE_PROFILE:no-leer\\n' >&2",
+    );
+    let o = con_profile(&h, "clp", &shell).output().unwrap();
+    assert!(o.status.success(), "{}", texto(&o));
+}
+
+#[test]
+fn profile_resuelve_alias_y_funciones_en_zsh_y_bash_reales_aisladas() {
+    for shell in ["/usr/bin/zsh", "/usr/bin/bash"] {
+        let h = home_profile();
+        let inicio = "printf 'inicio\\n' >> \"$HOME/inicios\"\nalias clp='CLAUDE_CONFIG_DIR=\"$HOME/personal\" claude'\nalias cl='claude'\nalias cadena='clp'\nfuncion() { CLAUDE_CONFIG_DIR=\"$HOME/funcion\" claude; }\nalias otro=':'\n";
+        h.escribir(".bashrc", inicio);
+        h.escribir(".zshrc", inicio);
+        h.binario(
+            "bin/claude",
+            b"#!/bin/sh\ntouch \"$HOME/claude-real\"\nexit 99\n",
+        );
+        h.binario(
+            "bin/reboot",
+            b"#!/bin/sh\ntouch \"$HOME/programa\"\nexit 99\n",
+        );
+        for nombre in ["clp", "cl", "cadena", "funcion"] {
+            let o = con_profile(&h, nombre, std::path::Path::new(shell))
+                .env("CLAUDE_CONFIG_DIR", "heredada")
+                .output()
+                .unwrap();
+            assert!(o.status.success(), "{shell} {nombre}: {}", texto(&o));
+        }
+        for (nombre, mensaje) in [
+            ("reboot", "programa"),
+            ("desconocido", "no existe"),
+            ("otro", "llama a claude"),
+        ] {
+            let o = con_profile(&h, nombre, std::path::Path::new(shell))
+                .output()
+                .unwrap();
+            assert!(!o.status.success());
+            assert!(texto(&o).contains(mensaje), "{shell}: {}", texto(&o));
+        }
+        assert_eq!(
+            std::fs::read_to_string(h.ruta().join("inicios"))
+                .unwrap()
+                .lines()
+                .count(),
+            7
+        );
+        assert!(!h.ruta().join("programa").exists());
+        assert!(!h.ruta().join("claude-real").exists());
+    }
+}
+
+#[test]
+fn profile_loguea_una_resolucion_sin_rutas_alias_ni_salida_cruda() {
+    for (nombre, cuerpo, nivel, causa) in [
+        (
+            "alias_privado",
+            "printf 'REBAKE_PROFILE:/ruta/privada\\n'; printf 'secreto-de-shell\\n' >&2",
+            "INFO",
+            "ninguna",
+        ),
+        ("alias;privado", "", "INFO", "nombre_invalido"),
+        ("alias_privado", "exit 64", "INFO", "programa"),
+        ("alias_privado", "exit 65", "INFO", "inexistente"),
+        ("alias_privado", "exit 66", "INFO", "sin_claude"),
+        (
+            "alias_privado",
+            "printf 'secreto-de-shell\\n' >&2; exit 1",
+            "ERROR",
+            "shell_fallo",
+        ),
+        (
+            "alias_privado",
+            "printf 'REBAKE_PROFILE:a\\nREBAKE_PROFILE:b\\n'",
+            "ERROR",
+            "respuesta_invalida",
+        ),
+    ] {
+        let h = home_profile();
+        let shell = shell_profile(&h, cuerpo);
+        let o = con_profile(&h, nombre, &shell).output().unwrap();
+        assert_eq!(o.status.success(), causa == "ninguna", "{}", texto(&o));
+        let log = std::fs::read_to_string(h.ruta().join(".local/state/rebake/rebake.log")).unwrap();
+        let eventos: Vec<_> = log
+            .lines()
+            .filter(|l| l.contains("resolver_cuenta") || l.contains("el comando falló"))
+            .collect();
+        assert_eq!(eventos.len(), 1, "{log}");
+        let evento = eventos[0];
+        assert!(evento.contains("accion=\"resolver_cuenta\""), "{evento}");
+        assert!(evento.contains(nivel), "{evento}");
+        assert!(evento.contains(&format!("causa=\"{causa}\"")), "{evento}");
+        for privado in [
+            "alias_privado",
+            "alias;privado",
+            "/ruta/privada",
+            "secreto-de-shell",
+            h.ruta().to_str().unwrap(),
+        ] {
+            assert!(!log.contains(privado), "{log}");
+        }
+    }
+}
+
+#[test]
+fn sin_profile_no_consulta_shell_ni_registra_resolucion() {
+    let h = home_profile();
+    let shell = shell_profile(&h, "exit 1");
+    let o = comando(&h, &["investigar"], None)
+        .args([
+            "--archivo",
+            h.ruta().join("cookbook.toml").to_str().unwrap(),
+        ])
+        .env("SHELL", shell)
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", texto(&o));
+    assert!(!h.ruta().join("consultas").exists());
+    let log = std::fs::read_to_string(h.ruta().join(".local/state/rebake/rebake.log")).unwrap();
+    assert!(!log.contains("resolver_cuenta"), "{log}");
+}

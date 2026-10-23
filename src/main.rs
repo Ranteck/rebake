@@ -91,7 +91,25 @@ fn main() -> ExitCode {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
-            tracing::error!(error = %format!("{e:#}"), "el comando falló");
+            if let Some(cuenta) = e.downcast_ref::<investigador::ErrorCuenta>() {
+                if cuenta.operativo {
+                    tracing::error!(
+                        accion = "resolver_cuenta",
+                        shell = cuenta.shell,
+                        resultado = "fallo",
+                        causa = cuenta.causa
+                    );
+                } else {
+                    tracing::info!(
+                        accion = "resolver_cuenta",
+                        shell = cuenta.shell,
+                        resultado = "rechazado",
+                        causa = cuenta.causa
+                    );
+                }
+            } else {
+                tracing::error!(error = %format!("{e:#}"), "el comando falló");
+            }
             eprintln!("rebake: {e:#}");
             ExitCode::FAILURE
         }
@@ -116,6 +134,17 @@ fn iniciar_logs(home: &Path) -> Option<tracing_appender::non_blocking::WorkerGua
 
 /// `Ok(false)` = terminó, pero algo no salió (p. ej. una receta falló).
 fn correr(cli: Cli, home: &Path, revision: &mut Option<Receiver<Option<String>>>) -> Result<bool> {
+    if matches!(cli.comando, None | Some(Comando::Investigar { .. }))
+        && let Some(nombre) = &cli.profile
+    {
+        let shell = investigador::configurar_cuenta(nombre)?;
+        tracing::info!(
+            accion = "resolver_cuenta",
+            shell,
+            resultado = "ok",
+            causa = "ninguna"
+        );
+    }
     let ruta = cli
         .archivo
         .unwrap_or_else(|| rutas::archivo_por_defecto(home));

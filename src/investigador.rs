@@ -7,9 +7,11 @@ use crate::rutas::expandir;
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 use serde_json::Value;
+use std::ffi::OsStr;
+use std::fmt;
 use std::path::Path;
 use std::process::Command;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread;
 use std::time::Duration;
 
@@ -18,6 +20,246 @@ pub const PISTA_REQUISITO: &str = "requisito de ";
 
 pub const TOPE: Duration = Duration::from_secs(5 * 60);
 pub const PARALELO: usize = 4;
+
+#[derive(Debug)]
+enum Cuenta {
+    Heredada,
+    Predeterminada,
+    Directorio(String),
+}
+
+static CUENTA_CLAUDE: OnceLock<Cuenta> = OnceLock::new();
+
+#[derive(Debug)]
+pub struct ErrorCuenta {
+    pub shell: &'static str,
+    pub causa: &'static str,
+    pub operativo: bool,
+    mensaje: &'static str,
+    origen: Option<std::io::Error>,
+}
+
+impl fmt::Display for ErrorCuenta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.mensaje)
+    }
+}
+
+impl std::error::Error for ErrorCuenta {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.origen.as_ref().map(|e| e as &dyn std::error::Error)
+    }
+}
+
+enum CausaCuenta {
+    Nombre,
+    ShellAusente,
+    ShellNoSoportada,
+    Inicio,
+    Tiempo,
+    Programa,
+    Inexistente,
+    SinClaude,
+    Fallo,
+    Respuesta,
+    YaFijada,
+}
+
+fn error_cuenta(shell: &'static str, causa: CausaCuenta) -> ErrorCuenta {
+    let (causa, mensaje, operativo) = match causa {
+        CausaCuenta::Nombre => (
+            "nombre_invalido",
+            "nombre de --profile inválido: usá letras ASCII, números, guion o guion bajo, sin empezar con guion",
+            false,
+        ),
+        CausaCuenta::ShellAusente => (
+            "shell_ausente",
+            "SHELL está vacía o no está definida",
+            false,
+        ),
+        CausaCuenta::ShellNoSoportada => (
+            "shell_no_soportada",
+            "shell no soportada: --profile necesita zsh o bash",
+            false,
+        ),
+        CausaCuenta::Inicio => (
+            "inicio",
+            "no pude iniciar la shell para resolver --profile",
+            true,
+        ),
+        CausaCuenta::Tiempo => (
+            "timeout",
+            "la shell superó el tiempo para resolver --profile",
+            true,
+        ),
+        CausaCuenta::Programa => (
+            "programa",
+            "--profile es un programa: solo se aceptan alias o funciones",
+            false,
+        ),
+        CausaCuenta::Inexistente => (
+            "inexistente",
+            "no existe un alias o función con ese nombre",
+            false,
+        ),
+        CausaCuenta::SinClaude => (
+            "sin_claude",
+            "el alias o función no llama a claude o no devolvió una respuesta válida",
+            false,
+        ),
+        CausaCuenta::Fallo => ("shell_fallo", "la shell falló al resolver --profile", true),
+        CausaCuenta::Respuesta => (
+            "respuesta_invalida",
+            "la shell devolvió una respuesta de perfil inválida",
+            true,
+        ),
+        CausaCuenta::YaFijada => (
+            "ya_fijada",
+            "la cuenta de Claude ya fue fijada para este proceso",
+            true,
+        ),
+    };
+    ErrorCuenta {
+        shell,
+        causa,
+        operativo,
+        mensaje,
+        origen: None,
+    }
+}
+
+pub fn configurar_cuenta(nombre: &str) -> std::result::Result<&'static str, ErrorCuenta> {
+    if CUENTA_CLAUDE.get().is_some() {
+        return Err(error_cuenta("sin_consultar", CausaCuenta::YaFijada));
+    }
+    let shell = std::env::var_os("SHELL");
+    let (cuenta, shell) = resolver_cuenta(nombre, shell.as_deref(), Duration::from_secs(5))?;
+    CUENTA_CLAUDE
+        .set(cuenta)
+        .map_err(|_| error_cuenta(shell, CausaCuenta::YaFijada))?;
+    Ok(shell)
+}
+
+fn resolver_cuenta(
+    nombre: &str,
+    shell: Option<&OsStr>,
+    tope: Duration,
+) -> std::result::Result<(Cuenta, &'static str), ErrorCuenta> {
+    if nombre.is_empty()
+        || nombre.starts_with('-')
+        || !nombre
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+    {
+        return Err(error_cuenta("sin_consultar", CausaCuenta::Nombre));
+    }
+    let ruta = shell
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| error_cuenta("ausente", CausaCuenta::ShellAusente))?;
+    let shell = match Path::new(ruta).file_name().and_then(OsStr::to_str) {
+        Some("bash") => "bash",
+        Some("zsh") => "zsh",
+        _ => return Err(error_cuenta("no_soportada", CausaCuenta::ShellNoSoportada)),
+    };
+    let tipo = if shell == "bash" {
+        format!(
+            "case \"$(builtin type -t -- {nombre})\" in alias|function) ;; file) exit 64 ;; *) exit 65 ;; esac"
+        )
+    } else {
+        format!(
+            "case \"$(builtin whence -w -- {nombre})\" in *': alias'|*': function') ;; *': command'|*': hashed') exit 64 ;; *) exit 65 ;; esac"
+        )
+    };
+    let script = format!(
+        "{tipo}\nfunction claude {{ builtin printf '\\nREBAKE_PROFILE:%s\\n' \"${{CLAUDE_CONFIG_DIR-}}\"; }}\n{nombre}\n"
+    );
+    let mut cmd = Command::new(ruta);
+    cmd.args(["-ic", &script]).env_remove("CLAUDE_CONFIG_DIR");
+    let salida = ejecutar(&mut cmd, tope, &mut |_| {}).map_err(|origen| {
+        let mut error = error_cuenta(shell, CausaCuenta::Inicio);
+        error.origen = Some(origen);
+        error
+    })?;
+    let fallo = if salida.vencido {
+        Some(CausaCuenta::Tiempo)
+    } else {
+        match salida.codigo {
+            Some(0) => None,
+            Some(64) => Some(CausaCuenta::Programa),
+            Some(65) => Some(CausaCuenta::Inexistente),
+            Some(66) => Some(CausaCuenta::SinClaude),
+            _ => Some(CausaCuenta::Fallo),
+        }
+    };
+    if let Some(causa) = fallo {
+        return Err(error_cuenta(shell, causa));
+    }
+    let mut registros = salida
+        .stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("REBAKE_PROFILE:"));
+    let valor = registros
+        .next()
+        .ok_or_else(|| error_cuenta(shell, CausaCuenta::SinClaude))?;
+    if registros.next().is_some() || valor.chars().any(char::is_control) {
+        return Err(error_cuenta(shell, CausaCuenta::Respuesta));
+    }
+    let cuenta = if valor.is_empty() {
+        Cuenta::Predeterminada
+    } else {
+        Cuenta::Directorio(valor.to_owned())
+    };
+    Ok((cuenta, shell))
+}
+
+fn aplicar_cuenta(cmd: &mut Command, cuenta: &Cuenta) {
+    match cuenta {
+        Cuenta::Heredada => {}
+        Cuenta::Predeterminada => {
+            cmd.env_remove("CLAUDE_CONFIG_DIR");
+        }
+        Cuenta::Directorio(dir) => {
+            cmd.env("CLAUDE_CONFIG_DIR", dir);
+        }
+    }
+}
+
+#[cfg(test)]
+mod cuenta_tests {
+    use super::*;
+    use std::ffi::OsStr;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn el_command_aplica_cada_estado_sin_leer_globales() {
+        for (cuenta, esperado) in [
+            (Cuenta::Heredada, Some("heredada")),
+            (Cuenta::Predeterminada, None),
+            (Cuenta::Directorio("elegida".into()), Some("elegida")),
+        ] {
+            let mut cmd = Command::new("claude");
+            cmd.env("CLAUDE_CONFIG_DIR", "heredada");
+            aplicar_cuenta(&mut cmd, &cuenta);
+            let valor = cmd
+                .get_envs()
+                .find(|(k, _)| *k == "CLAUDE_CONFIG_DIR")
+                .unwrap()
+                .1;
+            assert_eq!(valor, esperado.map(OsStr::new));
+        }
+    }
+
+    #[test]
+    fn la_sonda_tiene_tope() {
+        let dir = tempfile::tempdir().unwrap();
+        let shell = dir.path().join("bash");
+        std::fs::write(&shell, "#!/bin/sh\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let error = resolver_cuenta("clp", Some(shell.as_os_str()), Duration::ZERO).unwrap_err();
+        assert_eq!(error.causa, "timeout");
+        assert!(error.operativo);
+    }
+}
 
 pub const ESQUEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["repo","doc","pasos","requiere"],"properties":{
 "repo":{"type":"string"},"doc":{"type":"string"},"verificar":{"type":"string"},
@@ -268,6 +510,7 @@ pub fn investigar(t: &Trabajo, claude: &str, tope: Duration) -> Result<Receta> {
         return Ok(directa.clone());
     }
     let mut cmd = Command::new(claude);
+    aplicar_cuenta(&mut cmd, CUENTA_CLAUDE.get().unwrap_or(&Cuenta::Heredada));
     cmd.args(argumentos(&t.prompt, &modelo()))
         .current_dir(std::env::temp_dir());
     let salida = ejecutar(&mut cmd, tope, &mut |_| {})
@@ -414,6 +657,7 @@ pub fn prompt_origen(item: &Item, home: &Path) -> String {
 
 pub fn buscar_origen(prompt: &str, claude: &str, tope: Duration) -> Result<Posible> {
     let mut cmd = Command::new(claude);
+    aplicar_cuenta(&mut cmd, CUENTA_CLAUDE.get().unwrap_or(&Cuenta::Heredada));
     cmd.args(argumentos_con(prompt, &modelo(), ESQUEMA_ORIGEN))
         .current_dir(std::env::temp_dir());
     let salida = ejecutar(&mut cmd, tope, &mut |_| {})

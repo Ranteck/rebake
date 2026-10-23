@@ -4,6 +4,69 @@ use rebake::investigador::*;
 use rebake::modelo::*;
 use std::time::Duration;
 
+#[test]
+fn cuenta_se_comparte_entre_lanzadores_en_cada_proceso() {
+    if let Ok(caso) = std::env::var("REBAKE_PRUEBA_CUENTA") {
+        if caso != "heredada" {
+            configurar_cuenta("clp").unwrap();
+            assert_eq!(configurar_cuenta("clp").unwrap_err().causa, "ya_fijada");
+        }
+        let claude = binario_claude();
+        investigar(&trabajo(), &claude, Duration::from_secs(5)).unwrap();
+        buscar_origen("x", &claude, Duration::from_secs(5)).unwrap();
+        let trabajos = (0..2)
+            .map(|n| Trabajo {
+                id: n.to_string(),
+                ..trabajo()
+            })
+            .collect();
+        let rx = en_paralelo(trabajos, claude.clone(), Duration::from_secs(5), 2);
+        assert_eq!(rx.iter().map(|(_, r)| r.unwrap()).count(), 2);
+        let rx = buscar_origenes(
+            vec![("a".into(), "x".into()), ("b".into(), "x".into())],
+            claude,
+            Duration::from_secs(5),
+            2,
+        );
+        assert_eq!(rx.iter().map(|(_, r)| r.unwrap()).count(), 2);
+        return;
+    }
+    for (caso, perfil, esperado) in [
+        ("directorio", "elegida", "elegida"),
+        ("predeterminado", "", "SIN_VARIABLE"),
+        ("heredada", "", "heredada"),
+    ] {
+        let h = HomeFalso::nuevo();
+        let shell = h.binario("bin/bash", b"#!/bin/sh\n[ \"$1\" = -ic ] || exit 1\n[ -z \"${CLAUDE_CONFIG_DIR+x}\" ] || exit 1\nprintf 'x\\n' >> \"$HOME/consultas\"\nprintf 'REBAKE_PROFILE:%s\\n' \"$REBAKE_PERFIL_PRUEBA\"\nprintf 'REBAKE_PROFILE:no-leer\\n' >&2\n");
+        let respuesta = VALIDA.replace('\n', "");
+        let claude = h.binario("bin/claude", format!("#!/bin/sh\nprintf '%s\\n' \"${{CLAUDE_CONFIG_DIR-SIN_VARIABLE}}\" >> \"$HOME/cuentas\"\ncase \"$*\" in\n*'\"motivo\"'*) printf '%s\\n' '{{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{{\"repo\":\"https://github.com/a/b\",\"motivo\":\"x\"}}}}' ;;\n*) cat <<'FIN'\n{respuesta}\nFIN\n;;\nesac\n").as_bytes());
+        let o = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "cuenta_se_comparte_entre_lanzadores_en_cada_proceso",
+                "--nocapture",
+            ])
+            .env("REBAKE_PRUEBA_CUENTA", caso)
+            .env("REBAKE_PERFIL_PRUEBA", perfil)
+            .env("HOME", h.ruta())
+            .env("ZDOTDIR", h.ruta())
+            .env("SHELL", shell)
+            .env("REBAKE_CLAUDE", claude)
+            .env("CLAUDE_CONFIG_DIR", "heredada")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        let cuentas = std::fs::read_to_string(h.ruta().join("cuentas")).unwrap();
+        assert_eq!(cuentas.lines().collect::<Vec<_>>(), vec![esperado; 6]);
+        let consultas = h.ruta().join("consultas");
+        if caso == "heredada" {
+            assert!(!consultas.exists());
+        } else {
+            assert_eq!(std::fs::read_to_string(consultas).unwrap(), "x\n");
+        }
+    }
+}
+
 const VALIDA: &str = r#"{"type":"result","subtype":"success","is_error":false,"result":"ok","structured_output":{
  "repo":"https://github.com/ejemplo/house-rules.git","doc":"https://github.com/ejemplo/house-rules#install",
  "verificar":"test -f \"$CLAUDE_CONFIG_DIR/HOUSE-RULES.md\"",
