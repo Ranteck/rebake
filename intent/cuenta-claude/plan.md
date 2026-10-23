@@ -1,5 +1,5 @@
 # Plan: elegir con qué cuenta corre Claude (desde spec.md 2026-10-23 e intent.md 2026-10-23)
-Estado: borrador
+Estado: aceptado
 
 ## Archivos que cambian
 - `src/main.rs`: opción global, resolución y fijación inicial; evento de resolución.
