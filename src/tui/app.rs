@@ -107,6 +107,7 @@ pub struct TandaActiva {
     pub por_revisar: usize,
     pub posibles: usize,
     pub errores: usize,
+    pub ultimo_error: Option<String>,
 }
 
 pub struct App {
@@ -288,6 +289,7 @@ impl App {
                         por_revisar: 0,
                         posibles: 0,
                         errores: 0,
+                        ultimo_error: None,
                     });
                 }
                 match (self.investigar(inv), self.buscar(bus)) {
@@ -647,13 +649,14 @@ impl App {
             };
             partes.push(format!("{} {etiqueta}", tanda.posibles));
         }
-        if tanda.errores > 0 {
-            let etiqueta = if tanda.errores == 1 {
-                "error"
+        if tanda.errores == 1 {
+            if let Some(err) = tanda.ultimo_error {
+                partes.push(format!("1 error: {err}"));
             } else {
-                "errores"
-            };
-            partes.push(format!("{} {etiqueta}", tanda.errores));
+                partes.push("1 error".into());
+            }
+        } else if tanda.errores > 1 {
+            partes.push(format!("{} errores", tanda.errores));
         }
         let balance = if partes.is_empty() {
             "sin cambios".into()
@@ -724,7 +727,10 @@ impl App {
             match &resultado {
                 Ok(p) if p.repo.is_some() => t.posibles += 1,
                 Ok(_) => {}
-                Err(_) => t.errores += 1,
+                Err(e) => {
+                    t.errores += 1;
+                    t.ultimo_error = Some(format!("{e:#}"));
+                }
             }
             if t.miembros.is_empty() {
                 tanda_fin = self.tanda_activa.take();
@@ -898,10 +904,12 @@ impl App {
         if let Some(t) = &mut self.tanda_activa
             && t.miembros.remove(id)
         {
-            if resultado.is_ok() {
-                t.por_revisar += 1;
-            } else {
-                t.errores += 1;
+            match &resultado {
+                Ok(_) => t.por_revisar += 1,
+                Err(e) => {
+                    t.errores += 1;
+                    t.ultimo_error = Some(format!("{e:#}"));
+                }
             }
             if t.miembros.is_empty() {
                 tanda_fin = self.tanda_activa.take();

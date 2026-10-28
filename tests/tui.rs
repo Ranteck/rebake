@@ -746,7 +746,12 @@ fn el_pie_ofrece_buscar_sin_origen_aunque_haya_recetas_por_revisar_o_aprobadas()
         item.estado = estado;
         app.recetario.items.push(item);
         let pie = pie(&app);
-        assert!(pie[0].contains(" t  armar 1 Claude "), "{pie:?}");
+        let esperado = match estado {
+            Estado::PorRevisar => " t  1 Claude ",
+            Estado::Aprobada => " t  armar 1 Claude ",
+            _ => unreachable!(),
+        };
+        assert!(pie[0].contains(esperado), "{pie:?}");
         assert!(!pie[0].contains(" 3  ir a instalar "), "{pie:?}");
     }
 }
