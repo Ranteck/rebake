@@ -12,6 +12,8 @@ use std::path::Path;
 pub struct ResumenEscaneo {
     pub nuevos: usize,
     pub avisos: Vec<String>,
+    pub hooks_vinculados: usize,
+    pub externos: usize,
 }
 
 pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> {
@@ -24,7 +26,18 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     fusion::fusionar(r, escaneo, &existe);
     escaner::comandos::vincular(r, &entorno.home);
     let nuevos = r.items.iter().filter(|i| !antes.contains(&i.id)).count();
-    Ok(ResumenEscaneo { nuevos, avisos })
+    let hooks_vinculados = r
+        .items
+        .iter()
+        .filter(|i| i.instalado_por.is_some() && i.estado != Estado::Excluida)
+        .count();
+    let externos = checklist::hooks_externos(r).len();
+    Ok(ResumenEscaneo {
+        nuevos,
+        avisos,
+        hooks_vinculados,
+        externos,
+    })
 }
 
 pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabajo>> {

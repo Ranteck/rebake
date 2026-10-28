@@ -782,7 +782,11 @@ impl App {
     ) {
         self.investigando.remove(id);
         self.claude_en_curso.remove(&Corrida::Investigar(id.into()));
+        let estado = crate::investigador::resultado_receta(&self.recetario, id, &resultado);
         let texto = match &resultado {
+            Ok(_) if estado == "pendiente" => {
+                "registro de hooks pendiente: falta documentación del repositorio".into()
+            }
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),
         };

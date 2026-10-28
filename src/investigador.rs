@@ -889,6 +889,24 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
     }
 }
 
+pub fn resultado_receta(r: &Recetario, id: &str, resultado: &Result<Receta>) -> &'static str {
+    if r.item(id)
+        .is_some_and(|i| i.instalado_por.is_some() || i.estado == Estado::Excluida)
+    {
+        return "ignorado";
+    }
+    match resultado {
+        Err(_) => "fallo",
+        Ok(receta)
+            if r.hooks_de(id).next().is_some()
+                && matches!(receta.registro_hooks, None | Some(RegistroHooks::Pendiente)) =>
+        {
+            "pendiente"
+        }
+        Ok(_) => "ok",
+    }
+}
+
 fn tipo_de(tipo: &str) -> Tipo {
     match tipo {
         "plugin" => Tipo::Plugin,

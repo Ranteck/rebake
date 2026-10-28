@@ -418,10 +418,8 @@ fn segmentos(comando: &str) -> Option<Vec<String>> {
             comilla = Some(c);
             actual.push(c);
         } else if matches!(c, ';' | '&' | '|') {
-            if c != ';' {
-                if chars.next() != Some(c) {
-                    return None;
-                }
+            if c != ';' && chars.next() != Some(c) {
+                return None;
             }
             partes.push(std::mem::take(&mut actual));
         } else {

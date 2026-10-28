@@ -21,6 +21,18 @@ pub enum Resultado {
     Bloqueado(String),
 }
 
+impl Resultado {
+    pub fn categoria(&self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Salteado => "salteado",
+            Self::Simulado => "simulado",
+            Self::Fallo(_) => "fallo",
+            Self::Bloqueado(_) => "bloqueado",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Presencia {
     Instalada,

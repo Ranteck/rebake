@@ -274,7 +274,10 @@ fn ejecutar_comando(
                 comando = "escanear",
                 items = r.items.len(),
                 nuevos = resumen.nuevos,
-                avisos = resumen.avisos.len()
+                avisos = resumen.avisos.len(),
+                hooks_vinculados = resumen.hooks_vinculados,
+                externos = resumen.externos,
+                resultado = "ok"
             );
             println!(
                 "{} ítems ({} nuevos) en {}",
@@ -324,9 +327,17 @@ fn investigar(
         investigador::TOPE,
         investigador::PARALELO,
     );
-    let (mut ok, mut fallidos) = (0, 0);
+    let (mut ok, mut fallidos, mut pendientes) = (0, 0, 0);
     for (n, (id, resultado)) in rx.iter().enumerate() {
+        let estado = investigador::resultado_receta(r, &id, &resultado);
         match &resultado {
+            Ok(_) if estado == "pendiente" => {
+                pendientes += 1;
+                eprintln!(
+                    "[{}/{total}] {id} → registro de hooks pendiente: falta documentación",
+                    n + 1
+                );
+            }
             Ok(_) => {
                 ok += 1;
                 eprintln!("[{}/{total}] {id} → por revisar", n + 1);
@@ -336,12 +347,34 @@ fn investigar(
                 eprintln!("[{}/{total}] {id} → error: {e:#}", n + 1);
             }
         }
-        tracing::info!(comando = "investigar", id = %id, ok = resultado.is_ok());
+        let hooks_vinculados = r.hooks_de(&id).count();
+        if estado == "fallo" {
+            tracing::error!(
+                comando = "investigar",
+                resultado = estado,
+                causa = "investigacion",
+                hooks_vinculados
+            );
+        } else {
+            tracing::info!(
+                comando = "investigar",
+                resultado = estado,
+                causa = if estado == "pendiente" {
+                    "registro_sin_documentacion"
+                } else {
+                    "ninguna"
+                },
+                hooks_vinculados
+            );
+        }
         aplicar(r, &id, resultado, &rutas::hoy());
         // Se guarda tras cada ítem para no perder lo investigado si se corta.
         archivo::guardar(ruta, r)?;
     }
     println!("{ok} por revisar, {fallidos} con error");
+    if pendientes > 0 {
+        println!("{pendientes} con registro de hooks pendiente");
+    }
     if ids.is_empty() {
         let sin_origen = servicio::sin_origen(r);
         if !sin_origen.is_empty() {
@@ -366,6 +399,11 @@ fn instalar(
 ) -> Result<bool> {
     let orden = instalador::planificar(r)?;
     if orden.is_empty() {
+        tracing::info!(
+            comando = "instalar",
+            resultado = "sin_recetas",
+            externos = checklist::hooks_externos(r).len()
+        );
         println!("no hay recetas aprobadas");
         print!("{}", servicio::texto_checklist(r));
         return Ok(true);
@@ -423,7 +461,20 @@ fn instalar(
                 format!("bloqueado: {m}")
             }
         };
-        tracing::info!(comando = "instalar", id = %id, resultado = %texto);
+        let hooks_vinculados = r.hooks_de(id).count();
+        if matches!(res, Resultado::Fallo(_) | Resultado::Bloqueado(_)) {
+            tracing::error!(
+                comando = "instalar",
+                resultado = res.categoria(),
+                hooks_vinculados
+            );
+        } else {
+            tracing::info!(
+                comando = "instalar",
+                resultado = res.categoria(),
+                hooks_vinculados
+            );
+        }
         println!("{id}: {texto}");
     }
     if !dry_run {

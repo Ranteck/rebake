@@ -483,4 +483,77 @@ fn instalar_sin_recetas_igual_muestra_hooks_externos() {
         salida.contains("1 hook [personal]") && salida.contains("instalar o abrir"),
         "{salida}"
     );
+    let log = std::fs::read_to_string(h.ruta().join(".local/state/rebake/rebake.log")).unwrap();
+    assert!(
+        log.contains("resultado=\"sin_recetas\"") && log.contains("externos=1"),
+        "{log}"
+    );
+}
+
+#[test]
+fn investigacion_con_hooks_registra_ok_pendiente_y_fallo_sin_secretos() {
+    use rebake::modelo::{Fuente, Via};
+    for resultado in ["ok", "pendiente", "fallo"] {
+        let h = HomeFalso::nuevo();
+        h.binario("bin/pacman", b"#!/bin/sh\nexit 1\n");
+        h.binario("bin/tool", b"#!/bin/sh\nexit 0\n");
+        h.escribir(".claude/settings.json", r#"{"hooks":{"Stop":[{"hooks":[{"command":"API_TOKEN=secreto-sintetico tool hook"}]}]}}"#);
+        assert!(recetario(&h, &["escanear"], None).status.success());
+        let ruta = h.ruta().join("Documents/rebake/cookbook.toml");
+        let mut r = archivo::leer(&ruta).unwrap();
+        r.item_mut("herramienta:tool").unwrap().fuente = Some(Fuente {
+            repo: "https://example.com/tool".into(),
+            via: Via::Manual,
+            doc: None,
+        });
+        archivo::guardar(&ruta, &r).unwrap();
+        let registro = if resultado == "pendiente" {
+            serde_json::json!({"tipo":"pendiente"})
+        } else {
+            serde_json::json!({"tipo":"paso","indice":1})
+        };
+        let respuesta = if resultado == "fallo" {
+            serde_json::json!({"type":"result","subtype":"error","result":"fallo sintético"})
+        } else {
+            serde_json::json!({"type":"result","subtype":"success","structured_output":{
+            "repo":"https://example.com/tool","doc":"https://example.com/tool/install","requiere":[],"registro_hooks":registro,
+            "pasos":[{"cmd":"tool-install","modo":"auto","por_perfil":false,"cita":"tool-install"},{"cmd":"tool init","modo":"auto","por_perfil":true,"cita":"tool init"}]}})
+        };
+        let captura = h.ruta().join("prompt");
+        let fake = h.binario(
+            "bin/claude",
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\ncat <<'JSON'\n{respuesta}\nJSON\n",
+                captura.display()
+            )
+            .as_bytes(),
+        );
+        let o = recetario(
+            &h,
+            &["investigar", "herramienta:tool"],
+            Some(fake.to_str().unwrap()),
+        );
+        assert_eq!(o.status.success(), resultado != "fallo", "{}", texto(&o));
+        let log = std::fs::read_to_string(h.ruta().join(".local/state/rebake/rebake.log")).unwrap();
+        assert!(log.contains(&format!("resultado=\"{resultado}\"")), "{log}");
+        assert!(log.contains("hooks_vinculados=1"), "{log}");
+        let cookbook = std::fs::read_to_string(&ruta).unwrap();
+        let prompt = std::fs::read_to_string(captura).unwrap();
+        for salida in [&log, &cookbook, &prompt, &texto(&o)] {
+            assert!(!salida.contains("secreto-sintetico"), "{salida}");
+        }
+        assert!(
+            !log.contains("hook:") && !log.contains("API_TOKEN"),
+            "{log}"
+        );
+        let r = archivo::leer(&ruta).unwrap();
+        assert_eq!(
+            r.item("herramienta:tool").unwrap().estado,
+            if resultado == "ok" {
+                Estado::PorRevisar
+            } else {
+                Estado::Pendiente
+            }
+        );
+    }
 }
