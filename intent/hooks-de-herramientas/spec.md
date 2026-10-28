@@ -3,10 +3,11 @@ Estado: borrador
 
 ## Requisitos
 - REQ-1 MUST: vincular por ejecutable (primera palabra no asignación) coincidente con un
-  ítem del cookbook, o por ruta ejecutada dentro de su carpeta. Sin ítem, una carpeta
+  ítem del cookbook, o por ruta ejecutada dentro de su carpeta solo si el nombre del
+  ejecutable coincide con el del ítem. Sin ítem, una carpeta
   propia `~/.<nombre>/` identifica la herramienta externa `<nombre>`. Condicionales cuentan
   si ejecutan la ruta. Intérpretes, menciones, requisitos y directorios de perfil no prueban
-  autoría. Respetar REQ-6; ante dudas, como hoy.
+  autoría; ante dudas, como hoy.
   Origen: Resultado esperado 1–4, «queda ligado» y «siguen como hoy»; Preguntas abiertas,
   «¿Cómo reconoce rebake de qué herramienta es un hook?», respondida aquí.
 - REQ-2 MUST: el hook sigue como ítem del cookbook, vinculado al responsable y perfiles,
@@ -15,8 +16,8 @@ Estado: borrador
   Origen: Resultado esperado 1, «no tiene receta propia».
 - REQ-3 MUST: al investigar con Claude una herramienta con hooks vinculados, pedir el
   registro documentado por su repo. La receta lo agrega después de instalarla; si el
-  instalador ya crea hooks, no repetirlo. Sin comando documentado, queda pendiente e informa
-  la falta, sin inventar. Mantener aprobación y alcance por perfil documentado.
+  instalador ya crea hooks, no repetirlo. Sin comando documentado, queda pendiente y avisa,
+  sin inventar. Mantener aprobación y alcance por perfil documentado.
   Origen: Resultado esperado 2, «incluye el comando que crea el hook»;
   Restricciones, «el comando sale del repo».
 - REQ-4 MUST: el hook vinculado conserva comprobación sin aprobación, por presencia en la
@@ -41,7 +42,7 @@ Estado: borrador
 - WHEN se escanea
 - THEN conserva el ítem hook, perfiles, comprobación y marca «lo instala RTK», sin receta.
 
-- GIVEN impeccable en el cookbook y tres hooks que ejecutan rutas dentro de su carpeta
+- GIVEN impeccable en el cookbook y hooks con ejecutable `skills/impeccable/scripts/impeccable`
 - WHEN se reescanean, incluso con recetas previas
 - THEN quedan vinculados; no se investigan, aprueban ni ejecutan aparte.
 
@@ -64,14 +65,14 @@ Estado: borrador
 - THEN una línea de checklist agrupa Orca, hooks, perfiles y aviso; no se instalan.
 
 ### Compatibilidad y privacidad (REQ-1, REQ-6, REQ-7)
-- GIVEN scripts propios `load-intent.sh`, `sync-plugins.sh` y un comando ambiguo que menciona RTK
-- WHEN se escanean
-- THEN conservan su flujo.
+- GIVEN la skill `ai-native-sdlc` en el cookbook y el hook `skills/ai-native-sdlc/scripts/load-intent.sh`
+- WHEN se escanea
+- THEN conserva receta propia: `load-intent.sh` no coincide con `ai-native-sdlc`.
 
 - GIVEN un hook con un secreto
 - WHEN se escanea, investiga o instala
 - THEN no expone el secreto ni reconstruye el hook copiándolo.
 
 ## Concerns
-- Carpetas compartidas o varios responsables: ante ambigüedad, conservar el flujo actual.
+- Ante varios responsables posibles, conservar el flujo actual.
 - Informar si el registro oficial cubre solo un perfil.
