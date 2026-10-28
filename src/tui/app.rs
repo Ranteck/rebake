@@ -101,6 +101,14 @@ pub enum Corrida {
     Buscar(String),
 }
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TandaActiva {
+    pub miembros: HashSet<String>,
+    pub por_revisar: usize,
+    pub posibles: usize,
+    pub errores: usize,
+}
+
 pub struct App {
     pub recetario: Recetario,
     pub pestana: Pestana,
@@ -133,6 +141,7 @@ pub struct App {
     pub version_nueva: Option<String>,
     /// Falso con `NO_COLOR`: los estados se distinguen solo por marca y texto.
     pub color: bool,
+    pub tanda_activa: Option<TandaActiva>,
 }
 
 impl App {
@@ -162,6 +171,7 @@ impl App {
             comprobando: false,
             version_nueva: None,
             color: true,
+            tanda_activa: None,
         }
     }
 
@@ -271,6 +281,15 @@ impl App {
                     .into_iter()
                     .filter(|id| pendientes_bus.contains(id))
                     .collect();
+                let miembros: HashSet<String> = inv.iter().chain(&bus).cloned().collect();
+                if !miembros.is_empty() {
+                    self.tanda_activa = Some(TandaActiva {
+                        miembros,
+                        por_revisar: 0,
+                        posibles: 0,
+                        errores: 0,
+                    });
+                }
                 match (self.investigar(inv), self.buscar(bus)) {
                     (Efecto::Investigar(a), Efecto::Buscar(b)) => Efecto::Lote(a, b),
                     (Efecto::Nada, b) => b,
@@ -609,6 +628,52 @@ impl App {
         }
     }
 
+    fn fin_tanda(&mut self, tanda: TandaActiva) {
+        let mut partes = Vec::new();
+        if tanda.por_revisar > 0 {
+            partes.push(format!("{} por revisar", tanda.por_revisar));
+        }
+        if tanda.posibles > 0 {
+            let etiqueta = if tanda.posibles == 1 {
+                "posible origen"
+            } else {
+                "posibles orígenes"
+            };
+            partes.push(format!("{} {etiqueta}", tanda.posibles));
+        }
+        if tanda.errores > 0 {
+            let etiqueta = if tanda.errores == 1 {
+                "error"
+            } else {
+                "errores"
+            };
+            partes.push(format!("{} {etiqueta}", tanda.errores));
+        }
+        let balance = if partes.is_empty() {
+            "sin cambios".into()
+        } else {
+            partes.join(", ")
+        };
+
+        let (gratis, investigar, buscar) = self.por_armar();
+        let quedan_pendientes = gratis.len() + investigar.len() + buscar.len() > 0;
+        let hay_por_revisar = tanda.por_revisar > 0
+            || self
+                .recetario
+                .items
+                .iter()
+                .any(|i| i.estado == Estado::PorRevisar);
+
+        let sugerencia = match (hay_por_revisar, quedan_pendientes) {
+            (true, true) => "; `v` aprueba o `t` arma otra tanda",
+            (true, false) => "; `v` aprueba",
+            (false, true) => "; `t` arma otra tanda",
+            (false, false) => "",
+        };
+
+        self.avisar(&format!("tanda lista: {balance}{sugerencia}"));
+    }
+
     pub fn posible_pendiente(&self, id: &str) -> bool {
         self.recetario
             .item(id)
@@ -646,8 +711,25 @@ impl App {
             Ok(_) => format!("{id}: no encontré de dónde viene; `i` para pegar el link"),
             Err(e) => format!("{id} → error: {e:#}"),
         };
+        let mut tanda_fin = None;
+        if let Some(t) = &mut self.tanda_activa {
+            if t.miembros.remove(id) {
+                match &resultado {
+                    Ok(p) if p.repo.is_some() => t.posibles += 1,
+                    Ok(_) => {}
+                    Err(_) => t.errores += 1,
+                }
+                if t.miembros.is_empty() {
+                    tanda_fin = self.tanda_activa.take();
+                }
+            }
+        }
         aplicar_posible(&mut self.recetario, id, resultado);
-        self.avisar(&texto);
+        if let Some(tanda) = tanda_fin {
+            self.fin_tanda(tanda);
+        } else {
+            self.avisar(&texto);
+        }
     }
 
     pub fn tic(&mut self) {
@@ -806,13 +888,30 @@ impl App {
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),
         };
+        let mut tanda_fin = None;
+        if let Some(t) = &mut self.tanda_activa {
+            if t.miembros.remove(id) {
+                if resultado.is_ok() {
+                    t.por_revisar += 1;
+                } else {
+                    t.errores += 1;
+                }
+                if t.miembros.is_empty() {
+                    tanda_fin = self.tanda_activa.take();
+                }
+            }
+        }
         let elegido = self.id_seleccionado();
         aplicar(&mut self.recetario, id, resultado, hoy);
         // Un requisito nuevo reordena la lista: la selección sigue al mismo ítem.
         if let Some(pos) = elegido.and_then(|e| self.visibles().iter().position(|i| i.id == e)) {
             self.seleccion = pos;
         }
-        self.avisar(&texto);
+        if let Some(tanda) = tanda_fin {
+            self.fin_tanda(tanda);
+        } else {
+            self.avisar(&texto);
+        }
     }
 
     pub fn evento_instalacion(&mut self, e: Evento) {

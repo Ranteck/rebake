@@ -2009,3 +2009,84 @@ fn v_sin_recetas_por_revisar_avisa_y_no_pregunta() {
     );
     assert!(!matches!(app.modo, rebake::tui::app::Modo::ConfirmarSalida));
 }
+
+#[test]
+fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
+    use rebake::investigador::Receta;
+    // Caso 1: tanda mixta con pendientes restantes (sugiere v y t)
+    let mut app = con_cuota(0, 3, 4);
+    tecla(&mut app, KeyCode::Char('t'));
+    let Efecto::Lote(inv, bus) = tecla(&mut app, KeyCode::Char('s')) else { panic!() };
+    // 2 inv exitosas, 1 inv error
+    app.registrar_investigacion(
+        &inv[0],
+        Ok(Receta {
+            repo: "r".into(),
+            doc: "d".into(),
+            pasos: vec![],
+            requiere: vec![],
+            verificar: None,
+        }),
+        "2026-10-22",
+    );
+    app.registrar_investigacion(
+        &inv[1],
+        Ok(Receta {
+            repo: "r".into(),
+            doc: "d".into(),
+            pasos: vec![],
+            requiere: vec![],
+            verificar: None,
+        }),
+        "2026-10-22",
+    );
+    app.registrar_investigacion(&inv[2], Err(anyhow::anyhow!("fallo")), "2026-10-22");
+    // 1 bus con posible origen, 1 bus fallida
+    app.registrar_busqueda(
+        &bus[0],
+        Ok(Posible {
+            repo: Some("https://github.com/a/b".into()),
+            motivo: "m".into(),
+            descartado: false,
+        }),
+    );
+    app.registrar_busqueda(&bus[1], Err(anyhow::anyhow!("fallo")));
+
+    let msg = app.mensaje.as_deref().unwrap();
+    assert!(msg.contains("2 por revisar"), "{msg}");
+    assert!(msg.contains("1 posible origen"), "{msg}");
+    assert!(msg.contains("2 errores"), "{msg}");
+    assert!(msg.contains("`v`"), "{msg}");
+    assert!(msg.contains("`t`"), "{msg}");
+
+    // Caso 2: tanda donde no quedan pendientes restantes (sugiere v pero no t)
+    let mut app2 = con_cuota(0, 2, 0);
+    tecla(&mut app2, KeyCode::Char('t'));
+    let Efecto::Investigar(inv2) = tecla(&mut app2, KeyCode::Char('s')) else { panic!() };
+    app2.registrar_investigacion(
+        &inv2[0],
+        Ok(Receta {
+            repo: "r".into(),
+            doc: "d".into(),
+            pasos: vec![],
+            requiere: vec![],
+            verificar: None,
+        }),
+        "2026-10-22",
+    );
+    app2.registrar_investigacion(
+        &inv2[1],
+        Ok(Receta {
+            repo: "r".into(),
+            doc: "d".into(),
+            pasos: vec![],
+            requiere: vec![],
+            verificar: None,
+        }),
+        "2026-10-22",
+    );
+    let msg2 = app2.mensaje.as_deref().unwrap();
+    assert!(msg2.contains("2 por revisar"), "{msg2}");
+    assert!(msg2.contains("`v`"), "{msg2}");
+    assert!(!msg2.contains("`t`"), "{msg2}");
+}
