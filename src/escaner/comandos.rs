@@ -15,7 +15,8 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
         // Las asignaciones iniciales (`VAR=valor cmd`) no son el binario y pueden traer secretos.
         let binario = palabras(&comando, &entorno.home)
             .into_iter()
-            .find(|p| !es_asignacion(p));
+            .find(|p| !es_asignacion(p))
+            .filter(|p| !es_palabra_shell(p));
         // Si el comando es una ruta, es un script del usuario: primero se busca su repo.
         let es_script = binario.as_ref().is_some_and(|b| {
             let ruta = Path::new(b);
@@ -207,19 +208,26 @@ pub fn palabras(comando: &str, home: &Path) -> Vec<String> {
     let mut salida = Vec::new();
     let mut actual = String::new();
     let mut hay_palabra = false;
+    let mut home_literal = false;
     let mut comilla: Option<char> = None;
     for c in comando.chars() {
         match (comilla, c) {
             (Some(q), c) if c == q => comilla = None,
-            (Some(_), c) => actual.push(c),
+            (Some(q), c) => {
+                if (q == '\'' && c == '$') || (c == '~' && actual.is_empty()) {
+                    home_literal = true;
+                }
+                actual.push(c);
+            }
             (None, '"' | '\'') => {
                 comilla = Some(c);
                 hay_palabra = true;
             }
             (None, c) if c.is_whitespace() => {
                 if hay_palabra {
-                    salida.push(std::mem::take(&mut actual));
+                    salida.push((std::mem::take(&mut actual), home_literal));
                     hay_palabra = false;
+                    home_literal = false;
                 }
             }
             (None, c) => {
@@ -229,11 +237,14 @@ pub fn palabras(comando: &str, home: &Path) -> Vec<String> {
         }
     }
     if hay_palabra {
-        salida.push(actual);
+        salida.push((actual, home_literal));
     }
     salida
         .into_iter()
-        .map(|p| {
+        .map(|(p, literal)| {
+            if literal {
+                return p;
+            }
             let p = p
                 .replace("${HOME-}", &home)
                 .replace("${HOME}", &home)
@@ -254,20 +265,61 @@ fn es_asignacion(palabra: &str) -> bool {
     })
 }
 
+fn es_palabra_shell(palabra: &str) -> bool {
+    matches!(
+        palabra,
+        "if" | "then"
+            | "else"
+            | "elif"
+            | "fi"
+            | "case"
+            | "in"
+            | "esac"
+            | "for"
+            | "while"
+            | "until"
+            | "do"
+            | "done"
+            | "["
+            | "]"
+            | "{"
+            | "}"
+            | "!"
+            | ":"
+            | "export"
+            | "printf"
+            | "echo"
+            | "exit"
+            | "test"
+            | "command"
+            | "exec"
+    )
+}
+
 pub fn vincular(r: &mut Recetario, entorno: &Entorno) -> Vec<String> {
     let mut avisos = Vec::new();
     let mut vinculos = Vec::new();
     for perfil in &r.perfiles {
         let dir = crate::rutas::expandir(&perfil.dir, &entorno.home);
-        let Some(settings) = leer_json(&dir.join("settings.json"), entorno, &mut avisos) else { continue };
+        let Some(settings) = leer_json(&dir.join("settings.json"), entorno, &mut avisos) else {
+            continue;
+        };
         for comando in comandos_de_hooks(&settings) {
-            let visible = crate::secretos::ocultar(&comando).replace(&*entorno.home.to_string_lossy(), "~");
+            let visible =
+                crate::secretos::ocultar(&comando).replace(&*entorno.home.to_string_lossy(), "~");
             let id = format!("hook:{visible}");
-            if !r.item(&id).is_some_and(|i| i.tipo == Tipo::Hook && !i.ausente) { continue; }
+            if !r
+                .item(&id)
+                .is_some_and(|i| i.tipo == Tipo::Hook && !i.ausente)
+            {
+                continue;
+            }
             // El ID oculta secretos y contrae el home: solo el comando original sirve para atribuir.
             let duenio = responsable(r, &comando, entorno);
             if let Some((_, anterior)) = vinculos.iter_mut().find(|(visto, _)| visto == &id) {
-                if anterior != &duenio { *anterior = None; }
+                if anterior != &duenio {
+                    *anterior = None;
+                }
             } else {
                 vinculos.push((id, duenio));
             }
@@ -312,27 +364,29 @@ fn responsable(r: &Recetario, comando: &str, entorno: &Entorno) -> Option<Instal
     for segmento in segmentos(comando)? {
         let palabras = palabras(&segmento, &entorno.home);
         let mut p = palabras.iter().map(String::as_str).peekable();
-        while p
-            .peek()
-            .is_some_and(|s| es_asignacion(s) || matches!(*s, "if" | "then" | "else" | "exec"))
-        {
+        while p.peek().is_some_and(|s| {
+            es_asignacion(s) || matches!(*s, "if" | "then" | "else" | "exec" | "{")
+        }) {
             p.next();
         }
         let Some(mut ejecutable) = p.next() else {
             continue;
         };
-        if matches!(ejecutable, "[" | "test" | "fi" | ":") {
+        if es_palabra_shell(ejecutable) {
             continue;
         }
         if matches!(
-            ejecutable,
-            "sh" | "bash" | "zsh" | "python" | "python3" | "node"
+            Path::new(ejecutable).file_name().and_then(|n| n.to_str()),
+            Some("sh" | "bash" | "zsh" | "python" | "python3" | "node")
         ) {
-            ejecutable = p.next().filter(|s| !s.starts_with('-'))?;
-        } else if matches!(ejecutable, "echo" | "printf" | "command" | "env") {
-            return None;
+            let Some(script) = p.next().filter(|s| !s.starts_with('-')) else {
+                continue;
+            };
+            ejecutable = script;
         }
-        candidatos.push(responsable_de(r, ejecutable, entorno)?);
+        if let Some(duenio) = responsable_de(r, ejecutable, entorno) {
+            candidatos.push(duenio);
+        }
     }
     let primero = candidatos.first()?.clone();
     candidatos.iter().all(|c| c == &primero).then_some(primero)
@@ -411,38 +465,115 @@ fn responsable_de(r: &Recetario, ejecutable: &str, entorno: &Entorno) -> Option<
     Some(InstaladorHook::Externo(externo.into()))
 }
 
-// Solo reconocemos separadores fuera de comillas; no interpretamos programas de shell.
+// Solo reconocemos separadores fuera de comillas y patrones; nunca evaluamos la shell.
 fn segmentos(comando: &str) -> Option<Vec<String>> {
-    if comando.contains("$(") || comando.contains('`') || comando.contains('\\') {
-        return None;
+    #[derive(PartialEq)]
+    enum Caso {
+        Variable,
+        In,
+        Patron,
+        Cuerpo,
     }
+    let mut casos = Vec::new();
     let mut partes = vec![];
     let mut actual = String::new();
+    let mut palabra = String::new();
     let mut comilla = None;
-    let mut chars = comando.chars().peekable();
+    let mut chars = comando.chars().chain(std::iter::once(' ')).peekable();
     while let Some(c) = chars.next() {
         if let Some(q) = comilla {
-            // La shell no expande el home dentro de comillas simples.
-            if q == '\'' && matches!(c, '$' | '~') {
+            if q == '"' && (c == '`' || (c == '$' && chars.peek() == Some(&'('))) {
                 return None;
             }
             actual.push(c);
-            if c == q {
+            if q == '"' && c == '\\' {
+                actual.push(chars.next()?);
+            } else if c == q {
                 comilla = None;
             }
-        } else if matches!(c, '\'' | '"') {
+            continue;
+        }
+        if c == '\\' {
+            actual.push(c);
+            actual.push(chars.next()?);
+            palabra.push('\0');
+            continue;
+        }
+        if matches!(c, '\'' | '"') {
             comilla = Some(c);
+            palabra.push('\0');
             actual.push(c);
-        } else if matches!(c, ';' | '&' | '|') {
-            if c != ';' && chars.next() != Some(c) {
-                return None;
+            continue;
+        }
+        if c == '`' || (c == '$' && chars.peek() == Some(&'(')) {
+            return None;
+        }
+        if c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')') {
+            let prefijo = actual.strip_suffix(&palabra).unwrap_or("").trim();
+            if palabra == "case"
+                && casos.last() != Some(&Caso::Patron)
+                && prefijo
+                    .split_whitespace()
+                    .all(|p| matches!(p, "if" | "then" | "else" | "{"))
+            {
+                casos.push(Caso::Variable);
+            } else {
+                match casos.last_mut() {
+                    Some(fase @ Caso::Variable) if !palabra.is_empty() => *fase = Caso::In,
+                    Some(fase @ Caso::In) if palabra == "in" => {
+                        *fase = Caso::Patron;
+                        actual.clear();
+                    }
+                    Some(Caso::Patron) if palabra == "esac" => {
+                        casos.pop();
+                        actual.clear();
+                    }
+                    _ => {}
+                }
             }
-            partes.push(std::mem::take(&mut actual));
-        } else {
-            actual.push(c);
+            palabra.clear();
+        }
+        if casos.last() == Some(&Caso::Patron) {
+            if c == ')' {
+                *casos.last_mut()? = Caso::Cuerpo;
+                actual.clear();
+            } else {
+                actual.push(c);
+                if !c.is_whitespace() {
+                    palabra.push(c);
+                }
+            }
+            continue;
+        }
+        match c {
+            ';' => {
+                partes.push(std::mem::take(&mut actual));
+                if chars.peek() == Some(&';') {
+                    chars.next();
+                    let fase = casos.last_mut()?;
+                    if *fase != Caso::Cuerpo {
+                        return None;
+                    }
+                    *fase = Caso::Patron;
+                }
+            }
+            '&' if actual.ends_with('>') || actual.ends_with('<') => actual.push(c),
+            '&' | '|' => {
+                if chars.next() != Some(c) {
+                    return None;
+                }
+                partes.push(std::mem::take(&mut actual));
+            }
+            '(' | ')' => return None,
+            _ => {
+                actual.push(c);
+                if !c.is_whitespace() {
+                    palabra.push(c);
+                }
+            }
         }
     }
-    if comilla.is_some() {
+    if comilla.is_some() || !casos.is_empty() {
         return None;
     }
     partes.push(actual);
