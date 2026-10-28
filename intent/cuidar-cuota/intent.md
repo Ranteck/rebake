@@ -23,7 +23,7 @@ orígenes, pero por tandas.
 
 ## Restricciones
 - Pantalla simple: entra en 80×24, sin teclas con Shift y sin ventanas nuevas.
-- Aprobar sigue siendo de a una receta; ningún repo adivinado entra sin el OK de Denis.
+- Aprobar de a una o todas juntas con confirmación (ver aprobar-todas); ningún repo adivinado entra sin el OK de Denis.
 - Nada de investigar varias cosas en una misma sesión de Claude.
 - `i` (de a una) no cambia.
 
@@ -38,3 +38,4 @@ Ninguna.
 - 2026-10-22: tandas de 5, lo que propusieron Codex y Antigravity. Aprobado por Denis.
 - 2026-10-22: la tanda se confirma con `s` y no con Enter o Esc, como instalar y salir: Enter
   ya acepta un posible origen. Lo revisaron Codex y Antigravity. Aprobado por Denis.
+- 2026-10-27: aprobar todas las por revisar con confirmación, en aprobar-todas. Aprobado por Denis.
