@@ -90,7 +90,7 @@ fn bucle(
             guardar(app, ruta);
         }
         while let Ok((id, res)) = rx_bus.try_recv() {
-            tracing::info!(accion = "buscar_origen", id = %id, ok = res.is_ok());
+            tracing::info!(accion = "buscar_origen", ok = res.is_ok());
             app.registrar_busqueda(&id, res);
             guardar(app, ruta);
         }
