@@ -584,16 +584,24 @@ mod tests {
         }
     }
 
+    fn capturar_logs(salida: Arc<Mutex<Vec<u8>>>) -> impl tracing::Subscriber + Send + Sync {
+        static INICIAR: std::sync::Once = std::sync::Once::new();
+        INICIAR.call_once(|| {
+            // Evita cachear Interest::never si otro hilo estrena un evento sin captura.
+            tracing::subscriber::set_global_default(tracing_subscriber::registry()).unwrap();
+        });
+        tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || Captura(salida.clone()))
+            .finish()
+    }
+
     #[test]
     fn comprobacion_registra_conteos_y_fallos_sin_comandos() {
         use crate::modelo::{InstaladorHook, Perfil};
         let salida = Arc::new(Mutex::new(Vec::new()));
-        let escritor = salida.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .without_time()
-            .with_ansi(false)
-            .with_writer(move || Captura(escritor.clone()))
-            .finish();
+        let subscriber = capturar_logs(salida.clone());
         tracing::subscriber::with_default(subscriber, || {
             let home = tempfile::tempdir().unwrap();
             std::fs::create_dir_all(home.path().join(".claude")).unwrap();
@@ -607,6 +615,15 @@ mod tests {
             hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
             r.items.push(hook);
             let app = App::nueva(r);
+            // Otro test puede usar primero el mismo evento sin un subscriber local.
+            thread::scope(|hilos| {
+                hilos
+                    .spawn(|| {
+                        let _: Vec<_> = comprobar(&app, home.path()).iter().collect();
+                    })
+                    .join()
+                    .unwrap();
+            });
             for contenido in [
                 r#"{"hooks":{"Stop":[{"hooks":[{"command":"tool"}]}]}}"#,
                 "{}",
@@ -626,8 +643,23 @@ mod tests {
         ] {
             assert!(log.contains(parte), "{log}");
         }
+        for (linea, (resultado, faltantes, fallos)) in
+            log.lines()
+                .zip([("ok", 0, 0), ("ok", 1, 0), ("fallo", 0, 1)])
+        {
+            for campo in [
+                format!("resultado=\"{resultado}\""),
+                "comprobados=1".into(),
+                format!("faltantes={faltantes}"),
+                format!("fallos={fallos}"),
+            ] {
+                assert!(linea.contains(&campo), "{linea}");
+            }
+        }
         assert!(
-            !log.contains("hook:tool") && !log.contains("secreto-sintetico"),
+            !log.contains("hook:tool")
+                && !log.contains("secreto-sintetico")
+                && !log.contains("API_TOKEN"),
             "{log}"
         );
     }
@@ -635,12 +667,7 @@ mod tests {
     #[test]
     fn las_decisiones_de_cuota_registran_contadores_sin_datos_del_item() {
         let salida = Arc::new(Mutex::new(Vec::new()));
-        let escritor = salida.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .without_time()
-            .with_ansi(false)
-            .with_writer(move || Captura(escritor.clone()))
-            .finish();
+        let subscriber = capturar_logs(salida.clone());
         tracing::subscriber::with_default(subscriber, || {
             let mut app = pendiente();
             for c in ['t', 'i', 't', 's'] {
