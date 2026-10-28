@@ -236,7 +236,7 @@ impl App {
         items.sort_by(|a, b| (a.tipo, &a.id).cmp(&(b.tipo, &b.id)));
         let (mut gratis, mut investigar, mut buscar) = (vec![], vec![], vec![]);
         for item in items {
-            if receta_directa(item).is_some() {
+            if receta_directa(&self.recetario, item).is_some() {
                 gratis.push(item.id.clone());
             } else if item.fuente.is_some() {
                 investigar.push(item.id.clone());
@@ -645,7 +645,7 @@ impl App {
                 .filter(|id| {
                     self.recetario
                         .item(id)
-                        .is_some_and(|i| receta_directa(i).is_none())
+                        .is_some_and(|i| receta_directa(&self.recetario, i).is_none())
                 })
                 .cloned()
                 .map(Corrida::Investigar),

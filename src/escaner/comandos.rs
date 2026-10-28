@@ -252,6 +252,9 @@ pub fn vincular(r: &mut Recetario, home: &Path) {
         .collect();
     for (id, responsable) in vinculos {
         let i = r.item_mut(&id).expect("ítem del mismo recetario");
+        let nuevo = i.instalado_por != responsable;
+        let perfiles = i.perfiles.clone();
+        let duenio = responsable.clone();
         i.instalado_por = responsable;
         if i.instalado_por.is_some() {
             i.pasos.clear();
@@ -260,6 +263,21 @@ pub fn vincular(r: &mut Recetario, home: &Path) {
             i.error = None;
             if i.estado != Estado::Excluida {
                 i.estado = Estado::Pendiente;
+            }
+        }
+        if let Some(InstaladorHook::Item(id)) = duenio {
+            let tool = r.item_mut(&id).expect("responsable del mismo recetario");
+            let mut cambiado = nuevo;
+            for perfil in perfiles {
+                if !tool.perfiles.contains(&perfil) {
+                    tool.perfiles.push(perfil);
+                    cambiado = true;
+                }
+            }
+            // La receta anterior todavía no documenta los hooks recién vinculados.
+            if cambiado && tool.estado != Estado::Excluida {
+                tool.pasos.clear();
+                tool.estado = Estado::Pendiente;
             }
         }
     }

@@ -214,6 +214,10 @@ impl Recetario {
     pub fn item_mut(&mut self, id: &str) -> Option<&mut Item> {
         self.items.iter_mut().find(|i| i.id == id)
     }
+    pub fn hooks_de<'a>(&'a self, id: &'a str) -> impl Iterator<Item = &'a Item> {
+        self.items.iter().filter(move |i| i.estado != Estado::Excluida
+            && matches!(&i.instalado_por, Some(InstaladorHook::Item(responsable)) if responsable == id))
+    }
 }
 
 impl Item {

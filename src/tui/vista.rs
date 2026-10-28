@@ -422,11 +422,13 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
                 via: Via::Busqueda,
                 doc: None,
             });
-            l.push(Line::from(if receta_directa(&aceptado).is_some() {
-                "Aceptar: gratis, sin Claude"
-            } else {
-                "Aceptar: 1 corrida de Claude"
-            }));
+            l.push(Line::from(
+                if receta_directa(&app.recetario, &aceptado).is_some() {
+                    "Aceptar: gratis, sin Claude"
+                } else {
+                    "Aceptar: 1 corrida de Claude"
+                },
+            ));
             l.push(Line::from(teclas(&[
                 ("Enter", "aceptar"),
                 ("n", "descartar"),

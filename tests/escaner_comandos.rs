@@ -248,3 +248,36 @@ fn vincula_hooks_por_ejecucion_y_conserva_scripts_propios() {
         }
     }
 }
+#[test]
+fn nuevos_hooks_invalidan_receta_del_responsable_y_preservan_exclusiones() {
+    use rebake::{modelo::*, servicio};
+    let h = HomeFalso::nuevo();
+    h.binario("bin/rtk", b"#!/bin/sh\n");
+    let settings = r#"{"hooks":{"Stop":[{"hooks":[{"command":"rtk hook claude"}]}]}}"#;
+    h.escribir(".claude/settings.json", settings);
+    h.escribir(".claude-personal/settings.json", settings);
+    let pacman = PacmanFalso(vec![]);
+    let mut r = Recetario::nuevo();
+    let mut tool = Item::nuevo("herramienta:rtk", Tipo::Herramienta);
+    tool.estado = Estado::Aprobada;
+    tool.pasos.push(Paso {
+        cmd: "rtk-install".into(),
+        modo: Modo::Auto,
+        por_perfil: false,
+        cita: None,
+        nota: None,
+    });
+    r.items.push(tool);
+    servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+    let tool = r.item("herramienta:rtk").unwrap();
+    assert_eq!(tool.perfiles.len(), 2);
+    assert_eq!(tool.estado, Estado::Pendiente);
+    assert!(tool.pasos.is_empty());
+    let hook = r.items.iter_mut().find(|i| i.tipo == Tipo::Hook).unwrap();
+    let id = hook.id.clone();
+    hook.estado = Estado::Excluida;
+    hook.motivo = Some("decisión".into());
+    servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+    assert_eq!(r.item(&id).unwrap().estado, Estado::Excluida);
+    assert_eq!(r.item(&id).unwrap().motivo.as_deref(), Some("decisión"));
+}

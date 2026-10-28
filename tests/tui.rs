@@ -175,6 +175,7 @@ fn la_cabecera_muestra_las_sin_origen_antes_y_despues_del_lote() {
     assert!(pantalla(&app).contains("? 1 sin origen"));
     tecla(&mut app, KeyCode::Char('I'));
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/ejemplo/repo".into(),
         doc: "receta directa".into(),
         pasos: vec![],
@@ -258,6 +259,7 @@ fn excluir_usa_el_item_elegido_aunque_cambie_la_lista() {
     }
     // Llega una investigación que agrega un requisito que se ordena antes.
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/openai/codex-plugin-cc".into(),
         doc: "https://github.com/openai/codex-plugin-cc#install".into(),
         pasos: vec![],
@@ -1747,6 +1749,7 @@ fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
     app.registrar_investigacion(
         &inv[0],
         Ok(Receta {
+            registro_hooks: None,
             repo: "https://github.com/a/b".into(),
             doc: "https://github.com/a/b#install".into(),
             pasos: vec![],
