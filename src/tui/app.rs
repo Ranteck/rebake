@@ -629,6 +629,12 @@ impl App {
     }
 
     fn fin_tanda(&mut self, tanda: TandaActiva) {
+        tracing::info!(
+            accion = "tanda_terminada",
+            por_revisar = tanda.por_revisar,
+            posibles = tanda.posibles,
+            errores = tanda.errores,
+        );
         let mut partes = Vec::new();
         if tanda.por_revisar > 0 {
             partes.push(format!("{} por revisar", tanda.por_revisar));

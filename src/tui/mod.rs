@@ -127,7 +127,36 @@ fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
     let armando = app.modo == Modo::Normal
         && app.pestana == Pestana::Recetas
         && matches!(tecla.code, KeyCode::Char('t' | 'I'));
+    let confirmando_aprobacion = match &app.modo {
+        Modo::ConfirmarAprobacion { ids } => Some(ids.len()),
+        _ => None,
+    };
+    let aprobando_todas = app.modo == Modo::Normal
+        && app.pestana == Pestana::Recetas
+        && tecla.code == KeyCode::Char('v');
     let efecto = app.tecla(tecla);
+    if let Some(total) = confirmando_aprobacion {
+        let decision = if tecla.code == KeyCode::Char('s') {
+            "confirmar"
+        } else {
+            "cancelar"
+        };
+        tracing::info!(
+            accion = "aprobar_todas",
+            decision,
+            cantidad = total,
+        );
+    } else if aprobando_todas {
+        let (decision, cantidad) = match &app.modo {
+            Modo::ConfirmarAprobacion { ids } => ("preguntar", ids.len()),
+            _ => ("sin_pendientes", 0),
+        };
+        tracing::info!(
+            accion = "aprobar_todas",
+            decision,
+            cantidad,
+        );
+    }
     if armando || confirmando {
         let (inv, bus) = match &efecto {
             Efecto::Investigar(ids) => (ids.len(), 0),
@@ -380,7 +409,7 @@ fn editar(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modelo::{Fuente, Item, Recetario, Tipo, Via};
+    use crate::modelo::{Estado, Fuente, Item, Recetario, Tipo, Via};
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::io::Write;
     use std::sync::{Arc, Mutex};
@@ -492,5 +521,55 @@ mod tests {
         assert!(log.contains("gratis=0"), "{log}");
         assert!(log.contains("gratis=1"), "{log}");
         assert!(!log.contains("privado") && !log.contains("github"), "{log}");
+    }
+
+    #[test]
+    fn las_decisiones_de_aprobar_todas_registran_contadores_sin_datos_privados() {
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        let escritor = salida.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || Captura(escritor.clone()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            let mut app = pendiente();
+            // 1. v sin por revisar
+            tecla_registrada(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE),
+            );
+            // 2. agregamos un item por revisar
+            let mut item = Item::nuevo("plugin:privado@x", Tipo::Plugin);
+            item.estado = Estado::PorRevisar;
+            app.recetario.items.push(item);
+            // 3. v pregunta
+            tecla_registrada(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE),
+            );
+            // 4. cancela con 'n'
+            tecla_registrada(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+            );
+            // 5. v pregunta otra vez
+            tecla_registrada(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE),
+            );
+            // 6. confirma con 's'
+            tecla_registrada(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE),
+            );
+        });
+        let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        for decision in ["sin_pendientes", "preguntar", "cancelar", "confirmar"] {
+            assert!(log.contains(&format!("decision=\"{decision}\"")), "{log}");
+        }
+        assert!(log.contains("cantidad=1"), "{log}");
+        assert!(log.contains("cantidad=0"), "{log}");
+        assert!(!log.contains("privado"), "{log}");
     }
 }
