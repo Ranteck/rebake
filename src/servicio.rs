@@ -21,10 +21,12 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     fusion::asegurar_perfiles(r, &detectados, &entorno.home);
     let antes: HashSet<String> = r.items.iter().map(|i| i.id.clone()).collect();
     let escaneo = escaner::escanear(entorno, &r.perfiles);
-    let avisos = escaneo.avisos.clone();
+    let mut avisos = escaneo.avisos.clone();
     let existe = |nombre: &str| entorno.path.iter().any(|d| d.join(nombre).is_file());
     fusion::fusionar(r, escaneo, &existe);
-    escaner::comandos::vincular(r, entorno);
+    avisos.extend(escaner::comandos::vincular(r, entorno));
+    let mut vistos = HashSet::new();
+    avisos.retain(|aviso| vistos.insert(aviso.clone()));
     let nuevos = r.items.iter().filter(|i| !antes.contains(&i.id)).count();
     let hooks_vinculados = r
         .items

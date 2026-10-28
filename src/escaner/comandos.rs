@@ -254,18 +254,25 @@ fn es_asignacion(palabra: &str) -> bool {
     })
 }
 
-pub fn vincular(r: &mut Recetario, entorno: &Entorno) {
-    let vinculos: Vec<_> = r
-        .items
-        .iter()
-        .filter(|i| i.tipo == Tipo::Hook && !i.ausente)
-        .map(|i| {
-            (
-                i.id.clone(),
-                responsable(r, i.id.strip_prefix("hook:").unwrap_or(""), entorno),
-            )
-        })
-        .collect();
+pub fn vincular(r: &mut Recetario, entorno: &Entorno) -> Vec<String> {
+    let mut avisos = Vec::new();
+    let mut vinculos = Vec::new();
+    for perfil in &r.perfiles {
+        let dir = crate::rutas::expandir(&perfil.dir, &entorno.home);
+        let Some(settings) = leer_json(&dir.join("settings.json"), entorno, &mut avisos) else { continue };
+        for comando in comandos_de_hooks(&settings) {
+            let visible = crate::secretos::ocultar(&comando).replace(&*entorno.home.to_string_lossy(), "~");
+            let id = format!("hook:{visible}");
+            if !r.item(&id).is_some_and(|i| i.tipo == Tipo::Hook && !i.ausente) { continue; }
+            // El ID oculta secretos y contrae el home: solo el comando original sirve para atribuir.
+            let duenio = responsable(r, &comando, entorno);
+            if let Some((_, anterior)) = vinculos.iter_mut().find(|(visto, _)| visto == &id) {
+                if anterior != &duenio { *anterior = None; }
+            } else {
+                vinculos.push((id, duenio));
+            }
+        }
+    }
     for (id, responsable) in vinculos {
         let i = r.item_mut(&id).expect("ítem del mismo recetario");
         let nuevo = i.instalado_por != responsable;
@@ -297,6 +304,7 @@ pub fn vincular(r: &mut Recetario, entorno: &Entorno) {
             }
         }
     }
+    avisos
 }
 
 fn responsable(r: &Recetario, comando: &str, entorno: &Entorno) -> Option<InstaladorHook> {
