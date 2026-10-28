@@ -224,6 +224,8 @@ fn vincula_hooks_por_ejecucion_y_conserva_scripts_propios() {
         ),
         ("sh ~/.claude/sync-plugins.sh", "", ""),
         ("echo ~/.orca/hook.sh", "", ""),
+        ("'~/.orca/hook.sh'", "", ""),
+        ("'$HOME/.orca/hook.sh'", "", ""),
         (
             "~/.claude/skills/impeccable/../other/impeccable hook",
             "",
@@ -246,6 +248,22 @@ fn vincula_hooks_por_ejecucion_y_conserva_scripts_propios() {
             assert_eq!(valor["instalado_por"]["tipo"], tipo, "{comando}");
             assert_eq!(valor["instalado_por"]["nombre"], nombre, "{comando}");
         }
+    }
+}
+
+#[test]
+fn ruta_absoluta_solo_vincula_al_ejecutable_del_path() {
+    use rebake::{modelo::Recetario, servicio};
+    for (ruta, vinculado) in [("bin/rtk", true), ("otro/rtk", false)] {
+        let h = HomeFalso::nuevo();
+        h.binario("bin/rtk", b"\x7fELF");
+        let ejecutable = h.binario(ruta, b"\x7fELF");
+        h.escribir(".claude/settings.json", &serde_json::json!({"hooks":{"Stop":[{"hooks":[{"command":format!("{} hook", ejecutable.display())}]}]}}).to_string());
+        let pacman = PacmanFalso(vec![]);
+        let mut r = Recetario::nuevo();
+        servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+        let hook = r.items.iter().find(|i| i.tipo == Tipo::Hook).unwrap();
+        assert_eq!(hook.instalado_por.is_some(), vinculado, "{ruta}");
     }
 }
 #[test]

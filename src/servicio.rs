@@ -24,7 +24,7 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     let avisos = escaneo.avisos.clone();
     let existe = |nombre: &str| entorno.path.iter().any(|d| d.join(nombre).is_file());
     fusion::fusionar(r, escaneo, &existe);
-    escaner::comandos::vincular(r, &entorno.home);
+    escaner::comandos::vincular(r, entorno);
     let nuevos = r.items.iter().filter(|i| !antes.contains(&i.id)).count();
     let hooks_vinculados = r
         .items

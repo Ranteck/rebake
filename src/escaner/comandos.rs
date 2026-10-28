@@ -254,7 +254,7 @@ fn es_asignacion(palabra: &str) -> bool {
     })
 }
 
-pub fn vincular(r: &mut Recetario, home: &Path) {
+pub fn vincular(r: &mut Recetario, entorno: &Entorno) {
     let vinculos: Vec<_> = r
         .items
         .iter()
@@ -262,7 +262,7 @@ pub fn vincular(r: &mut Recetario, home: &Path) {
         .map(|i| {
             (
                 i.id.clone(),
-                responsable(r, i.id.strip_prefix("hook:").unwrap_or(""), home),
+                responsable(r, i.id.strip_prefix("hook:").unwrap_or(""), entorno),
             )
         })
         .collect();
@@ -299,10 +299,10 @@ pub fn vincular(r: &mut Recetario, home: &Path) {
     }
 }
 
-fn responsable(r: &Recetario, comando: &str, home: &Path) -> Option<InstaladorHook> {
+fn responsable(r: &Recetario, comando: &str, entorno: &Entorno) -> Option<InstaladorHook> {
     let mut candidatos = Vec::new();
     for segmento in segmentos(comando)? {
-        let palabras = palabras(&segmento, home);
+        let palabras = palabras(&segmento, &entorno.home);
         let mut p = palabras.iter().map(String::as_str).peekable();
         while p
             .peek()
@@ -324,13 +324,14 @@ fn responsable(r: &Recetario, comando: &str, home: &Path) -> Option<InstaladorHo
         } else if matches!(ejecutable, "echo" | "printf" | "command" | "env") {
             return None;
         }
-        candidatos.push(responsable_de(r, ejecutable, home)?);
+        candidatos.push(responsable_de(r, ejecutable, entorno)?);
     }
     let primero = candidatos.first()?.clone();
     candidatos.iter().all(|c| c == &primero).then_some(primero)
 }
 
-fn responsable_de(r: &Recetario, ejecutable: &str, home: &Path) -> Option<InstaladorHook> {
+fn responsable_de(r: &Recetario, ejecutable: &str, entorno: &Entorno) -> Option<InstaladorHook> {
+    let home = &entorno.home;
     let ruta = Path::new(ejecutable);
     if ruta
         .components()
@@ -348,7 +349,10 @@ fn responsable_de(r: &Recetario, ejecutable: &str, home: &Path) -> Option<Instal
         let coincide = if !ejecutable.contains('/') {
             true
         } else if item.tipo == Tipo::Herramienta {
-            false
+            buscar(entorno, nombre)
+                .and_then(|p| std::fs::canonicalize(p).ok())
+                .zip(std::fs::canonicalize(ruta).ok())
+                .is_some_and(|(a, b)| a == b)
         } else {
             item.perfiles
                 .iter()
@@ -410,6 +414,10 @@ fn segmentos(comando: &str) -> Option<Vec<String>> {
     let mut chars = comando.chars().peekable();
     while let Some(c) = chars.next() {
         if let Some(q) = comilla {
+            // La shell no expande el home dentro de comillas simples.
+            if q == '\'' && matches!(c, '$' | '~') {
+                return None;
+            }
             actual.push(c);
             if c == q {
                 comilla = None;
