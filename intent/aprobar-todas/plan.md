@@ -1,5 +1,5 @@
 # Plan: aprobar todas y destildar (desde spec.md 2026-10-27 e intent.md 2026-10-27)
-Estado: borrador
+Estado: aceptado
 
 ## Archivos que cambian
 - `src/tui/app.rs`: confirmación de `v`, lista vacía, balance de tanda mixta y reuso de `acciones::aprobar`.
