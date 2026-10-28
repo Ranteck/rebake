@@ -702,12 +702,7 @@ mod tests {
     #[test]
     fn las_decisiones_de_aprobar_todas_registran_contadores_sin_datos_privados() {
         let salida = Arc::new(Mutex::new(Vec::new()));
-        let escritor = salida.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .without_time()
-            .with_ansi(false)
-            .with_writer(move || Captura(escritor.clone()))
-            .finish();
+        let subscriber = capturar_logs(salida.clone());
         tracing::subscriber::with_default(subscriber, || {
             let mut app = pendiente();
             // 1. v sin por revisar

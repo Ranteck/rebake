@@ -2268,3 +2268,43 @@ fn v_no_aprueba_ni_cuenta_hooks_vinculados() {
         app.mensaje
     );
 }
+
+#[test]
+fn tanda_con_herramienta_con_hooks_vinculados_sin_registro_hooks_no_cuenta_como_por_revisar() {
+    use rebake::investigador::Receta;
+    let mut r = Recetario::nuevo();
+    let mut tool = con_fuente("herramienta:tool");
+    tool.tipo = Tipo::Herramienta;
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Item(tool.id.clone()));
+    r.items = vec![tool, hook];
+    let mut app = App::nueva(r);
+
+    tecla(&mut app, KeyCode::Char('t'));
+    let Efecto::Investigar(inv) = tecla(&mut app, KeyCode::Char('s')) else {
+        panic!("esperaba Efecto::Investigar");
+    };
+    assert_eq!(inv, vec!["herramienta:tool"]);
+
+    app.registrar_investigacion(
+        "herramienta:tool",
+        Ok(Receta {
+            repo: "https://github.com/a/b".into(),
+            doc: "doc".into(),
+            pasos: vec![],
+            requiere: vec![],
+            verificar: None,
+            registro_hooks: None,
+        }),
+        "2026-10-28",
+    );
+
+    let msg = app.mensaje.as_deref().unwrap();
+    assert!(!msg.contains("por revisar"), "{msg}");
+    assert!(msg.contains("1 error"), "{msg}");
+    assert!(!msg.contains("`v`"), "{msg}");
+    assert_eq!(
+        app.recetario.item("herramienta:tool").unwrap().estado,
+        Estado::Pendiente
+    );
+}

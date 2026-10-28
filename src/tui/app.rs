@@ -923,26 +923,33 @@ impl App {
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),
         };
+        let err_inicial = resultado.as_ref().err().map(|e| format!("{e:#}"));
         let mut tanda_fin = None;
-        if let Some(t) = &mut self.tanda_activa
-            && t.miembros.remove(id)
-        {
-            match &resultado {
-                Ok(_) => t.por_revisar += 1,
-                Err(e) => {
-                    t.errores += 1;
-                    t.ultimo_error = Some(format!("{e:#}"));
-                }
-            }
-            if t.miembros.is_empty() {
-                tanda_fin = self.tanda_activa.take();
-            }
-        }
+        let esta_en_tanda = self
+            .tanda_activa
+            .as_mut()
+            .is_some_and(|t| t.miembros.remove(id));
         let elegido = self.id_seleccionado();
         aplicar(&mut self.recetario, id, resultado, hoy);
         // Un requisito nuevo reordena la lista: la selección sigue al mismo ítem.
         if let Some(pos) = elegido.and_then(|e| self.visibles().iter().position(|i| i.id == e)) {
             self.seleccion = pos;
+        }
+        if esta_en_tanda && let Some(t) = &mut self.tanda_activa {
+            if let Some(item) = self.recetario.item(id) {
+                if item.estado == Estado::PorRevisar {
+                    t.por_revisar += 1;
+                } else if item.error.is_some() {
+                    t.errores += 1;
+                    t.ultimo_error = item.error.clone();
+                }
+            } else {
+                t.errores += 1;
+                t.ultimo_error = err_inicial;
+            }
+            if t.miembros.is_empty() {
+                tanda_fin = self.tanda_activa.take();
+            }
         }
         if let Some(tanda) = tanda_fin {
             self.fin_tanda(tanda);
