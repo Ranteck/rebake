@@ -718,16 +718,16 @@ impl App {
             Err(e) => format!("{id} → error: {e:#}"),
         };
         let mut tanda_fin = None;
-        if let Some(t) = &mut self.tanda_activa {
-            if t.miembros.remove(id) {
-                match &resultado {
-                    Ok(p) if p.repo.is_some() => t.posibles += 1,
-                    Ok(_) => {}
-                    Err(_) => t.errores += 1,
-                }
-                if t.miembros.is_empty() {
-                    tanda_fin = self.tanda_activa.take();
-                }
+        if let Some(t) = &mut self.tanda_activa
+            && t.miembros.remove(id)
+        {
+            match &resultado {
+                Ok(p) if p.repo.is_some() => t.posibles += 1,
+                Ok(_) => {}
+                Err(_) => t.errores += 1,
+            }
+            if t.miembros.is_empty() {
+                tanda_fin = self.tanda_activa.take();
             }
         }
         aplicar_posible(&mut self.recetario, id, resultado);
@@ -895,16 +895,16 @@ impl App {
             Err(e) => format!("{id} → error: {e:#}"),
         };
         let mut tanda_fin = None;
-        if let Some(t) = &mut self.tanda_activa {
-            if t.miembros.remove(id) {
-                if resultado.is_ok() {
-                    t.por_revisar += 1;
-                } else {
-                    t.errores += 1;
-                }
-                if t.miembros.is_empty() {
-                    tanda_fin = self.tanda_activa.take();
-                }
+        if let Some(t) = &mut self.tanda_activa
+            && t.miembros.remove(id)
+        {
+            if resultado.is_ok() {
+                t.por_revisar += 1;
+            } else {
+                t.errores += 1;
+            }
+            if t.miembros.is_empty() {
+                tanda_fin = self.tanda_activa.take();
             }
         }
         let elegido = self.id_seleccionado();
