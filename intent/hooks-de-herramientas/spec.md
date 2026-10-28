@@ -1,5 +1,5 @@
 # Spec: hooks que instala su herramienta (desde intent.md 2026-10-27)
-Estado: borrador
+Estado: aceptado
 
 ## Requisitos
 - REQ-1 MUST: vincular por ejecutable (primera palabra no asignación) coincidente con un
