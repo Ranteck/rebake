@@ -885,6 +885,10 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         spans.push(Span::raw(format!("  {texto}")));
     }
     let segunda = match &app.modo {
+        Modo::ConfirmarAprobacion { ids } => format!(
+            " ¿Aprobar {} recetas? s confirma; otra tecla cancela",
+            ids.len()
+        ),
         Modo::ConfirmarTanda { investigar, buscar } => format!(
             " ¿Gastar {} corridas de Claude? s confirma; otra tecla cancela",
             investigar.len() + buscar.len()

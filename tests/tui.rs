@@ -1063,8 +1063,10 @@ fn estado(app: &App) -> Estado {
 fn espacio_y_a_alternan_la_aprobacion_y_guardan() {
     for (ida, vuelta) in [(' ', 'a'), ('a', ' ')] {
         let mut app = por_revisar_con_pasos();
+        assert!(pantalla(&app).contains("□"));
         assert_eq!(tecla(&mut app, KeyCode::Char(ida)), Efecto::Guardar);
         assert_eq!(estado(&app), Estado::Aprobada);
+        assert!(pantalla(&app).contains("✓"));
         assert!(
             app.mensaje.as_deref().unwrap().contains("aprobada"),
             "{:?}",
@@ -1072,6 +1074,7 @@ fn espacio_y_a_alternan_la_aprobacion_y_guardan() {
         );
         assert_eq!(tecla(&mut app, KeyCode::Char(vuelta)), Efecto::Guardar);
         assert_eq!(estado(&app), Estado::PorRevisar);
+        assert!(pantalla(&app).contains("□"));
         assert!(
             app.mensaje
                 .as_deref()
@@ -1947,4 +1950,62 @@ fn la_marca_por_revisar_es_cuadrado_en_lista_cabecera_y_ayuda() {
 
     let ayuda = con_ayuda(app);
     assert!(ayuda.contains("□ por revisar"), "{ayuda}");
+}
+
+#[test]
+fn v_pide_confirmacion_y_s_aprueba_todas_las_por_revisar() {
+    let mut r = recetario();
+    let mut rev1 = con_fuente("plugin:rev1@x");
+    rev1.estado = Estado::PorRevisar;
+    let mut rev2 = con_fuente("plugin:rev2@x");
+    rev2.estado = Estado::PorRevisar;
+    let mut pend = con_fuente("plugin:pend@x");
+    pend.estado = Estado::Pendiente;
+    let mut excl = con_fuente("plugin:excl@x");
+    excl.estado = Estado::Excluida;
+    r.items.extend([rev1, rev2, pend, excl]);
+    let mut app = App::nueva(r);
+
+    // v pide confirmación en el pie (REQ-1)
+    assert_eq!(tecla(&mut app, KeyCode::Char('v')), Efecto::Nada);
+    assert!(
+        pie(&app)[1].contains("¿Aprobar 2 recetas? s confirma; otra tecla cancela"),
+        "{:?}",
+        pie(&app)[1]
+    );
+
+    // Cualquier otra tecla cancela (REQ-2)
+    assert_eq!(tecla(&mut app, KeyCode::Esc), Efecto::Nada);
+    assert_eq!(app.recetario.item("plugin:rev1@x").unwrap().estado, Estado::PorRevisar);
+    assert_eq!(app.recetario.item("plugin:rev2@x").unwrap().estado, Estado::PorRevisar);
+    assert!(
+        app.mensaje.as_deref().unwrap().contains("cancelada"),
+        "{:?}",
+        app.mensaje
+    );
+
+    // v y luego s aprueba y guarda (REQ-2, REQ-8)
+    tecla(&mut app, KeyCode::Char('v'));
+    assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Guardar);
+    assert_eq!(app.recetario.item("plugin:rev1@x").unwrap().estado, Estado::Aprobada);
+    assert_eq!(app.recetario.item("plugin:rev2@x").unwrap().estado, Estado::Aprobada);
+    assert_eq!(app.recetario.item("plugin:pend@x").unwrap().estado, Estado::Pendiente);
+    assert_eq!(app.recetario.item("plugin:excl@x").unwrap().estado, Estado::Excluida);
+    assert!(
+        app.mensaje.as_deref().unwrap().contains("2 recetas aprobadas"),
+        "{:?}",
+        app.mensaje
+    );
+}
+
+#[test]
+fn v_sin_recetas_por_revisar_avisa_y_no_pregunta() {
+    let mut app = App::nueva(recetario());
+    assert_eq!(tecla(&mut app, KeyCode::Char('v')), Efecto::Nada);
+    assert!(
+        app.mensaje.as_deref().unwrap().contains("no hay recetas por revisar"),
+        "{:?}",
+        app.mensaje
+    );
+    assert!(!matches!(app.modo, rebake::tui::app::Modo::ConfirmarSalida));
 }

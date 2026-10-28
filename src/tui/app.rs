@@ -33,6 +33,9 @@ pub enum Modo {
         texto: String,
     },
     ConfirmarInstalacion,
+    ConfirmarAprobacion {
+        ids: Vec<String>,
+    },
     ConfirmarTanda {
         investigar: Vec<String>,
         buscar: Vec<String>,
@@ -280,6 +283,27 @@ impl App {
                     Efecto::Instalar
                 } else {
                     self.avisar("instalación cancelada");
+                    Efecto::Nada
+                }
+            }
+            Modo::ConfirmarAprobacion { ids } => {
+                self.modo = Modo::Normal;
+                if k.code != KeyCode::Char('s') {
+                    self.avisar("aprobación cancelada; no se aprobó nada");
+                    return Efecto::Nada;
+                }
+                let mut aprobadas = 0;
+                for id in ids {
+                    if acciones::aprobar(&mut self.recetario, &id).is_ok() {
+                        aprobadas += 1;
+                    }
+                }
+                if aprobadas > 0 {
+                    self.avisar(&format!(
+                        "{aprobadas} recetas aprobadas (queda guardado en el cookbook)"
+                    ));
+                    Efecto::Guardar
+                } else {
                     Efecto::Nada
                 }
             }
@@ -531,6 +555,21 @@ impl App {
                         Efecto::Nada
                     }
                 };
+            }
+            (KeyCode::Char('v'), _) => {
+                let ids: Vec<String> = self
+                    .recetario
+                    .items
+                    .iter()
+                    .filter(|i| i.estado == Estado::PorRevisar)
+                    .map(|i| i.id.clone())
+                    .collect();
+                if ids.is_empty() {
+                    self.avisar("no hay recetas por revisar para aprobar");
+                } else {
+                    self.modo = Modo::ConfirmarAprobacion { ids };
+                }
+                return Efecto::Nada;
             }
             (KeyCode::Char('t' | 'I'), _) => {
                 let (gratis, mut investigar, mut buscar) = self.por_armar();
