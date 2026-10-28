@@ -2,7 +2,7 @@ use crate::escaner::normalizar_url;
 use crate::modelo::{
     Estado, Fuente, Item, Modo, PaqueteSistema, Paso, Posible, Recetario, Tipo, Via,
 };
-use crate::proceso::ejecutar;
+use crate::proceso::{ejecutar, ejecutar_en_sesion};
 use crate::rutas::expandir;
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
@@ -175,7 +175,7 @@ fn resolver_cuenta(
     );
     let mut cmd = Command::new(ruta);
     cmd.args(["-ic", &script]).env_remove("CLAUDE_CONFIG_DIR");
-    let salida = ejecutar(&mut cmd, tope, &mut |_| {}).map_err(|origen| {
+    let salida = ejecutar_en_sesion(&mut cmd, tope, &mut |_| {}).map_err(|origen| {
         let mut error = error_cuenta(shell, CausaCuenta::Inicio);
         error.origen = Some(origen);
         error

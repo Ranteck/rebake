@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+libc = "0.2.190"
 ratatui = "0.30"
 unicode-width = "0.2"
 serde = { version = "1", features = ["derive"] }

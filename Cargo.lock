@@ -1203,6 +1203,7 @@ version = "0.10.0"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
  "ratatui",
  "serde",
  "serde_json",

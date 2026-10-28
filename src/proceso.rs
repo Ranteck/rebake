@@ -26,10 +26,36 @@ pub fn ejecutar(
     tope: Duration,
     al_leer: &mut dyn FnMut(&str),
 ) -> std::io::Result<Salida> {
+    cmd.process_group(0);
+    capturar(cmd, tope, al_leer)
+}
+
+pub(crate) fn ejecutar_en_sesion(
+    cmd: &mut Command,
+    tope: Duration,
+    al_leer: &mut dyn FnMut(&str),
+) -> std::io::Result<Salida> {
+    // setsid evita SIGTTIN/SIGTTOU y exige que el hijo aún no sea líder de grupo.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setsid() == -1 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        });
+    }
+    capturar(cmd, tope, al_leer)
+}
+
+fn capturar(
+    cmd: &mut Command,
+    tope: Duration,
+    al_leer: &mut dyn FnMut(&str),
+) -> std::io::Result<Salida> {
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0);
+        .stderr(Stdio::piped());
     let mut hijo = lanzar(cmd)?;
     let (tx, rx) = mpsc::channel::<(bool, String)>();
     let mut fuentes: Vec<(bool, Box<dyn Read + Send>)> = Vec::new();
@@ -119,7 +145,7 @@ fn lanzar(cmd: &mut Command) -> std::io::Result<Child> {
 }
 
 fn matar_grupo(pid: u32) {
-    // PID negativo = el grupo creado con process_group(0). Si el grupo ya no existe, `kill`
+    // PID negativo = el grupo creado con process_group(0) o setsid. Si ya no existe, `kill`
     // falla con "No such process", que es el caso normal y no hay nada que hacer.
     let _ = Command::new("kill")
         .args(["-KILL", "--", &format!("-{pid}")])
