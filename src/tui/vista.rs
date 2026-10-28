@@ -19,7 +19,7 @@ const PASOS: [&str; 4] = ["escanear", "armar recetas", "aprobar", "instalar"];
 /// Marca, nombre y estado (para el color) de cada entrada de la leyenda, en el orden del camino.
 const LEYENDA: [(&str, &str, Estado); 5] = [
     ("✓", "aprobada", Estado::Aprobada),
-    ("○", "por revisar", Estado::PorRevisar),
+    ("□", "por revisar", Estado::PorRevisar),
     ("·", "sin receta", Estado::Pendiente),
     ("?", "sin origen", Estado::Pendiente),
     ("✗", "excluida", Estado::Excluida),
@@ -140,7 +140,7 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
     // Los contadores en cero no dicen nada; los que quedan hacen de leyenda de las marcas.
     let contadores: Vec<String> = [
         ("✓", contar(Estado::Aprobada), "aprobadas"),
-        ("○", contar(Estado::PorRevisar), "por revisar"),
+        ("□", contar(Estado::PorRevisar), "por revisar"),
         ("·", sin_receta, "sin receta"),
         ("?", sin_origen, "sin origen"),
         ("✗", contar(Estado::Excluida), "excluidas"),
@@ -186,7 +186,7 @@ fn grupo(t: Tipo) -> &'static str {
 fn marca(i: &Item) -> &'static str {
     match i.estado {
         Estado::Aprobada => "✓",
-        Estado::PorRevisar => "○",
+        Estado::PorRevisar => "□",
         Estado::Pendiente if i.fuente.is_none() => "?",
         Estado::Pendiente => "·",
         Estado::Excluida => "✗",

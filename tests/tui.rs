@@ -824,7 +824,7 @@ fn la_ayuda_muestra_la_leyenda_de_marcas() {
     let p = con_ayuda(App::nueva(recetario()));
     for marca in [
         "✓ aprobada",
-        "○ por revisar",
+        "□ por revisar",
         "· sin receta",
         "? sin origen",
         "✗ excluida",
@@ -939,7 +939,7 @@ fn en_80_columnas_la_cabecera_conserva_los_contadores() {
     }
     // Los contadores en cero no aparecen.
     assert!(
-        !cabecera.contains("○0") && !cabecera.contains("·0"),
+        !cabecera.contains("□0") && !cabecera.contains("·0"),
         "{cabecera:?}"
     );
 }
@@ -1925,4 +1925,26 @@ fn terminar_una_investigacion_no_cierra_la_busqueda_del_mismo_item() {
     assert!(app.claude_en_curso.is_empty());
     tecla(&mut app, KeyCode::Char('t'));
     assert!(pie(&app)[1].contains("¿Gastar 1 corridas de Claude?"));
+}
+
+#[test]
+fn la_marca_por_revisar_es_cuadrado_en_lista_cabecera_y_ayuda() {
+    use unicode_width::UnicodeWidthStr;
+    assert_eq!(UnicodeWidthStr::width("□"), 1);
+
+    let mut item = con_fuente("plugin:rev@x");
+    item.estado = Estado::PorRevisar;
+    let app = con_un_item(item);
+
+    let p = pantalla(&app);
+    let cabecera = p.lines().next().unwrap();
+    assert!(cabecera.contains("□ 1 por revisar"), "{cabecera}");
+    let linea_item = p
+        .lines()
+        .find(|l| l.contains("rev@x") && !l.starts_with("┌"))
+        .unwrap();
+    assert!(linea_item.contains("□"), "{linea_item}");
+
+    let ayuda = con_ayuda(app);
+    assert!(ayuda.contains("□ por revisar"), "{ayuda}");
 }
