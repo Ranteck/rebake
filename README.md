@@ -208,7 +208,7 @@ conserva la cuenta de cada uno.
 
 ## La pantalla
 
-La cabecera cuenta las recetas por estado; las marcas de esos contadores (`✓ ○ · ? ✗`) son las
+La cabecera cuenta las recetas por estado; las marcas de esos contadores (`✓ □ · ? ✗`) son las
 mismas de la lista. El pie muestra las teclas de lo que tenés elegido y, debajo, la próxima tecla
 útil. `?` abre la ayuda: el camino (escanear › armar recetas › aprobar › instalar) con tu paso
 actual, qué significa cada marca, para qué es cada pestaña y todas las teclas. Ninguna tecla
@@ -236,6 +236,7 @@ no consume lugares de la tanda.
 | Enter / `n` | aceptar o descartar el posible origen; el panel avisa si aceptar sale gratis o gasta otra corrida |
 | `l` | pegar el link del repo |
 | `a` o espacio | aprobar o desaprobar una receta armada |
+| `v` | aprobar todas las recetas por revisar (pregunta en el pie y confirma con `s`) |
 | `x` | excluir, con motivo; sobre una excluida, la vuelve a incluir |
 | `e` | editar la receta en `$VISUAL` o `$EDITOR`; queda por revisar |
 | `r` | volver a investigar |
