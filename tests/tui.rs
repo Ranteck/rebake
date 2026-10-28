@@ -1976,8 +1976,14 @@ fn v_pide_confirmacion_y_s_aprueba_todas_las_por_revisar() {
 
     // Cualquier otra tecla cancela (REQ-2)
     assert_eq!(tecla(&mut app, KeyCode::Esc), Efecto::Nada);
-    assert_eq!(app.recetario.item("plugin:rev1@x").unwrap().estado, Estado::PorRevisar);
-    assert_eq!(app.recetario.item("plugin:rev2@x").unwrap().estado, Estado::PorRevisar);
+    assert_eq!(
+        app.recetario.item("plugin:rev1@x").unwrap().estado,
+        Estado::PorRevisar
+    );
+    assert_eq!(
+        app.recetario.item("plugin:rev2@x").unwrap().estado,
+        Estado::PorRevisar
+    );
     assert!(
         app.mensaje.as_deref().unwrap().contains("cancelada"),
         "{:?}",
@@ -1987,12 +1993,27 @@ fn v_pide_confirmacion_y_s_aprueba_todas_las_por_revisar() {
     // v y luego s aprueba y guarda (REQ-2, REQ-8)
     tecla(&mut app, KeyCode::Char('v'));
     assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Guardar);
-    assert_eq!(app.recetario.item("plugin:rev1@x").unwrap().estado, Estado::Aprobada);
-    assert_eq!(app.recetario.item("plugin:rev2@x").unwrap().estado, Estado::Aprobada);
-    assert_eq!(app.recetario.item("plugin:pend@x").unwrap().estado, Estado::Pendiente);
-    assert_eq!(app.recetario.item("plugin:excl@x").unwrap().estado, Estado::Excluida);
+    assert_eq!(
+        app.recetario.item("plugin:rev1@x").unwrap().estado,
+        Estado::Aprobada
+    );
+    assert_eq!(
+        app.recetario.item("plugin:rev2@x").unwrap().estado,
+        Estado::Aprobada
+    );
+    assert_eq!(
+        app.recetario.item("plugin:pend@x").unwrap().estado,
+        Estado::Pendiente
+    );
+    assert_eq!(
+        app.recetario.item("plugin:excl@x").unwrap().estado,
+        Estado::Excluida
+    );
     assert!(
-        app.mensaje.as_deref().unwrap().contains("2 recetas aprobadas"),
+        app.mensaje
+            .as_deref()
+            .unwrap()
+            .contains("2 recetas aprobadas"),
         "{:?}",
         app.mensaje
     );
@@ -2003,7 +2024,10 @@ fn v_sin_recetas_por_revisar_avisa_y_no_pregunta() {
     let mut app = App::nueva(recetario());
     assert_eq!(tecla(&mut app, KeyCode::Char('v')), Efecto::Nada);
     assert!(
-        app.mensaje.as_deref().unwrap().contains("no hay recetas por revisar"),
+        app.mensaje
+            .as_deref()
+            .unwrap()
+            .contains("no hay recetas por revisar"),
         "{:?}",
         app.mensaje
     );
@@ -2016,7 +2040,9 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
     // Caso 1: tanda mixta con pendientes restantes (sugiere v y t)
     let mut app = con_cuota(0, 3, 4);
     tecla(&mut app, KeyCode::Char('t'));
-    let Efecto::Lote(inv, bus) = tecla(&mut app, KeyCode::Char('s')) else { panic!() };
+    let Efecto::Lote(inv, bus) = tecla(&mut app, KeyCode::Char('s')) else {
+        panic!()
+    };
     // 2 inv exitosas, 1 inv error
     app.registrar_investigacion(
         &inv[0],
@@ -2062,7 +2088,9 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
     // Caso 2: tanda donde no quedan pendientes restantes (sugiere v pero no t)
     let mut app2 = con_cuota(0, 2, 0);
     tecla(&mut app2, KeyCode::Char('t'));
-    let Efecto::Investigar(inv2) = tecla(&mut app2, KeyCode::Char('s')) else { panic!() };
+    let Efecto::Investigar(inv2) = tecla(&mut app2, KeyCode::Char('s')) else {
+        panic!()
+    };
     app2.registrar_investigacion(
         &inv2[0],
         Ok(Receta {

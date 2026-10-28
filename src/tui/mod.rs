@@ -141,21 +141,13 @@ fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
         } else {
             "cancelar"
         };
-        tracing::info!(
-            accion = "aprobar_todas",
-            decision,
-            cantidad = total,
-        );
+        tracing::info!(accion = "aprobar_todas", decision, cantidad = total,);
     } else if aprobando_todas {
         let (decision, cantidad) = match &app.modo {
             Modo::ConfirmarAprobacion { ids } => ("preguntar", ids.len()),
             _ => ("sin_pendientes", 0),
         };
-        tracing::info!(
-            accion = "aprobar_todas",
-            decision,
-            cantidad,
-        );
+        tracing::info!(accion = "aprobar_todas", decision, cantidad,);
     }
     if armando || confirmando {
         let (inv, bus) = match &efecto {
