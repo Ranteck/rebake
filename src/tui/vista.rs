@@ -789,7 +789,7 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
             "t arma gratis y pregunta antes de cada tanda de hasta 5 corridas; s confirma, otra tecla cancela. i sigue de a una.",
         ),
         Line::from(
-            "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; x excluye y vuelve a incluir, e edita.",
+            "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; v aprueba todas; x excluye y vuelve a incluir, e edita.",
         ),
         Line::from(
             "4. instalar (3, p): en una PC nueva instala lo aprobado; después, 2 Pendientes.",
@@ -809,7 +809,7 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         Line::from(""),
         titulo("Otras teclas"),
         Line::from(
-            "↑↓ o j k mover  t armar todas  s escanear  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
+            "↑↓ o j k mover  t armar todas  v aprobar todas  s escanear  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
         ),
     ];
     f.render_widget(Clear, area);
@@ -824,11 +824,29 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn lineas_pie(app: &App) -> Vec<Line<'static>> {
-    let pestanas = [
-        (Pestana::Recetas, "1 Recetas"),
-        (Pestana::Checklist, "2 Pendientes"),
-        (Pestana::Instalacion, "3 Instalación"),
-    ];
+    let (gratis, investigar, buscar) = app.por_armar();
+    let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
+    let por_revisar = app
+        .recetario
+        .items
+        .iter()
+        .filter(|i| i.estado == Estado::PorRevisar)
+        .count();
+    let compactar = app.pestana == Pestana::Recetas && gratis + claude > 0 && por_revisar > 0;
+
+    let pestanas = if compactar {
+        [
+            (Pestana::Recetas, "1 Recetas"),
+            (Pestana::Checklist, "2 Pend"),
+            (Pestana::Instalacion, "3 Inst"),
+        ]
+    } else {
+        [
+            (Pestana::Recetas, "1 Recetas"),
+            (Pestana::Checklist, "2 Pendientes"),
+            (Pestana::Instalacion, "3 Instalación"),
+        ]
+    };
     let mut spans: Vec<Span> = Vec::new();
     for (p, texto) in pestanas {
         let estilo = if p == app.pestana {
@@ -842,15 +860,21 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         // `?` va primero: en una terminal angosta se cortan las otras, no la que explica todo.
         spans.push(Span::raw(" "));
         spans.extend(teclas(&[("?", "ayuda")]));
-        let (gratis, investigar, buscar) = app.por_armar();
-        let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
         match paso_actual(app) {
             0 => spans.extend(teclas(&[("s", "escanear")])),
             _ if gratis + claude > 0 => {
-                let accion = match (gratis, claude) {
-                    (n, 0) => format!("armar {n}"),
-                    (0, n) => format!("armar {n} Claude"),
-                    (g, c) => format!("armar {g} + {c} Claude"),
+                let accion = if compactar {
+                    match (gratis, claude) {
+                        (n, 0) => format!("{n}"),
+                        (0, n) => format!("{n} Claude"),
+                        (g, c) => format!("{g} + {c} Claude"),
+                    }
+                } else {
+                    match (gratis, claude) {
+                        (n, 0) => format!("armar {n}"),
+                        (0, n) => format!("armar {n} Claude"),
+                        (g, c) => format!("armar {g} + {c} Claude"),
+                    }
                 };
                 spans.extend(teclas(&[("t", &accion)]));
             }
@@ -863,6 +887,10 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
                 spans.extend(teclas(&[("3", "ir a instalar")]));
             }
             _ => {}
+        }
+        if por_revisar > 0 {
+            let accion_v = format!("aprobar {por_revisar}");
+            spans.extend(teclas(&[("v", &accion_v)]));
         }
         if let Some(item) = app.seleccionado()
             && !app.investigando.contains(&item.id)

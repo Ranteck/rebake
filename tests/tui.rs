@@ -2090,3 +2090,40 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
     assert!(msg2.contains("`v`"), "{msg2}");
     assert!(!msg2.contains("`t`"), "{msg2}");
 }
+
+#[test]
+fn el_pie_en_80_columnas_con_pendientes_y_por_revisar_mide_78_columnas_hasta_v() {
+    use unicode_width::UnicodeWidthStr;
+    // 999 gratis, 999 con Claude, y 999 por revisar
+    let mut app = con_cuota(999, 0, 999);
+    for i in 0..999 {
+        let mut item = con_fuente(&format!("plugin:rev-{i}@x"));
+        item.estado = Estado::PorRevisar;
+        app.recetario.items.push(item);
+    }
+    let grande = pantalla_en(&app, 200, 24);
+    let linea = grande.lines().nth(22).unwrap();
+    let texto_v = " v  aprobar 999 ";
+    let fin = linea
+        .find(texto_v)
+        .unwrap_or_else(|| panic!("no se encontró {texto_v} en {linea}"))
+        + texto_v.len();
+    assert_eq!(
+        UnicodeWidthStr::width(&linea[..fin]),
+        78,
+        "el prefijo hasta v debe medir 78 cols: {linea}"
+    );
+
+    let chica = pantalla_en(&app, 80, 24);
+    let pie = chica.lines().nth(22).unwrap();
+    for esperado in [
+        "1 Recetas",
+        "2 Pend",
+        "3 Inst",
+        " ?  ayuda ",
+        " t  999 + 999 Claude ",
+        " v  aprobar 999 ",
+    ] {
+        assert!(pie.contains(esperado), "falta {esperado:?} en {pie}");
+    }
+}
