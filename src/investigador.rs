@@ -708,7 +708,7 @@ pub fn parsear_origen(stdout: &str) -> Result<Posible> {
 /// Guarda lo que encontró la búsqueda, salvo que Denis ya haya resuelto el origen o lo excluyó.
 pub fn aplicar_posible(r: &mut Recetario, id: &str, resultado: Result<Posible>) {
     let Some(item) = r.item_mut(id) else { return };
-    if item.fuente.is_some() || item.estado == Estado::Excluida {
+    if item.instalado_por.is_some() || item.fuente.is_some() || item.estado == Estado::Excluida {
         return;
     }
     match resultado {
@@ -732,6 +732,9 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         })
         .collect();
     let Some(item) = r.item_mut(id) else { return };
+    if item.instalado_por.is_some() {
+        return;
+    }
     let receta = match resultado {
         Ok(receta) => receta,
         Err(e) => {

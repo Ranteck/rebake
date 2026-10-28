@@ -62,6 +62,23 @@ fn tecla(app: &mut App, c: KeyCode) -> Efecto {
 }
 
 #[test]
+fn hook_vinculado_no_ofrece_corridas_ni_aprobacion() {
+    for estado in [Estado::Pendiente, Estado::PorRevisar, Estado::Aprobada] {
+        let mut r = Recetario::nuevo();
+        let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+        hook.estado = estado;
+        hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+        r.items.push(hook);
+        let mut app = App::nueva(r);
+        assert_eq!(app.por_armar(), (vec![], vec![], vec![]));
+        for key in ['i', 'r', 'a', ' '] {
+            assert_eq!(tecla(&mut app, KeyCode::Char(key)), Efecto::Nada);
+            assert_eq!(app.recetario.items[0].estado, estado);
+        }
+    }
+}
+
+#[test]
 fn recetas_muestra_grupos_estados_y_detalle() {
     let mut app = App::nueva(recetario());
     let p = pantalla(&app);

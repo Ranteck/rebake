@@ -31,6 +31,30 @@ fn opciones(home: &Path, dry_run: bool) -> Opciones {
     }
 }
 
+#[test]
+fn hook_vinculado_con_receta_antigua_nunca_se_ejecuta() {
+    let home = tempfile::tempdir().unwrap();
+    let marca = home.path().join("ejecutado");
+    let mut hook = aprobado(
+        "hook:tool",
+        &[],
+        vec![auto(&format!("touch '{}'", marca.display()), false)],
+    );
+    hook.tipo = Tipo::Hook;
+    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    let mut r = Recetario::nuevo();
+    r.items.push(hook);
+    assert!(planificar(&r).unwrap().is_empty());
+    let res = instalar(
+        &r,
+        &["hook:tool".into()],
+        &opciones(home.path(), false),
+        &mut |_| {},
+    );
+    assert!(res.is_empty());
+    assert!(!marca.exists());
+}
+
 fn correr(r: &Recetario, home: &Path, dry_run: bool) -> (Vec<(String, Resultado)>, Vec<Evento>) {
     let orden = planificar(r).unwrap();
     let mut eventos = Vec::new();

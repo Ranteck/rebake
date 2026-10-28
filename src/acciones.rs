@@ -9,6 +9,9 @@ fn buscar<'a>(r: &'a mut Recetario, id: &str) -> Result<&'a mut Item> {
 
 pub fn aprobar(r: &mut Recetario, id: &str) -> Result<()> {
     let item = buscar(r, id)?;
+    if item.instalado_por.is_some() {
+        bail!("el hook lo instala su herramienta");
+    }
     match item.estado {
         Estado::PorRevisar => item.estado = Estado::Aprobada,
         Estado::Aprobada => {}
@@ -22,6 +25,9 @@ pub fn aprobar(r: &mut Recetario, id: &str) -> Result<()> {
 
 /// Aprueba una receta por revisar o devuelve a revisión una aprobada; dice cómo quedó.
 pub fn alternar_aprobacion(r: &mut Recetario, id: &str) -> Result<Estado> {
+    if buscar(r, id)?.instalado_por.is_some() {
+        bail!("el hook lo instala su herramienta");
+    }
     if buscar(r, id)?.estado == Estado::Aprobada {
         buscar(r, id)?.estado = Estado::PorRevisar;
     } else {

@@ -228,6 +228,7 @@ impl App {
             .iter()
             .filter(|i| {
                 i.estado == Estado::Pendiente
+                    && i.instalado_por.is_none()
                     && !self.investigando.contains(&i.id)
                     && !self.buscando.contains(&i.id)
             })
@@ -460,6 +461,15 @@ impl App {
     fn recetas(&mut self, codigo: KeyCode) -> Efecto {
         let total = self.visibles().len();
         let id = self.id_seleccionado();
+        if let Some(responsable) = self.seleccionado().and_then(|i| i.instalado_por.as_ref())
+            && matches!(
+                codigo,
+                KeyCode::Char('a' | ' ' | 'i' | 'r' | 'l' | 'n') | KeyCode::Enter
+            )
+        {
+            self.avisar(&format!("lo instala {}", responsable.nombre()));
+            return Efecto::Nada;
+        }
         match (codigo, id) {
             (KeyCode::Down | KeyCode::Char('j'), _) if self.seleccion + 1 < total => {
                 self.seleccion += 1
@@ -582,9 +592,9 @@ impl App {
             .into_iter()
             .filter(|id| !self.buscando.contains(id) && !self.investigando.contains(id))
             .filter(|id| {
-                self.recetario
-                    .item(id)
-                    .is_some_and(|i| i.estado != Estado::Excluida && i.fuente.is_none())
+                self.recetario.item(id).is_some_and(|i| {
+                    i.instalado_por.is_none() && i.estado != Estado::Excluida && i.fuente.is_none()
+                })
             })
             .collect();
         if ids.is_empty() {
@@ -622,7 +632,7 @@ impl App {
             .filter(|id| {
                 self.recetario
                     .item(id)
-                    .is_some_and(|i| i.estado != Estado::Excluida)
+                    .is_some_and(|i| i.instalado_por.is_none() && i.estado != Estado::Excluida)
             })
             .collect();
         if ids.is_empty() {

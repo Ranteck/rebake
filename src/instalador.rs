@@ -48,7 +48,7 @@ pub fn planificar(r: &Recetario) -> Result<Vec<String>> {
     let aprobadas: HashSet<&str> = r
         .items
         .iter()
-        .filter(|i| i.estado == Estado::Aprobada)
+        .filter(|i| i.estado == Estado::Aprobada && i.instalado_por.is_none())
         .map(|i| i.id.as_str())
         .collect();
     let mut hecho = HashSet::new();
@@ -100,6 +100,9 @@ pub fn instalar(
     let mut resultados: Vec<(String, Resultado)> = Vec::new();
     for id in orden {
         let Some(item) = r.item(id) else { continue };
+        if item.instalado_por.is_some() {
+            continue;
+        }
         emitir(Evento::Inicio(id.clone()));
         let fallida = item.requiere.iter().find(|d| {
             resultados.iter().any(|(x, res)| {

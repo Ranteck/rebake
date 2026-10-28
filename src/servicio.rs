@@ -32,13 +32,16 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
         return Ok(r
             .items
             .iter()
-            .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_some())
+            .filter(|i| {
+                i.instalado_por.is_none() && i.estado == Estado::Pendiente && i.fuente.is_some()
+            })
             .map(|i| trabajo_para(r, i, home))
             .collect());
     }
     ids.iter()
         .map(|id| match r.item(id) {
             None => bail!("no existe el ítem {id}"),
+            Some(i) if i.instalado_por.is_some() => bail!("el hook lo instala su herramienta"),
             Some(i) if i.estado == Estado::Excluida => bail!("{id} está excluido"),
             Some(i) => Ok(trabajo_para(r, i, home)),
         })
@@ -49,7 +52,9 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
 pub fn sin_origen(r: &Recetario) -> Vec<String> {
     r.items
         .iter()
-        .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_none())
+        .filter(|i| {
+            i.instalado_por.is_none() && i.estado == Estado::Pendiente && i.fuente.is_none()
+        })
         .map(|i| i.id.clone())
         .collect()
 }
