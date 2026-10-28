@@ -197,3 +197,54 @@ fn hook_con_script_local_no_es_herramienta() {
         e.hallazgos
     );
 }
+#[test]
+fn vincula_hooks_por_ejecucion_y_conserva_scripts_propios() {
+    use rebake::{modelo::Recetario, servicio};
+    for (comando, tipo, nombre) in [
+        ("TOKEN=secreto rtk hook claude", "item", "herramienta:rtk"),
+        (
+            "~/.claude/skills/impeccable/scripts/impeccable hook",
+            "item",
+            "skill:impeccable",
+        ),
+        (
+            "[ -f ~/.orca/hook.sh ] || ~/.orca/hook.sh",
+            "externo",
+            "orca",
+        ),
+        (
+            "if [ -f \"${HOME-}/.orca/hook.sh\" ]; then \"${HOME-}/.orca/hook.sh\"; fi",
+            "externo",
+            "orca",
+        ),
+        (
+            "sh ~/.claude/skills/ai-native-sdlc/scripts/load-intent.sh",
+            "",
+            "",
+        ),
+        ("sh ~/.claude/sync-plugins.sh", "", ""),
+        ("echo ~/.orca/hook.sh", "", ""),
+        (
+            "~/.claude/skills/impeccable/../other/impeccable hook",
+            "",
+            "",
+        ),
+    ] {
+        let h = HomeFalso::nuevo();
+        h.binario("bin/rtk", b"#!/bin/sh\n");
+        h.escribir(".claude/skills/impeccable/SKILL.md", "skill");
+        h.escribir(".claude/skills/ai-native-sdlc/SKILL.md", "skill");
+        h.escribir(".claude/settings.json", &serde_json::json!({"hooks":{"Stop":[{"hooks":[{"type":"command","command":comando}]}]}}).to_string());
+        let pacman = PacmanFalso(vec![]);
+        let mut r = Recetario::nuevo();
+        servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+        let hook = r.items.iter().find(|i| i.tipo == Tipo::Hook).unwrap();
+        let valor = serde_json::to_value(hook).unwrap();
+        if tipo.is_empty() {
+            assert!(valor.get("instalado_por").is_none(), "{comando}: {valor}");
+        } else {
+            assert_eq!(valor["instalado_por"]["tipo"], tipo, "{comando}");
+            assert_eq!(valor["instalado_por"]["nombre"], nombre, "{comando}");
+        }
+    }
+}
