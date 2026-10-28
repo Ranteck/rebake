@@ -2,6 +2,42 @@ use rebake::archivo;
 use rebake::modelo::*;
 use std::fs;
 
+#[test]
+fn responsable_de_hook_se_conserva_y_se_valida() {
+    let texto = "version = 1\n[[item]]\nid = 'herramienta:tool'\ntipo = 'herramienta'\nestado = 'pendiente'\n[[item]]\nid = 'hook:tool'\ntipo = 'hook'\nestado = 'pendiente'\ninstalado_por = { tipo = 'item', nombre = 'herramienta:tool' }\n";
+    let r = archivo::parsear(texto, "cookbook.toml").unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let ruta = dir.path().join("cookbook.toml");
+    archivo::guardar(&ruta, &r).unwrap();
+    assert_eq!(archivo::leer(&ruta).unwrap(), r);
+    assert!(fs::read_to_string(ruta).unwrap().contains("instalado_por"));
+    assert!(
+        archivo::parsear(
+            &texto.replace("nombre = 'herramienta:tool'", "nombre = 'no-existe'"),
+            "cookbook.toml"
+        )
+        .is_err()
+    );
+    assert!(
+        archivo::parsear(
+            &texto.replace("tipo = 'hook'", "tipo = 'skill'"),
+            "cookbook.toml"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn campo_desconocido_de_cookbook_nuevo_incluye_como_actualizar() {
+    let texto = "version = 1\n[[item]]\nid = 'hook:tool'\ntipo = 'hook'\nestado = 'pendiente'\ncampo_de_otra_version = 'nuevo'\n";
+    let err = format!(
+        "{:#}",
+        archivo::parsear(texto, "cookbook.toml").unwrap_err()
+    );
+    assert!(err.contains("unknown field"), "{err}");
+    assert!(err.contains("actualizá con: curl -fsSL https://github.com/Ranteck/rebake/releases/latest/download/install.sh | sh"), "{err}");
+}
+
 fn ejemplo() -> Recetario {
     let mut r = Recetario::nuevo();
     r.perfiles.push(Perfil {

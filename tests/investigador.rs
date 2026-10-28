@@ -345,6 +345,7 @@ fn requisito_con_aclaracion_usa_solo_el_identificador() {
     r.items
         .push(Item::nuevo("marketplace:openai-codex", Tipo::Marketplace));
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/ejemplo/house-rules".into(),
         doc: "https://github.com/ejemplo/house-rules#install".into(),
         pasos: vec![],
@@ -546,6 +547,7 @@ fn las_directas_salen_antes_que_las_que_esperan_a_claude() {
         .display()
         .to_string();
     let directa = Receta {
+        registro_hooks: None,
         repo: "https://github.com/ejemplo/repo".into(),
         doc: "receta directa".into(),
         pasos: vec![],
@@ -704,6 +706,7 @@ fn un_requisito_con_forma_de_repo_usa_el_item_que_ya_tiene_ese_repo() {
     r.items.push(mkt);
     let antes = r.items.len();
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/ejemplo/house-rules".into(),
         doc: "https://github.com/ejemplo/house-rules#install".into(),
         pasos: vec![],
@@ -733,6 +736,7 @@ fn un_requisito_con_forma_de_repo_usa_el_item_que_ya_tiene_ese_repo() {
 fn un_repo_sin_item_conocido_se_agrega_como_hasta_ahora() {
     let mut r = recetario();
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/ejemplo/house-rules".into(),
         doc: "https://github.com/ejemplo/house-rules#install".into(),
         pasos: vec![],
@@ -760,6 +764,7 @@ fn un_repo_con_varios_plugins_no_elige_uno_al_azar() {
         r.items.push(p);
     }
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/ejemplo/house-rules".into(),
         doc: "https://github.com/ejemplo/house-rules#install".into(),
         pasos: vec![],
@@ -776,4 +781,76 @@ fn un_repo_con_varios_plugins_no_elige_uno_al_azar() {
             && !requiere.contains(&"plugin:b@oficial".to_string()),
         "{requiere:?}"
     );
+}
+#[test]
+fn responsable_con_hooks_pide_registro_en_vez_de_receta_directa() {
+    use rebake::modelo::InstaladorHook;
+    let h = HomeFalso::nuevo();
+    let mut r = Recetario::nuevo();
+    let tool = item_con(
+        "skill:tool",
+        Tipo::Skill,
+        Some("https://example.com/tool"),
+        Via::Metadatos,
+    );
+    r.items.push(tool);
+    let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Item("skill:tool".into()));
+    r.items.push(hook);
+    let trabajo = trabajo_para(&r, &r.items[0], h.ruta());
+    assert!(trabajo.directa.is_none());
+    assert!(
+        trabajo.prompt.contains("registro_hooks"),
+        "{}",
+        trabajo.prompt
+    );
+    assert!(
+        trabajo.prompt.contains("hooks vinculados: 1"),
+        "{}",
+        trabajo.prompt
+    );
+}
+
+#[test]
+fn registro_de_hooks_exige_documentacion_y_orden() {
+    use rebake::modelo::InstaladorHook;
+    for registro in [
+        serde_json::json!({"tipo":"paso","indice":1}),
+        serde_json::json!({"tipo":"integrado","cita":"El instalador registra sus hooks."}),
+        serde_json::json!({"tipo":"pendiente"}),
+        serde_json::Value::Null,
+    ] {
+        let mut r = Recetario::nuevo();
+        r.items
+            .push(Item::nuevo("herramienta:tool", Tipo::Herramienta));
+        let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+        hook.instalado_por = Some(InstaladorHook::Item("herramienta:tool".into()));
+        r.items.push(hook);
+        let respuesta = serde_json::json!({"type":"result","subtype":"success","structured_output":{
+            "repo":"https://example.com/tool","doc":"https://example.com/tool/install","requiere":[],
+            "registro_hooks":registro,
+            "pasos":[{"cmd":"tool-install","modo":"auto","por_perfil":false,"cita":"tool-install"},
+                {"cmd":"tool init","modo":"auto","por_perfil":true,"cita":"tool init"}]}});
+        let receta = parsear_salida(&respuesta.to_string()).unwrap();
+        aplicar(&mut r, "herramienta:tool", Ok(receta), "2026-10-27");
+        if registro.is_null() || registro["tipo"] == "pendiente" {
+            assert_eq!(r.items[0].estado, Estado::Pendiente);
+            assert!(r.items[0].error.is_some());
+            assert!(r.items[0].pasos.is_empty());
+        } else {
+            assert_eq!(r.items[0].estado, Estado::PorRevisar);
+            assert_eq!(r.items[0].pasos.len(), 2);
+            if registro["tipo"] == "integrado" {
+                assert!(
+                    r.items[0].pasos[0]
+                        .nota
+                        .as_deref()
+                        .is_some_and(|n| n.contains("El instalador registra sus hooks."))
+                );
+            }
+        }
+        let mut mal = respuesta;
+        mal["structured_output"]["registro_hooks"] = serde_json::json!({"tipo":"paso","indice":0});
+        assert!(parsear_salida(&mal.to_string()).is_err());
+    }
 }

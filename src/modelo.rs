@@ -93,6 +93,8 @@ pub struct Item {
     pub perfiles: Vec<String>,
     pub estado: Estado,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instalado_por: Option<InstaladorHook>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fuente: Option<Fuente>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pista: Option<String>,
@@ -113,6 +115,27 @@ pub struct Item {
     pub posible: Option<Posible>,
     #[serde(default, rename = "paso", skip_serializing_if = "Vec::is_empty")]
     pub pasos: Vec<Paso>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "tipo",
+    content = "nombre",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum InstaladorHook {
+    Item(String),
+    Externo(String),
+}
+
+impl InstaladorHook {
+    pub fn nombre(&self) -> &str {
+        match self {
+            Self::Item(id) => id.split_once(':').map_or(id.as_str(), |(_, n)| n),
+            Self::Externo(nombre) => nombre,
+        }
+    }
 }
 
 /// Se guarda aunque no se haya encontrado o Denis lo descarte: `t` no vuelve a gastar una búsqueda.
@@ -191,6 +214,10 @@ impl Recetario {
     pub fn item_mut(&mut self, id: &str) -> Option<&mut Item> {
         self.items.iter_mut().find(|i| i.id == id)
     }
+    pub fn hooks_de<'a>(&'a self, id: &'a str) -> impl Iterator<Item = &'a Item> {
+        self.items.iter().filter(move |i| i.estado != Estado::Excluida
+            && matches!(&i.instalado_por, Some(InstaladorHook::Item(responsable)) if responsable == id))
+    }
 }
 
 impl Item {
@@ -200,6 +227,7 @@ impl Item {
             tipo,
             perfiles: vec![],
             estado: Estado::Pendiente,
+            instalado_por: None,
             fuente: None,
             pista: None,
             requiere: vec![],
@@ -222,6 +250,21 @@ pub fn validar(r: &Recetario) -> Result<()> {
     let perfiles: HashSet<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
     let mut ids = HashSet::new();
     for item in &r.items {
+        if let Some(responsable) = &item.instalado_por {
+            let valido = item.tipo == Tipo::Hook
+                && match responsable {
+                    InstaladorHook::Item(id) => r.item(id).is_some_and(|i| i.tipo != Tipo::Hook),
+                    InstaladorHook::Externo(nombre) => {
+                        !nombre.is_empty()
+                            && nombre
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                    }
+                };
+            if !valido {
+                bail!("responsable de hook inválido");
+            }
+        }
         if !ids.insert(item.id.as_str()) {
             bail!("el ítem {} está repetido", item.id);
         }

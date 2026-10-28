@@ -1,5 +1,5 @@
 use super::{Entorno, Escaneo, Hallazgo, asignar_origen, git, leer_json};
-use crate::modelo::{Fuente, Tipo, Via};
+use crate::modelo::{Estado, Fuente, InstaladorHook, Recetario, Tipo, Via};
 use crate::rutas::contraer;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,8 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
         // Las asignaciones iniciales (`VAR=valor cmd`) no son el binario y pueden traer secretos.
         let binario = palabras(&comando, &entorno.home)
             .into_iter()
-            .find(|p| !es_asignacion(p));
+            .find(|p| !es_asignacion(p))
+            .filter(|p| !es_palabra_shell(p));
         // Si el comando es una ruta, es un script del usuario: primero se busca su repo.
         let es_script = binario.as_ref().is_some_and(|b| {
             let ruta = Path::new(b);
@@ -98,6 +99,22 @@ fn comandos_de_hooks(settings: &Value) -> Vec<String> {
         }
     }
     comandos
+}
+
+pub fn presente(id: &str, dir: &Path, home: &Path) -> anyhow::Result<bool> {
+    use anyhow::Context;
+    let texto = match std::fs::read_to_string(dir.join("settings.json")) {
+        Ok(texto) => texto,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e).context("no pude leer la configuración del perfil"),
+    };
+    let settings: Value =
+        serde_json::from_str(&texto).context("configuración del perfil inválida")?;
+    anyhow::ensure!(settings.is_object(), "configuración del perfil inválida");
+    Ok(comandos_de_hooks(&settings).iter().any(|c| {
+        let visible = crate::secretos::ocultar(c).replace(&*home.to_string_lossy(), "~");
+        id == format!("hook:{visible}")
+    }))
 }
 
 fn statusline(entorno: &Entorno, perfil: &str, comando: &str, salida: &mut Escaneo) {
@@ -191,19 +208,26 @@ pub fn palabras(comando: &str, home: &Path) -> Vec<String> {
     let mut salida = Vec::new();
     let mut actual = String::new();
     let mut hay_palabra = false;
+    let mut home_literal = false;
     let mut comilla: Option<char> = None;
     for c in comando.chars() {
         match (comilla, c) {
             (Some(q), c) if c == q => comilla = None,
-            (Some(_), c) => actual.push(c),
+            (Some(q), c) => {
+                if (q == '\'' && c == '$') || (c == '~' && actual.is_empty()) {
+                    home_literal = true;
+                }
+                actual.push(c);
+            }
             (None, '"' | '\'') => {
                 comilla = Some(c);
                 hay_palabra = true;
             }
             (None, c) if c.is_whitespace() => {
                 if hay_palabra {
-                    salida.push(std::mem::take(&mut actual));
+                    salida.push((std::mem::take(&mut actual), home_literal));
                     hay_palabra = false;
+                    home_literal = false;
                 }
             }
             (None, c) => {
@@ -213,12 +237,18 @@ pub fn palabras(comando: &str, home: &Path) -> Vec<String> {
         }
     }
     if hay_palabra {
-        salida.push(actual);
+        salida.push((actual, home_literal));
     }
     salida
         .into_iter()
-        .map(|p| {
-            let p = p.replace("${HOME}", &home).replace("$HOME", &home);
+        .map(|(p, literal)| {
+            if literal {
+                return p;
+            }
+            let p = p
+                .replace("${HOME-}", &home)
+                .replace("${HOME}", &home)
+                .replace("$HOME", &home);
             match p.strip_prefix('~') {
                 Some(resto) if resto.is_empty() || resto.starts_with('/') => {
                     format!("{home}{resto}")
@@ -233,4 +263,319 @@ fn es_asignacion(palabra: &str) -> bool {
     palabra.split_once('=').is_some_and(|(n, _)| {
         !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     })
+}
+
+fn es_palabra_shell(palabra: &str) -> bool {
+    matches!(
+        palabra,
+        "if" | "then"
+            | "else"
+            | "elif"
+            | "fi"
+            | "case"
+            | "in"
+            | "esac"
+            | "for"
+            | "while"
+            | "until"
+            | "do"
+            | "done"
+            | "["
+            | "]"
+            | "{"
+            | "}"
+            | "!"
+            | ":"
+            | "export"
+            | "printf"
+            | "echo"
+            | "exit"
+            | "test"
+            | "command"
+            | "exec"
+    )
+}
+
+pub fn vincular(r: &mut Recetario, entorno: &Entorno) -> Vec<String> {
+    let mut avisos = Vec::new();
+    let mut vinculos = Vec::new();
+    for perfil in &r.perfiles {
+        let dir = crate::rutas::expandir(&perfil.dir, &entorno.home);
+        let Some(settings) = leer_json(&dir.join("settings.json"), entorno, &mut avisos) else {
+            continue;
+        };
+        for comando in comandos_de_hooks(&settings) {
+            let visible =
+                crate::secretos::ocultar(&comando).replace(&*entorno.home.to_string_lossy(), "~");
+            let id = format!("hook:{visible}");
+            if !r
+                .item(&id)
+                .is_some_and(|i| i.tipo == Tipo::Hook && !i.ausente)
+            {
+                continue;
+            }
+            // El ID oculta secretos y contrae el home: solo el comando original sirve para atribuir.
+            let duenio = responsable(r, &comando, entorno);
+            if let Some((_, anterior)) = vinculos.iter_mut().find(|(visto, _)| visto == &id) {
+                if anterior != &duenio {
+                    *anterior = None;
+                }
+            } else {
+                vinculos.push((id, duenio));
+            }
+        }
+    }
+    for (id, responsable) in vinculos {
+        let i = r.item_mut(&id).expect("ítem del mismo recetario");
+        let nuevo = i.instalado_por != responsable;
+        let perfiles = i.perfiles.clone();
+        let duenio = responsable.clone();
+        i.instalado_por = responsable;
+        if i.instalado_por.is_some() {
+            i.pasos.clear();
+            i.verificar = None;
+            i.posible = None;
+            i.error = None;
+            if i.estado != Estado::Excluida {
+                i.estado = Estado::Pendiente;
+            }
+        }
+        if let Some(InstaladorHook::Item(id)) = duenio {
+            let tool = r.item_mut(&id).expect("responsable del mismo recetario");
+            let mut cambiado = nuevo;
+            for perfil in perfiles {
+                if !tool.perfiles.contains(&perfil) {
+                    tool.perfiles.push(perfil);
+                    cambiado = true;
+                }
+            }
+            // La receta anterior todavía no documenta los hooks recién vinculados.
+            if cambiado && tool.estado != Estado::Excluida {
+                tool.pasos.clear();
+                tool.estado = Estado::Pendiente;
+            }
+        }
+    }
+    avisos
+}
+
+fn responsable(r: &Recetario, comando: &str, entorno: &Entorno) -> Option<InstaladorHook> {
+    let mut candidatos = Vec::new();
+    for segmento in segmentos(comando)? {
+        let palabras = palabras(&segmento, &entorno.home);
+        let mut p = palabras.iter().map(String::as_str).peekable();
+        while p.peek().is_some_and(|s| {
+            es_asignacion(s) || matches!(*s, "if" | "then" | "else" | "exec" | "{")
+        }) {
+            p.next();
+        }
+        let Some(mut ejecutable) = p.next() else {
+            continue;
+        };
+        if es_palabra_shell(ejecutable) {
+            continue;
+        }
+        if matches!(
+            Path::new(ejecutable).file_name().and_then(|n| n.to_str()),
+            Some("sh" | "bash" | "zsh" | "python" | "python3" | "node")
+        ) {
+            let Some(script) = p.next().filter(|s| !s.starts_with('-')) else {
+                continue;
+            };
+            ejecutable = script;
+        }
+        if let Some(duenio) = responsable_de(r, ejecutable, entorno) {
+            candidatos.push(duenio);
+        }
+    }
+    let primero = candidatos.first()?.clone();
+    candidatos.iter().all(|c| c == &primero).then_some(primero)
+}
+
+fn responsable_de(r: &Recetario, ejecutable: &str, entorno: &Entorno) -> Option<InstaladorHook> {
+    let home = &entorno.home;
+    let ruta = Path::new(ejecutable);
+    if ruta
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
+    }
+    let nombre = ruta.file_name()?.to_str()?;
+    let mut candidatos = Vec::new();
+    for item in r.items.iter().filter(|i| i.tipo != Tipo::Hook) {
+        let slug = item.id.split_once(':').map_or(item.id.as_str(), |(_, n)| n);
+        if slug != nombre {
+            continue;
+        }
+        let coincide = if !ejecutable.contains('/') {
+            true
+        } else if item.tipo == Tipo::Herramienta {
+            buscar(entorno, nombre)
+                .and_then(|p| std::fs::canonicalize(p).ok())
+                .zip(std::fs::canonicalize(ruta).ok())
+                .is_some_and(|(a, b)| a == b)
+        } else {
+            item.perfiles
+                .iter()
+                .filter_map(|n| r.perfiles.iter().find(|p| &p.nombre == n))
+                .any(|p| {
+                    let base = crate::rutas::expandir(&p.dir, home)
+                        .join("skills")
+                        .join(slug);
+                    item.tipo == Tipo::Skill && ruta.starts_with(base)
+                })
+                || item
+                    .pista
+                    .as_ref()
+                    .and_then(|p| p.rsplit_once(": "))
+                    .is_some_and(|(_, p)| {
+                        let base = crate::rutas::expandir(p, home);
+                        base.is_dir() && ruta.starts_with(base)
+                    })
+        };
+        if coincide {
+            candidatos.push(InstaladorHook::Item(item.id.clone()));
+        }
+    }
+    match candidatos.len() {
+        1 => return candidatos.pop(),
+        0 => {}
+        _ => return None,
+    }
+    if r.perfiles
+        .iter()
+        .any(|p| ruta.starts_with(crate::rutas::expandir(&p.dir, home)))
+    {
+        return None;
+    }
+    let relativo = ruta.strip_prefix(home).ok()?;
+    let carpeta = relativo.components().next()?.as_os_str().to_str()?;
+    let externo = carpeta.strip_prefix('.')?;
+    if externo.is_empty()
+        || !externo
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        || r.items
+            .iter()
+            .any(|i| i.id.split_once(':').is_some_and(|(_, n)| n == externo))
+    {
+        return None;
+    }
+    Some(InstaladorHook::Externo(externo.into()))
+}
+
+// Solo reconocemos separadores fuera de comillas y patrones; nunca evaluamos la shell.
+fn segmentos(comando: &str) -> Option<Vec<String>> {
+    #[derive(PartialEq)]
+    enum Caso {
+        Variable,
+        In,
+        Patron,
+        Cuerpo,
+    }
+    let mut casos = Vec::new();
+    let mut partes = vec![];
+    let mut actual = String::new();
+    let mut palabra = String::new();
+    let mut comilla = None;
+    let mut chars = comando.chars().chain(std::iter::once(' ')).peekable();
+    while let Some(c) = chars.next() {
+        if let Some(q) = comilla {
+            if q == '"' && (c == '`' || (c == '$' && chars.peek() == Some(&'('))) {
+                return None;
+            }
+            actual.push(c);
+            if q == '"' && c == '\\' {
+                actual.push(chars.next()?);
+            } else if c == q {
+                comilla = None;
+            }
+            continue;
+        }
+        if c == '\\' {
+            actual.push(c);
+            actual.push(chars.next()?);
+            palabra.push('\0');
+            continue;
+        }
+        if matches!(c, '\'' | '"') {
+            comilla = Some(c);
+            palabra.push('\0');
+            actual.push(c);
+            continue;
+        }
+        if c == '`' || (c == '$' && chars.peek() == Some(&'(')) {
+            return None;
+        }
+        if c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')') {
+            let prefijo = actual.strip_suffix(&palabra).unwrap_or("").trim();
+            if palabra == "case"
+                && casos.last() != Some(&Caso::Patron)
+                && prefijo
+                    .split_whitespace()
+                    .all(|p| matches!(p, "if" | "then" | "else" | "{"))
+            {
+                casos.push(Caso::Variable);
+            } else {
+                match casos.last_mut() {
+                    Some(fase @ Caso::Variable) if !palabra.is_empty() => *fase = Caso::In,
+                    Some(fase @ Caso::In) if palabra == "in" => {
+                        *fase = Caso::Patron;
+                        actual.clear();
+                    }
+                    Some(Caso::Patron) if palabra == "esac" => {
+                        casos.pop();
+                        actual.clear();
+                    }
+                    _ => {}
+                }
+            }
+            palabra.clear();
+        }
+        if casos.last() == Some(&Caso::Patron) {
+            if c == ')' {
+                *casos.last_mut()? = Caso::Cuerpo;
+                actual.clear();
+            } else {
+                actual.push(c);
+                if !c.is_whitespace() {
+                    palabra.push(c);
+                }
+            }
+            continue;
+        }
+        match c {
+            ';' => {
+                partes.push(std::mem::take(&mut actual));
+                if chars.peek() == Some(&';') {
+                    chars.next();
+                    let fase = casos.last_mut()?;
+                    if *fase != Caso::Cuerpo {
+                        return None;
+                    }
+                    *fase = Caso::Patron;
+                }
+            }
+            '&' if actual.ends_with('>') || actual.ends_with('<') => actual.push(c),
+            '&' | '|' => {
+                if chars.next() != Some(c) {
+                    return None;
+                }
+                partes.push(std::mem::take(&mut actual));
+            }
+            '(' | ')' => return None,
+            _ => {
+                actual.push(c);
+                if !c.is_whitespace() {
+                    palabra.push(c);
+                }
+            }
+        }
+    }
+    if comilla.is_some() || !casos.is_empty() {
+        return None;
+    }
+    partes.push(actual);
+    Some(partes)
 }

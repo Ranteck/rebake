@@ -62,6 +62,23 @@ fn tecla(app: &mut App, c: KeyCode) -> Efecto {
 }
 
 #[test]
+fn hook_vinculado_no_ofrece_corridas_ni_aprobacion() {
+    for estado in [Estado::Pendiente, Estado::PorRevisar, Estado::Aprobada] {
+        let mut r = Recetario::nuevo();
+        let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+        hook.estado = estado;
+        hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+        r.items.push(hook);
+        let mut app = App::nueva(r);
+        assert_eq!(app.por_armar(), (vec![], vec![], vec![]));
+        for key in ['i', 'r', 'a', ' '] {
+            assert_eq!(tecla(&mut app, KeyCode::Char(key)), Efecto::Nada);
+            assert_eq!(app.recetario.items[0].estado, estado);
+        }
+    }
+}
+
+#[test]
 fn recetas_muestra_grupos_estados_y_detalle() {
     let mut app = App::nueva(recetario());
     let p = pantalla(&app);
@@ -158,6 +175,7 @@ fn la_cabecera_muestra_las_sin_origen_antes_y_despues_del_lote() {
     assert!(pantalla(&app).contains("? 1 sin origen"));
     tecla(&mut app, KeyCode::Char('I'));
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/ejemplo/repo".into(),
         doc: "receta directa".into(),
         pasos: vec![],
@@ -241,6 +259,7 @@ fn excluir_usa_el_item_elegido_aunque_cambie_la_lista() {
     }
     // Llega una investigación que agrega un requisito que se ordena antes.
     let receta = Receta {
+        registro_hooks: None,
         repo: "https://github.com/openai/codex-plugin-cc".into(),
         doc: "https://github.com/openai/codex-plugin-cc#install".into(),
         pasos: vec![],
@@ -1738,6 +1757,7 @@ fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
     app.registrar_investigacion(
         &inv[0],
         Ok(Receta {
+            registro_hooks: None,
             repo: "https://github.com/a/b".into(),
             doc: "https://github.com/a/b#install".into(),
             pasos: vec![],
@@ -2057,6 +2077,7 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
             pasos: vec![],
             requiere: vec![],
             verificar: None,
+            registro_hooks: None,
         }),
         "2026-10-22",
     );
@@ -2068,6 +2089,7 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
             pasos: vec![],
             requiere: vec![],
             verificar: None,
+            registro_hooks: None,
         }),
         "2026-10-22",
     );
@@ -2104,6 +2126,7 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
             pasos: vec![],
             requiere: vec![],
             verificar: None,
+            registro_hooks: None,
         }),
         "2026-10-22",
     );
@@ -2115,6 +2138,7 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
             pasos: vec![],
             requiere: vec![],
             verificar: None,
+            registro_hooks: None,
         }),
         "2026-10-22",
     );
@@ -2159,4 +2183,88 @@ fn el_pie_en_80_columnas_con_pendientes_y_por_revisar_mide_78_columnas_hasta_v()
     ] {
         assert!(pie.contains(esperado), "falta {esperado:?} en {pie}");
     }
+}
+
+#[test]
+fn herramienta_presente_con_hook_faltante_sigue_marcada_para_instalar() {
+    let mut r = Recetario::nuevo();
+    let mut tool = Item::nuevo("herramienta:tool", Tipo::Herramienta);
+    tool.estado = Estado::Aprobada;
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Item(tool.id.clone()));
+    r.items = vec![tool, hook];
+    let mut app = App::nueva(r);
+    app.registrar_presencia("herramienta:tool", Presencia::Instalada);
+    app.registrar_presencia("hook:tool hook", Presencia::Falta(vec!["personal".into()]));
+    assert_eq!(app.a_instalar(), vec!["herramienta:tool"]);
+}
+
+#[test]
+fn hook_muestra_responsable_a_80_columnas_sin_ofrecer_receta() {
+    let mut r = Recetario::nuevo();
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    r.items.push(hook);
+    let app = App::nueva(r);
+    let pantalla = pantalla_en(&app, 80, 24);
+    assert!(pantalla.contains("lo instala tool"), "{pantalla}");
+    assert!(
+        !pantalla.lines().next().unwrap().contains("sin receta"),
+        "{pantalla}"
+    );
+    assert!(
+        !pantalla.lines().nth(22).unwrap().contains(" i "),
+        "{pantalla}"
+    );
+    assert!(!pantalla.contains("no sé de qué repo viene"), "{pantalla}");
+}
+
+#[test]
+fn v_no_aprueba_ni_cuenta_hooks_vinculados() {
+    let mut r = Recetario::nuevo();
+    let mut rev = con_fuente("plugin:rev@x");
+    rev.estado = Estado::PorRevisar;
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    hook.estado = Estado::PorRevisar;
+    r.items = vec![rev, hook];
+    let mut app = App::nueva(r);
+
+    // En el pie solo cuenta la receta por revisar propia (1), no el hook vinculado
+    assert!(
+        pie(&app)[0].contains(" v  aprobar 1 "),
+        "{:?}",
+        pie(&app)[0]
+    );
+    assert!(!pie(&app)[0].contains("aprobar 2"));
+
+    // v pide confirmar solo 1 receta
+    assert_eq!(tecla(&mut app, KeyCode::Char('v')), Efecto::Nada);
+    assert!(
+        pie(&app)[1].contains("¿Aprobar 1 recetas? s confirma; otra tecla cancela"),
+        "{:?}",
+        pie(&app)[1]
+    );
+
+    // s confirma y solo aprueba la receta independiente
+    assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Guardar);
+    assert_eq!(
+        app.recetario.item("plugin:rev@x").unwrap().estado,
+        Estado::Aprobada
+    );
+    assert_eq!(
+        app.recetario.item("hook:tool hook").unwrap().estado,
+        Estado::PorRevisar
+    );
+
+    // Sin recetas por revisar (solo queda el hook vinculado), v no pregunta
+    assert_eq!(tecla(&mut app, KeyCode::Char('v')), Efecto::Nada);
+    assert!(
+        app.mensaje
+            .as_deref()
+            .unwrap()
+            .contains("no hay recetas por revisar"),
+        "{:?}",
+        app.mensaje
+    );
 }

@@ -65,17 +65,57 @@ fn bucle(
             rx_version = None;
         }
         while let Ok((id, res)) = rx_inv.try_recv() {
-            tracing::info!(accion = "investigar", id = %id, ok = res.is_ok());
+            let resultado = investigador::resultado_receta(&app.recetario, &id, &res);
+            let hooks_vinculados = app.recetario.hooks_de(&id).count();
+            if resultado == "fallo" {
+                tracing::error!(
+                    accion = "investigar",
+                    resultado,
+                    causa = "investigacion",
+                    hooks_vinculados
+                );
+            } else {
+                tracing::info!(
+                    accion = "investigar",
+                    resultado,
+                    causa = if resultado == "pendiente" {
+                        "registro_sin_documentacion"
+                    } else {
+                        "ninguna"
+                    },
+                    hooks_vinculados
+                );
+            }
             app.registrar_investigacion(&id, res, &rutas::hoy());
             guardar(app, ruta);
         }
         while let Ok((id, res)) = rx_bus.try_recv() {
-            tracing::info!(accion = "buscar_origen", id = %id, ok = res.is_ok());
+            tracing::info!(accion = "buscar_origen", ok = res.is_ok());
             app.registrar_busqueda(&id, res);
             guardar(app, ruta);
         }
         if let Some(rx) = &rx_inst {
             while let Ok(e) = rx.try_recv() {
+                if let Evento::Fin(id, res) = &e {
+                    let hooks_vinculados = app.recetario.hooks_de(id).count();
+                    if matches!(
+                        res,
+                        crate::instalador::Resultado::Fallo(_)
+                            | crate::instalador::Resultado::Bloqueado(_)
+                    ) {
+                        tracing::error!(
+                            accion = "instalar",
+                            resultado = res.categoria(),
+                            hooks_vinculados
+                        );
+                    } else {
+                        tracing::info!(
+                            accion = "instalar",
+                            resultado = res.categoria(),
+                            hooks_vinculados
+                        );
+                    }
+                }
                 app.evento_instalacion(e);
             }
         }
@@ -196,6 +236,14 @@ fn escanear(app: &mut App, ruta: &Path) {
     let pacman = PacmanReal;
     match Entorno::real(&pacman).and_then(|e| servicio::escanear(&mut app.recetario, &e)) {
         Ok(res) => {
+            tracing::info!(
+                accion = "escanear",
+                resultado = "ok",
+                nuevos = res.nuevos,
+                hooks_vinculados = res.hooks_vinculados,
+                externos = res.externos,
+                avisos = res.avisos.len()
+            );
             let avisos = if res.avisos.is_empty() {
                 String::new()
             } else {
@@ -204,7 +252,10 @@ fn escanear(app: &mut App, ruta: &Path) {
             app.mensaje = Some(format!("escaneo: {} nuevos{avisos}", res.nuevos));
             guardar(app, ruta);
         }
-        Err(e) => app.mensaje = Some(format!("no pude escanear: {e:#}")),
+        Err(e) => {
+            tracing::error!(accion = "escanear", resultado = "fallo", causa = "lectura");
+            app.mensaje = Some(format!("no pude escanear: {e:#}"));
+        }
     }
 }
 
@@ -277,20 +328,55 @@ fn buscar(app: &App, home: &Path, ids: Vec<String>, tx: &mpsc::Sender<Buscado>) 
 
 fn comprobar(app: &App, home: &Path) -> mpsc::Receiver<(String, Presencia)> {
     let recetario = app.recetario.clone();
-    let ids = app.plan();
+    let mut ids = app.plan();
+    ids.extend(
+        recetario
+            .items
+            .iter()
+            .filter(|i| i.instalado_por.is_some() && i.estado != crate::modelo::Estado::Excluida)
+            .map(|i| i.id.clone()),
+    );
     let home = home.to_path_buf();
     let (tx, rx) = mpsc::channel();
+    let dispatch = tracing::dispatcher::get_default(Clone::clone);
     thread::spawn(move || {
-        instalador::comprobar(
-            &recetario,
-            &ids,
-            &home,
-            instalador::TOPE_COMPROBACION,
-            &mut |id, p| {
-                // Solo falla si la TUI ya terminó; no queda nadie a quien avisar.
-                let _ = tx.send((id, p));
-            },
-        );
+        tracing::dispatcher::with_default(&dispatch, || {
+            let (mut comprobados, mut faltantes, mut fallos) = (0, 0, 0);
+            instalador::comprobar(
+                &recetario,
+                &ids,
+                &home,
+                instalador::TOPE_COMPROBACION,
+                &mut |id, p| {
+                    comprobados += 1;
+                    match &p {
+                        Presencia::Falta(perfiles) => faltantes += perfiles.len().max(1),
+                        Presencia::NoSePudo(_) => fallos += 1,
+                        _ => {}
+                    }
+                    // Solo falla si la TUI ya terminó; no queda nadie a quien avisar.
+                    let _ = tx.send((id, p));
+                },
+            );
+            if fallos > 0 {
+                tracing::error!(
+                    accion = "comprobar",
+                    resultado = "fallo",
+                    causa = "lectura",
+                    comprobados,
+                    faltantes,
+                    fallos
+                );
+            } else {
+                tracing::info!(
+                    accion = "comprobar",
+                    resultado = "ok",
+                    comprobados,
+                    faltantes,
+                    fallos
+                );
+            }
+        })
     });
     rx
 }
@@ -400,6 +486,29 @@ fn editar(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn comprobar_incluye_hooks_sin_aprobar() {
+        use crate::modelo::{InstaladorHook, Item, Perfil, Recetario, Tipo};
+        let home = tempfile::tempdir().unwrap();
+        let mut r = Recetario::nuevo();
+        r.perfiles.push(Perfil {
+            nombre: "personal".into(),
+            dir: "~/.claude-personal".into(),
+        });
+        let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+        hook.perfiles.push("personal".into());
+        hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+        r.items.push(hook);
+        let app = super::App::nueva(r);
+        let resultados: Vec<_> = super::comprobar(&app, home.path()).iter().collect();
+        assert_eq!(
+            resultados,
+            vec![(
+                "hook:tool hook".into(),
+                crate::instalador::Presencia::Falta(vec!["personal".into()])
+            )]
+        );
+    }
     use super::*;
     use crate::modelo::{Estado, Fuente, Item, Recetario, Tipo, Via};
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -473,6 +582,54 @@ mod tests {
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn comprobacion_registra_conteos_y_fallos_sin_comandos() {
+        use crate::modelo::{InstaladorHook, Perfil};
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        let escritor = salida.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || Captura(escritor.clone()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            let home = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+            let mut r = Recetario::nuevo();
+            r.perfiles.push(Perfil {
+                nombre: "perfil".into(),
+                dir: "~/.claude".into(),
+            });
+            let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+            hook.perfiles.push("perfil".into());
+            hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+            r.items.push(hook);
+            let app = App::nueva(r);
+            for contenido in [
+                r#"{"hooks":{"Stop":[{"hooks":[{"command":"tool"}]}]}}"#,
+                "{}",
+                "API_TOKEN=secreto-sintetico",
+            ] {
+                std::fs::write(home.path().join(".claude/settings.json"), contenido).unwrap();
+                let _: Vec<_> = comprobar(&app, home.path()).iter().collect();
+            }
+        });
+        let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        assert_eq!(log.lines().count(), 3, "{log}");
+        for parte in [
+            "resultado=\"ok\"",
+            "resultado=\"fallo\"",
+            "faltantes=1",
+            "comprobados=1",
+        ] {
+            assert!(log.contains(parte), "{log}");
+        }
+        assert!(
+            !log.contains("hook:tool") && !log.contains("secreto-sintetico"),
+            "{log}"
+        );
     }
 
     #[test]

@@ -22,6 +22,20 @@ fn recetario_con(estado: Estado) -> Recetario {
 const ID: &str = "statusline:statusline.sh";
 
 #[test]
+fn un_hook_vinculado_no_se_aprueba_ni_alterna() {
+    for estado in [Estado::Pendiente, Estado::PorRevisar, Estado::Aprobada] {
+        let mut r = Recetario::nuevo();
+        let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+        hook.estado = estado;
+        hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+        r.items.push(hook);
+        assert!(aprobar(&mut r, "hook:tool").is_err());
+        assert!(alternar_aprobacion(&mut r, "hook:tool").is_err());
+        assert_eq!(r.items[0].estado, estado);
+    }
+}
+
+#[test]
 fn aprobar_pendiente_se_rechaza() {
     let mut r = recetario_con(Estado::Pendiente);
     assert!(aprobar(&mut r, ID).is_err());

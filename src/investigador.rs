@@ -263,6 +263,7 @@ mod cuenta_tests {
 
 pub const ESQUEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["repo","doc","pasos","requiere"],"properties":{
 "repo":{"type":"string"},"doc":{"type":"string"},"verificar":{"type":"string"},
+"registro_hooks":{"type":"object","additionalProperties":false,"required":["tipo"],"properties":{"tipo":{"type":"string","enum":["paso","integrado","pendiente"]},"indice":{"type":"integer","minimum":0},"cita":{"type":"string"}}},
 "pasos":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["cmd","modo","por_perfil","cita"],"properties":{
   "cmd":{"type":"string"},"modo":{"type":"string","enum":["auto","manual"]},"por_perfil":{"type":"boolean"},"cita":{"type":"string"},"nota":{"type":"string"}}}},
 "requiere":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tipo","nombre"],"properties":{
@@ -302,6 +303,15 @@ pub struct Receta {
     pub pasos: Vec<Paso>,
     pub requiere: Vec<Requisito>,
     pub verificar: Option<String>,
+    pub registro_hooks: Option<RegistroHooks>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "tipo", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RegistroHooks {
+    Paso { indice: usize },
+    Integrado { cita: String },
+    Pendiente,
 }
 
 #[derive(Deserialize)]
@@ -313,6 +323,8 @@ struct Respuesta {
     verificar: Option<String>,
     pasos: Vec<PasoRespuesta>,
     requiere: Vec<Requisito>,
+    #[serde(default)]
+    registro_hooks: Option<RegistroHooks>,
 }
 
 #[derive(Deserialize)]
@@ -393,6 +405,10 @@ pub fn trabajo_para(r: &Recetario, item: &Item, home: &Path) -> Trabajo {
     }
     prompt.push('\n');
     prompt.push_str(REGLAS);
+    let hooks = r.hooks_de(&item.id).count();
+    if hooks > 0 {
+        prompt.push_str(&format!("\nTiene hooks vinculados: {hooks}. Pedí a la documentación del repo cómo registrarlos después de instalar. Devolvé registro_hooks: {{\"tipo\":\"paso\",\"indice\":N}} si un paso citado registra los hooks (índice desde cero, después del instalador); {{\"tipo\":\"integrado\",\"cita\":\"texto literal de la doc\"}} si el instalador ya los crea; o {{\"tipo\":\"pendiente\"}} si no hay documentación. Nunca inventes el registro ni copies hooks a settings.json. Indicá el alcance por perfil y sus límites."));
+    }
     if item.tipo == Tipo::Mcp {
         let nombre = item.id.trim_start_matches("mcp:");
         prompt.push_str(&format!(
@@ -402,7 +418,7 @@ pub fn trabajo_para(r: &Recetario, item: &Item, home: &Path) -> Trabajo {
     Trabajo {
         id: item.id.clone(),
         prompt,
-        directa: receta_directa(item),
+        directa: receta_directa(r, item),
     }
 }
 
@@ -422,7 +438,10 @@ fn es_repo_seguro(s: &str) -> bool {
 }
 
 /// Lo que tiene instalador conocido no necesita a Claude; si algo no es seguro, se investiga.
-pub(crate) fn receta_directa(item: &Item) -> Option<Receta> {
+pub(crate) fn receta_directa(r: &Recetario, item: &Item) -> Option<Receta> {
+    if item.instalado_por.is_some() || r.hooks_de(&item.id).next().is_some() {
+        return None;
+    }
     let fuente = item.fuente.as_ref()?;
     let repo = fuente.repo.as_str();
     if !es_repo_seguro(repo) {
@@ -481,6 +500,7 @@ pub(crate) fn receta_directa(item: &Item) -> Option<Receta> {
         }],
         requiere: vec![],
         verificar: Some(verificar),
+        registro_hooks: None,
     })
 }
 
@@ -532,10 +552,11 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
     }
     let doc = primera_url(&r.doc)
         .ok_or_else(|| anyhow!("la respuesta no trae la URL de la doc: {}", r.doc))?;
-    Ok(Receta {
+    let receta = Receta {
         repo: r.repo,
         doc,
         verificar: r.verificar.filter(|v| !v.trim().is_empty()),
+        registro_hooks: r.registro_hooks,
         requiere: r.requiere,
         pasos: r
             .pasos
@@ -548,7 +569,25 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
                 nota: p.nota,
             })
             .collect(),
-    })
+    };
+    match &receta.registro_hooks {
+        Some(RegistroHooks::Paso { indice })
+            if *indice == 0
+                || receta
+                    .pasos
+                    .get(*indice)
+                    .is_none_or(|p| p.cita.as_ref().is_none_or(|c| c.trim().is_empty())) =>
+        {
+            bail!("registro de hooks sin paso posterior citado")
+        }
+        Some(RegistroHooks::Integrado { cita })
+            if cita.trim().is_empty() || receta.pasos.is_empty() =>
+        {
+            bail!("registro integrado sin documentación")
+        }
+        _ => {}
+    }
+    Ok(receta)
 }
 
 /// El `structured_output` de la respuesta de `claude -p`, si terminó bien y pudo usar la web.
@@ -708,7 +747,7 @@ pub fn parsear_origen(stdout: &str) -> Result<Posible> {
 /// Guarda lo que encontró la búsqueda, salvo que Denis ya haya resuelto el origen o lo excluyó.
 pub fn aplicar_posible(r: &mut Recetario, id: &str, resultado: Result<Posible>) {
     let Some(item) = r.item_mut(id) else { return };
-    if item.fuente.is_some() || item.estado == Estado::Excluida {
+    if item.instalado_por.is_some() || item.fuente.is_some() || item.estado == Estado::Excluida {
         return;
     }
     match resultado {
@@ -721,6 +760,7 @@ pub fn aplicar_posible(r: &mut Recetario, id: &str, resultado: Result<Posible>) 
 }
 
 pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str) {
+    let necesita_registro = r.hooks_de(id).next().is_some();
     // El repo de cada ítem ya está verificado: un requisito que llega como `dueño/repo` se
     // resuelve contra él en vez de crear un ítem con el nombre mal armado.
     let por_repo: Vec<(Tipo, String, String)> = r
@@ -732,6 +772,9 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         })
         .collect();
     let Some(item) = r.item_mut(id) else { return };
+    if item.instalado_por.is_some() {
+        return;
+    }
     let receta = match resultado {
         Ok(receta) => receta,
         Err(e) => {
@@ -741,6 +784,13 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
     };
     // Si Denis lo excluyó mientras se investigaba, gana su decisión.
     if item.estado == Estado::Excluida {
+        return;
+    }
+    if necesita_registro && matches!(receta.registro_hooks, None | Some(RegistroHooks::Pendiente)) {
+        item.estado = Estado::Pendiente;
+        item.pasos.clear();
+        item.error =
+            Some("registro de hooks pendiente: falta documentación del repositorio".into());
         return;
     }
     let repo = normalizar_url(&receta.repo);
@@ -754,6 +804,15 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         doc: Some(receta.doc),
     });
     item.pasos = receta.pasos;
+    if let Some(RegistroHooks::Integrado { cita }) = receta.registro_hooks
+        && let Some(paso) = item.pasos.first_mut()
+    {
+        let nota = format!("Hooks incluidos por el instalador: {cita}");
+        paso.nota = Some(match paso.nota.take() {
+            Some(anterior) => format!("{anterior}\n{nota}"),
+            None => nota,
+        });
+    }
     item.verificar = receta.verificar;
     if item.tipo == Tipo::Mcp {
         // Los corre Denis después de leerlos; el instalador igual los saltea.
@@ -827,6 +886,24 @@ pub fn aplicar(r: &mut Recetario, id: &str, resultado: Result<Receta>, hoy: &str
         if !r.checklist.sistema.contains(&s) {
             r.checklist.sistema.push(s);
         }
+    }
+}
+
+pub fn resultado_receta(r: &Recetario, id: &str, resultado: &Result<Receta>) -> &'static str {
+    if r.item(id)
+        .is_some_and(|i| i.instalado_por.is_some() || i.estado == Estado::Excluida)
+    {
+        return "ignorado";
+    }
+    match resultado {
+        Err(_) => "fallo",
+        Ok(receta)
+            if r.hooks_de(id).next().is_some()
+                && matches!(receta.registro_hooks, None | Some(RegistroHooks::Pendiente)) =>
+        {
+            "pendiente"
+        }
+        Ok(_) => "ok",
     }
 }
 

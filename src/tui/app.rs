@@ -203,6 +203,10 @@ impl App {
 
     pub fn instalada(&self, id: &str) -> bool {
         self.presencia.get(id) == Some(&Presencia::Instalada)
+            && self
+                .recetario
+                .hooks_de(id)
+                .all(|h| self.presencia.get(&h.id) == Some(&Presencia::Instalada))
     }
 
     pub fn registrar_presencia(&mut self, id: &str, p: Presencia) {
@@ -242,6 +246,7 @@ impl App {
             .iter()
             .filter(|i| {
                 i.estado == Estado::Pendiente
+                    && i.instalado_por.is_none()
                     && !self.investigando.contains(&i.id)
                     && !self.buscando.contains(&i.id)
             })
@@ -249,7 +254,7 @@ impl App {
         items.sort_by(|a, b| (a.tipo, &a.id).cmp(&(b.tipo, &b.id)));
         let (mut gratis, mut investigar, mut buscar) = (vec![], vec![], vec![]);
         for item in items {
-            if receta_directa(item).is_some() {
+            if receta_directa(&self.recetario, item).is_some() {
                 gratis.push(item.id.clone());
             } else if item.fuente.is_some() {
                 investigar.push(item.id.clone());
@@ -505,6 +510,15 @@ impl App {
     fn recetas(&mut self, codigo: KeyCode) -> Efecto {
         let total = self.visibles().len();
         let id = self.id_seleccionado();
+        if let Some(responsable) = self.seleccionado().and_then(|i| i.instalado_por.as_ref())
+            && matches!(
+                codigo,
+                KeyCode::Char('a' | ' ' | 'i' | 'r' | 'l' | 'n') | KeyCode::Enter
+            )
+        {
+            self.avisar(&format!("lo instala {}", responsable.nombre()));
+            return Efecto::Nada;
+        }
         match (codigo, id) {
             (KeyCode::Down | KeyCode::Char('j'), _) if self.seleccion + 1 < total => {
                 self.seleccion += 1
@@ -582,7 +596,7 @@ impl App {
                     .recetario
                     .items
                     .iter()
-                    .filter(|i| i.estado == Estado::PorRevisar)
+                    .filter(|i| i.instalado_por.is_none() && i.estado == Estado::PorRevisar)
                     .map(|i| i.id.clone())
                     .collect();
                 if ids.is_empty() {
@@ -695,9 +709,9 @@ impl App {
             .into_iter()
             .filter(|id| !self.buscando.contains(id) && !self.investigando.contains(id))
             .filter(|id| {
-                self.recetario
-                    .item(id)
-                    .is_some_and(|i| i.estado != Estado::Excluida && i.fuente.is_none())
+                self.recetario.item(id).is_some_and(|i| {
+                    i.instalado_por.is_none() && i.estado != Estado::Excluida && i.fuente.is_none()
+                })
             })
             .collect();
         if ids.is_empty() {
@@ -755,7 +769,7 @@ impl App {
             .filter(|id| {
                 self.recetario
                     .item(id)
-                    .is_some_and(|i| i.estado != Estado::Excluida)
+                    .is_some_and(|i| i.instalado_por.is_none() && i.estado != Estado::Excluida)
             })
             .collect();
         if ids.is_empty() {
@@ -768,7 +782,7 @@ impl App {
                 .filter(|id| {
                     self.recetario
                         .item(id)
-                        .is_some_and(|i| receta_directa(i).is_none())
+                        .is_some_and(|i| receta_directa(&self.recetario, i).is_none())
                 })
                 .cloned()
                 .map(Corrida::Investigar),
@@ -840,6 +854,11 @@ impl App {
         let r = &self.recetario;
         let mut f = vec![Fila::titulo("Logins")];
         f.extend(checklist::logins(r).into_iter().map(Fila::marcable));
+        let externos = checklist::hooks_externos(r);
+        if !externos.is_empty() {
+            f.push(Fila::titulo("Hooks de herramientas externas"));
+            f.extend(externos.into_iter().map(Fila::marcable));
+        }
         let a_mano = checklist::a_mano(r);
         if !a_mano.is_empty() {
             f.push(Fila::titulo("Pasos a mano (rebake no los corre)"));
@@ -896,7 +915,11 @@ impl App {
     ) {
         self.investigando.remove(id);
         self.claude_en_curso.remove(&Corrida::Investigar(id.into()));
+        let estado = crate::investigador::resultado_receta(&self.recetario, id, &resultado);
         let texto = match &resultado {
+            Ok(_) if estado == "pendiente" => {
+                "registro de hooks pendiente: falta documentación del repositorio".into()
+            }
             Ok(_) => format!("{id} → por revisar"),
             Err(e) => format!("{id} → error: {e:#}"),
         };

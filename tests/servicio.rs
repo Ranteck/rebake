@@ -1,6 +1,31 @@
 use rebake::modelo::{Estado, Item, Modo, Paso, Recetario, Tipo};
 use rebake::servicio::{self, Novedad, mensaje_commit};
 
+#[test]
+fn hooks_vinculados_no_entran_a_investigacion_y_descartan_resultados_tardios() {
+    let home = tempfile::tempdir().unwrap();
+    let mut r = Recetario::nuevo();
+    let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+    hook.instalado_por = Some(rebake::modelo::InstaladorHook::Externo("tool".into()));
+    r.items.push(hook);
+    assert!(servicio::sin_origen(&r).is_empty());
+    assert!(servicio::trabajos(&r, &[], home.path()).unwrap().is_empty());
+    assert!(servicio::trabajos(&r, &["hook:tool".into()], home.path()).is_err());
+    let receta = rebake::investigador::parsear_salida(r#"{"type":"result","subtype":"success","structured_output":{"repo":"https://example.com/tool","doc":"https://example.com/tool/install","pasos":[],"requiere":[]}}"#).unwrap();
+    let antes = r.clone();
+    rebake::investigador::aplicar(&mut r, "hook:tool", Ok(receta), "2026-10-27");
+    rebake::investigador::aplicar_posible(
+        &mut r,
+        "hook:tool",
+        Ok(rebake::modelo::Posible {
+            repo: Some("https://example.com/tool".into()),
+            motivo: "tardío".into(),
+            descartado: false,
+        }),
+    );
+    assert_eq!(r, antes);
+}
+
 fn con(items: &[(&str, Estado)]) -> Recetario {
     let mut r = Recetario::nuevo();
     for (id, estado) in items {

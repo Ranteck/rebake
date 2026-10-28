@@ -75,7 +75,7 @@ fn leyenda(app: &App) -> Vec<Span<'static>> {
 /// El primer paso del camino que todavía tiene trabajo.
 fn paso_actual(app: &App) -> usize {
     let items = &app.recetario.items;
-    let hay = |f: &dyn Fn(&Item) -> bool| items.iter().any(f);
+    let hay = |f: &dyn Fn(&Item) -> bool| items.iter().filter(|i| i.instalado_por.is_none()).any(f);
     let (gratis, investigar, buscar) = app.por_armar();
     if items.is_empty() {
         0
@@ -120,7 +120,12 @@ fn texto_cabecera(app: &App, ancho: u16) -> String {
 
 fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
     let r = &app.recetario;
-    let contar = |e: Estado| r.items.iter().filter(|i| i.estado == e).count();
+    let contar = |e: Estado| {
+        r.items
+            .iter()
+            .filter(|i| i.instalado_por.is_none() && i.estado == e)
+            .count()
+    };
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
     let sin_origen = servicio::sin_origen(r).len();
     let sin_receta = contar(Estado::Pendiente) - sin_origen;
@@ -184,6 +189,9 @@ fn grupo(t: Tipo) -> &'static str {
 
 /// `?` solo cuando rebake no sabe de qué repo viene; sin receta pero con origen, `t` la arma.
 fn marca(i: &Item) -> &'static str {
+    if i.instalado_por.is_some() {
+        return "·";
+    }
     match i.estado {
         Estado::Aprobada => "✓",
         Estado::PorRevisar => "□",
@@ -317,6 +325,10 @@ fn linea_item(app: &App, item: &Item, seleccionado: bool, ancho: u16) -> Line<'s
         estilo = estilo.add_modifier(Modifier::REVERSED);
     }
     let flecha = if seleccionado { "▶" } else { " " };
+    let extra = item
+        .instalado_por
+        .as_ref()
+        .map_or(extra, |r| format!("lo instala {}", r.nombre()));
     let derecha = format!("{extra}{ausente}").trim_start().to_string();
     // Contra el borde se lee como una columna de estado: el nombre se corta antes que ella.
     let ancho = ancho as usize;
@@ -372,6 +384,14 @@ fn que_falta(app: &App, item: &Item) -> &'static str {
 }
 
 fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
+    if let Some(r) = &item.instalado_por {
+        return vec![
+            Line::from(format!("lo instala {}", r.nombre())),
+            Line::from(format!("Perfiles: {}", item.perfiles.join(", "))),
+            Line::from("Comprobar revisa si el hook está en la configuración de cada perfil."),
+            Line::from("No necesita receta ni aprobación independiente."),
+        ];
+    }
     let mut primera = vec![Span::styled(
         que_falta(app, item),
         Style::default().add_modifier(Modifier::BOLD),
@@ -422,11 +442,13 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
                 via: Via::Busqueda,
                 doc: None,
             });
-            l.push(Line::from(if receta_directa(&aceptado).is_some() {
-                "Aceptar: gratis, sin Claude"
-            } else {
-                "Aceptar: 1 corrida de Claude"
-            }));
+            l.push(Line::from(
+                if receta_directa(&app.recetario, &aceptado).is_some() {
+                    "Aceptar: gratis, sin Claude"
+                } else {
+                    "Aceptar: 1 corrida de Claude"
+                },
+            ));
             l.push(Line::from(teclas(&[
                 ("Enter", "aceptar"),
                 ("n", "descartar"),
@@ -695,6 +717,9 @@ fn instalacion(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn teclas_de_receta(item: &Item) -> Vec<(&'static str, &'static str)> {
+    if item.instalado_por.is_some() {
+        return vec![("x", "excluir")];
+    }
     match item.estado {
         Estado::Pendiente if item.fuente.is_none() => match &item.posible {
             Some(p) if p.pendiente().is_some() => vec![
@@ -739,7 +764,12 @@ fn teclas(lista: &[(&str, &str)]) -> Vec<Span<'static>> {
 /// La próxima tecla útil según el paso del camino.
 fn siguiente_paso(app: &App) -> String {
     let r = &app.recetario;
-    let contar = |f: &dyn Fn(&Item) -> bool| r.items.iter().filter(|i| f(i)).count();
+    let contar = |f: &dyn Fn(&Item) -> bool| {
+        r.items
+            .iter()
+            .filter(|i| i.instalado_por.is_none() && f(i))
+            .count()
+    };
     let (gratis, investigar, buscar) = app.por_armar();
     let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
     match paso_actual(app) {
@@ -830,7 +860,7 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         .recetario
         .items
         .iter()
-        .filter(|i| i.estado == Estado::PorRevisar)
+        .filter(|i| i.instalado_por.is_none() && i.estado == Estado::PorRevisar)
         .count();
     let compactar = app.pestana == Pestana::Recetas && gratis + claude > 0 && por_revisar > 0;
 

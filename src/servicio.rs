@@ -12,6 +12,8 @@ use std::path::Path;
 pub struct ResumenEscaneo {
     pub nuevos: usize,
     pub avisos: Vec<String>,
+    pub hooks_vinculados: usize,
+    pub externos: usize,
 }
 
 pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> {
@@ -19,11 +21,25 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     fusion::asegurar_perfiles(r, &detectados, &entorno.home);
     let antes: HashSet<String> = r.items.iter().map(|i| i.id.clone()).collect();
     let escaneo = escaner::escanear(entorno, &r.perfiles);
-    let avisos = escaneo.avisos.clone();
+    let mut avisos = escaneo.avisos.clone();
     let existe = |nombre: &str| entorno.path.iter().any(|d| d.join(nombre).is_file());
     fusion::fusionar(r, escaneo, &existe);
+    avisos.extend(escaner::comandos::vincular(r, entorno));
+    let mut vistos = HashSet::new();
+    avisos.retain(|aviso| vistos.insert(aviso.clone()));
     let nuevos = r.items.iter().filter(|i| !antes.contains(&i.id)).count();
-    Ok(ResumenEscaneo { nuevos, avisos })
+    let hooks_vinculados = r
+        .items
+        .iter()
+        .filter(|i| i.instalado_por.is_some() && i.estado != Estado::Excluida)
+        .count();
+    let externos = checklist::hooks_externos(r).len();
+    Ok(ResumenEscaneo {
+        nuevos,
+        avisos,
+        hooks_vinculados,
+        externos,
+    })
 }
 
 pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabajo>> {
@@ -31,13 +47,16 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
         return Ok(r
             .items
             .iter()
-            .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_some())
+            .filter(|i| {
+                i.instalado_por.is_none() && i.estado == Estado::Pendiente && i.fuente.is_some()
+            })
             .map(|i| trabajo_para(r, i, home))
             .collect());
     }
     ids.iter()
         .map(|id| match r.item(id) {
             None => bail!("no existe el ítem {id}"),
+            Some(i) if i.instalado_por.is_some() => bail!("el hook lo instala su herramienta"),
             Some(i) if i.estado == Estado::Excluida => bail!("{id} está excluido"),
             Some(i) => Ok(trabajo_para(r, i, home)),
         })
@@ -48,7 +67,9 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
 pub fn sin_origen(r: &Recetario) -> Vec<String> {
     r.items
         .iter()
-        .filter(|i| i.estado == Estado::Pendiente && i.fuente.is_none())
+        .filter(|i| {
+            i.instalado_por.is_none() && i.estado == Estado::Pendiente && i.fuente.is_none()
+        })
         .map(|i| i.id.clone())
         .collect()
 }
@@ -57,6 +78,13 @@ pub fn texto_checklist(r: &Recetario) -> String {
     let mut s = String::from("\n== Checklist ==\n\nLogins\n");
     for l in checklist::logins(r) {
         let _ = writeln!(s, "  [ ] {l}");
+    }
+    let externos = checklist::hooks_externos(r);
+    if !externos.is_empty() {
+        s.push_str("\nHooks de herramientas externas\n");
+        for linea in externos {
+            let _ = writeln!(s, "  [ ] {linea}");
+        }
     }
     let a_mano = checklist::a_mano(r);
     if !a_mano.is_empty() {
