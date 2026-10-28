@@ -1,5 +1,5 @@
 # Plan: hooks que instala su herramienta (desde spec.md 2026-10-27 e intent.md 2026-10-27)
-Estado: borrador
+Estado: aceptado
 
 ## Archivos que cambian
 Existentes, verificados:
