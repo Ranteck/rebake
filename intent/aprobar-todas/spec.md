@@ -1,5 +1,5 @@
 # Spec: aprobar todas y destildar (desde intent.md 2026-10-27)
-Estado: borrador
+Estado: aceptado
 
 Definiciones:
 - Por revisar: receta armada pendiente de aprobación humana.
