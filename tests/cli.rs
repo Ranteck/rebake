@@ -354,6 +354,41 @@ fn profile_resuelve_alias_y_funciones_en_zsh_y_bash_reales_aisladas() {
 }
 
 #[test]
+fn profile_resuelve_en_terminal_con_zsh_real() {
+    profile_en_terminal("/usr/bin/zsh");
+}
+
+#[test]
+fn profile_resuelve_en_terminal_con_bash_real() {
+    profile_en_terminal("/usr/bin/bash");
+}
+
+fn profile_en_terminal(shell: &str) {
+    let h = home_profile();
+    let inicio = "alias clp='CLAUDE_CONFIG_DIR=\"$HOME/personal\" claude'\n";
+    h.escribir(".bashrc", inicio);
+    h.escribir(".zshrc", inicio);
+    let o = Command::new("script")
+        .args([
+            "-qec",
+            "exec \"$REBAKE_BINARIO\" --profile clp --archivo \"$HOME/cookbook.toml\" investigar",
+            "/dev/null",
+        ])
+        .env("REBAKE_BINARIO", env!("CARGO_BIN_EXE_rebake"))
+        .env("REBAKE_BASE_URL", format!("file://{}", h.ruta().display()))
+        .env("HOME", h.ruta())
+        .env("ZDOTDIR", h.ruta())
+        .env("SHELL", shell)
+        .env("PATH", "/usr/bin:/bin")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("BASH_ENV")
+        .env_remove("ENV")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{shell}: {}", texto(&o));
+}
+
+#[test]
 fn profile_loguea_una_resolucion_sin_rutas_alias_ni_salida_cruda() {
     for (nombre, cuerpo, nivel, causa) in [
         (
