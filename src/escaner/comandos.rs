@@ -100,6 +100,22 @@ fn comandos_de_hooks(settings: &Value) -> Vec<String> {
     comandos
 }
 
+pub fn presente(id: &str, dir: &Path, home: &Path) -> anyhow::Result<bool> {
+    use anyhow::Context;
+    let texto = match std::fs::read_to_string(dir.join("settings.json")) {
+        Ok(texto) => texto,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e).context("no pude leer la configuración del perfil"),
+    };
+    let settings: Value =
+        serde_json::from_str(&texto).context("configuración del perfil inválida")?;
+    anyhow::ensure!(settings.is_object(), "configuración del perfil inválida");
+    Ok(comandos_de_hooks(&settings).iter().any(|c| {
+        let visible = crate::secretos::ocultar(c).replace(&*home.to_string_lossy(), "~");
+        id == format!("hook:{visible}")
+    }))
+}
+
 fn statusline(entorno: &Entorno, perfil: &str, comando: &str, salida: &mut Escaneo) {
     let palabras = palabras(comando, &entorno.home);
     // Un intérprete por nombre (`bash script.sh`) es una herramienta; una ruta es el script.

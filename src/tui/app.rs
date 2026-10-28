@@ -189,6 +189,10 @@ impl App {
 
     pub fn instalada(&self, id: &str) -> bool {
         self.presencia.get(id) == Some(&Presencia::Instalada)
+            && self
+                .recetario
+                .hooks_de(id)
+                .all(|h| self.presencia.get(&h.id) == Some(&Presencia::Instalada))
     }
 
     pub fn registrar_presencia(&mut self, id: &str, p: Presencia) {

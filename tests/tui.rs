@@ -1946,3 +1946,16 @@ fn terminar_una_investigacion_no_cierra_la_busqueda_del_mismo_item() {
     tecla(&mut app, KeyCode::Char('t'));
     assert!(pie(&app)[1].contains("¿Gastar 1 corridas de Claude?"));
 }
+#[test]
+fn herramienta_presente_con_hook_faltante_sigue_marcada_para_instalar() {
+    let mut r = Recetario::nuevo();
+    let mut tool = Item::nuevo("herramienta:tool", Tipo::Herramienta);
+    tool.estado = Estado::Aprobada;
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Item(tool.id.clone()));
+    r.items = vec![tool, hook];
+    let mut app = App::nueva(r);
+    app.registrar_presencia("herramienta:tool", Presencia::Instalada);
+    app.registrar_presencia("hook:tool hook", Presencia::Falta(vec!["personal".into()]));
+    assert_eq!(app.a_instalar(), vec!["herramienta:tool"]);
+}

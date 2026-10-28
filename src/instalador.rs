@@ -142,7 +142,15 @@ fn abrir_log(op: &Opciones) -> Option<File> {
 }
 
 fn perfiles_de(r: &Recetario, item: &Item, home: &Path) -> Vec<(String, PathBuf)> {
-    item.perfiles
+    let mut nombres = item.perfiles.clone();
+    for h in r.hooks_de(&item.id) {
+        for n in &h.perfiles {
+            if !nombres.contains(n) {
+                nombres.push(n.clone());
+            }
+        }
+    }
+    nombres
         .iter()
         .filter_map(|n| r.perfiles.iter().find(|p| &p.nombre == n))
         .map(|p| (p.nombre.clone(), expandir(&p.dir, home)))
@@ -180,12 +188,55 @@ pub fn comprobar(
 ) {
     for id in ids {
         let Some(item) = r.item(id) else { continue };
-        let presencia = match &item.verificar {
-            None => Presencia::SinComprobacion,
-            Some(v) => presencia_de(v, &perfiles_de(r, item, home), home, tope),
+        let presencia = if item.instalado_por.is_some() {
+            presencia_hook(r, item, home)
+        } else {
+            match &item.verificar {
+                None => Presencia::SinComprobacion,
+                Some(v) => presencia_de(v, &perfiles_de(r, item, home), home, tope),
+            }
         };
         emitir(id.clone(), presencia);
     }
+}
+
+fn presencia_hook(r: &Recetario, item: &Item, home: &Path) -> Presencia {
+    let mut faltan = vec![];
+    for (nombre, dir) in perfiles_de(r, item, home) {
+        match crate::escaner::comandos::presente(&item.id, &dir, home) {
+            Ok(true) => {}
+            Ok(false) => faltan.push(nombre),
+            Err(e) => return Presencia::NoSePudo(format!("{e:#}")),
+        }
+    }
+    if item.perfiles.is_empty() {
+        Presencia::SinComprobacion
+    } else if faltan.is_empty() {
+        Presencia::Instalada
+    } else {
+        Presencia::Falta(faltan)
+    }
+}
+
+fn hooks_faltantes(r: &Recetario, id: &str, home: &Path) -> Result<Vec<String>, String> {
+    let mut faltan = vec![];
+    for hook in r.hooks_de(id) {
+        match presencia_hook(r, hook, home) {
+            Presencia::Instalada => {}
+            Presencia::Falta(perfiles) => {
+                for n in perfiles {
+                    if !faltan.contains(&n) {
+                        faltan.push(n);
+                    }
+                }
+            }
+            Presencia::NoSePudo(e) => return Err(e),
+            Presencia::SinComprobacion => {
+                return Err("hook vinculado sin perfiles para comprobar".into());
+            }
+        }
+    }
+    Ok(faltan)
 }
 
 fn presencia_de(
@@ -274,15 +325,19 @@ fn instalar_item(
         }
         Ok(())
     };
+    let faltan_hooks = match hooks_faltantes(r, &item.id, &op.home) {
+        Ok(faltan) => faltan,
+        Err(e) => return Resultado::Fallo(e),
+    };
     let pendientes: Vec<&(String, PathBuf)> = match &item.verificar {
         None => perfiles.iter().collect(),
         Some(v) => perfiles
             .iter()
-            .filter(|(_, d)| correr(v, Some(d)).is_err())
+            .filter(|(nombre, d)| faltan_hooks.contains(nombre) || correr(v, Some(d)).is_err())
             .collect(),
     };
     let listo = match &item.verificar {
-        Some(v) if perfiles.is_empty() => correr(v, None).is_ok(),
+        Some(v) if perfiles.is_empty() => correr(v, None).is_ok() && faltan_hooks.is_empty(),
         Some(_) => pendientes.is_empty(),
         None => false,
     };

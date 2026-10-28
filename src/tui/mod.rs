@@ -256,7 +256,14 @@ fn buscar(app: &App, home: &Path, ids: Vec<String>, tx: &mpsc::Sender<Buscado>) 
 
 fn comprobar(app: &App, home: &Path) -> mpsc::Receiver<(String, Presencia)> {
     let recetario = app.recetario.clone();
-    let ids = app.plan();
+    let mut ids = app.plan();
+    ids.extend(
+        recetario
+            .items
+            .iter()
+            .filter(|i| i.instalado_por.is_some() && i.estado != crate::modelo::Estado::Excluida)
+            .map(|i| i.id.clone()),
+    );
     let home = home.to_path_buf();
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -379,6 +386,29 @@ fn editar(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn comprobar_incluye_hooks_sin_aprobar() {
+        use crate::modelo::{InstaladorHook, Item, Perfil, Recetario, Tipo};
+        let home = tempfile::tempdir().unwrap();
+        let mut r = Recetario::nuevo();
+        r.perfiles.push(Perfil {
+            nombre: "personal".into(),
+            dir: "~/.claude-personal".into(),
+        });
+        let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+        hook.perfiles.push("personal".into());
+        hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+        r.items.push(hook);
+        let app = super::App::nueva(r);
+        let resultados: Vec<_> = super::comprobar(&app, home.path()).iter().collect();
+        assert_eq!(
+            resultados,
+            vec![(
+                "hook:tool hook".into(),
+                crate::instalador::Presencia::Falta(vec!["personal".into()])
+            )]
+        );
+    }
     use super::*;
     use crate::modelo::{Fuente, Item, Recetario, Tipo, Via};
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

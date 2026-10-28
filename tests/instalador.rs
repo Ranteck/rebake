@@ -341,3 +341,82 @@ fn un_servidor_mcp_nunca_ejecuta_sus_pasos() {
     assert_eq!(res, [("mcp:serena".to_string(), Resultado::Ok)]);
     assert!(!traza.exists(), "el paso de un servidor MCP se ejecutó");
 }
+#[test]
+fn comprobar_hook_lee_configuracion_sin_ejecutar_y_distingue_perfiles() {
+    let home = tempfile::tempdir().unwrap();
+    fs::create_dir_all(home.path().join(".claude")).unwrap();
+    fs::create_dir_all(home.path().join(".claude-personal")).unwrap();
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        Perfil {
+            nombre: "uno".into(),
+            dir: "~/.claude".into(),
+        },
+        Perfil {
+            nombre: "dos".into(),
+            dir: "~/.claude-personal".into(),
+        },
+    ];
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.perfiles = vec!["uno".into(), "dos".into()];
+    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    hook.verificar = Some(format!("touch '{}/no-ejecutar'", home.path().display()));
+    r.items.push(hook);
+    fs::write(
+        home.path().join(".claude/settings.json"),
+        r#"{"hooks":{"Stop":[{"hooks":[{"command":"tool hook"}]}]}}"#,
+    )
+    .unwrap();
+    fs::write(home.path().join(".claude-personal/settings.json"), "{}").unwrap();
+    let mut resultados = vec![];
+    comprobar(
+        &r,
+        &["hook:tool hook".into()],
+        home.path(),
+        Duration::from_secs(1),
+        &mut |_, p| resultados.push(p),
+    );
+    assert_eq!(resultados, vec![Presencia::Falta(vec!["dos".into()])]);
+    assert!(!home.path().join("no-ejecutar").exists());
+    fs::write(home.path().join(".claude-personal/settings.json"), "{").unwrap();
+    comprobar(
+        &r,
+        &["hook:tool hook".into()],
+        home.path(),
+        Duration::from_secs(1),
+        &mut |_, p| assert!(matches!(p, Presencia::NoSePudo(_))),
+    );
+}
+
+#[test]
+fn binario_existente_no_salta_registro_y_segunda_instalacion_no_duplica() {
+    let home = tempfile::tempdir().unwrap();
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(Perfil {
+        nombre: "personal".into(),
+        dir: "~/.claude-personal".into(),
+    });
+    let mut tool = aprobado(
+        "herramienta:tool",
+        &[],
+        vec![auto(
+            "mkdir -p \"$CLAUDE_CONFIG_DIR\"; printf '%s' '{\"hooks\":{\"Stop\":[{\"hooks\":[{\"command\":\"tool hook\"}]}]}}' > \"$CLAUDE_CONFIG_DIR/settings.json\"; echo registro >> \"$CLAUDE_CONFIG_DIR/registro\"",
+            true,
+        )],
+    );
+    tool.verificar = Some("true".into());
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.perfiles.push("personal".into());
+    hook.instalado_por = Some(InstaladorHook::Item(tool.id.clone()));
+    r.items = vec![tool, hook];
+    assert_eq!(correr(&r, home.path(), false).0[0].1, Resultado::Ok);
+    assert_eq!(
+        fs::read_to_string(home.path().join(".claude-personal/registro")).unwrap(),
+        "registro\n"
+    );
+    assert_eq!(correr(&r, home.path(), false).0[0].1, Resultado::Salteado);
+    assert_eq!(
+        fs::read_to_string(home.path().join(".claude-personal/registro")).unwrap(),
+        "registro\n"
+    );
+}
