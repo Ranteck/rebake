@@ -1959,3 +1959,22 @@ fn herramienta_presente_con_hook_faltante_sigue_marcada_para_instalar() {
     app.registrar_presencia("hook:tool hook", Presencia::Falta(vec!["personal".into()]));
     assert_eq!(app.a_instalar(), vec!["herramienta:tool"]);
 }
+#[test]
+fn hook_muestra_responsable_a_80_columnas_sin_ofrecer_receta() {
+    let mut r = Recetario::nuevo();
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    r.items.push(hook);
+    let app = App::nueva(r);
+    let pantalla = pantalla_en(&app, 80, 24);
+    assert!(pantalla.contains("lo instala tool"), "{pantalla}");
+    assert!(
+        !pantalla.lines().next().unwrap().contains("sin receta"),
+        "{pantalla}"
+    );
+    assert!(
+        !pantalla.lines().nth(22).unwrap().contains(" i "),
+        "{pantalla}"
+    );
+    assert!(!pantalla.contains("no sé de qué repo viene"), "{pantalla}");
+}

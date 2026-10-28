@@ -64,6 +64,13 @@ pub fn texto_checklist(r: &Recetario) -> String {
     for l in checklist::logins(r) {
         let _ = writeln!(s, "  [ ] {l}");
     }
+    let externos = checklist::hooks_externos(r);
+    if !externos.is_empty() {
+        s.push_str("\nHooks de herramientas externas\n");
+        for linea in externos {
+            let _ = writeln!(s, "  [ ] {linea}");
+        }
+    }
     let a_mano = checklist::a_mano(r);
     if !a_mano.is_empty() {
         s.push_str("\nPasos a mano (rebake no los corre)\n");

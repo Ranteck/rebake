@@ -109,6 +109,28 @@ pub fn logins(r: &Recetario) -> Vec<String> {
     salida
 }
 
+pub fn hooks_externos(r: &Recetario) -> Vec<String> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut grupos: BTreeMap<&str, (usize, BTreeSet<&str>)> = BTreeMap::new();
+    for hook in r.items.iter().filter(|i| i.estado != Estado::Excluida) {
+        if let Some(crate::modelo::InstaladorHook::Externo(nombre)) = &hook.instalado_por {
+            let (cuenta, perfiles) = grupos.entry(nombre).or_default();
+            *cuenta += 1;
+            perfiles.extend(hook.perfiles.iter().map(String::as_str));
+        }
+    }
+    grupos
+        .into_iter()
+        .map(|(nombre, (n, perfiles))| {
+            let unidad = if n == 1 { "hook" } else { "hooks" };
+            format!(
+                "{nombre}: {n} {unidad} [{}]; aparecen al instalar o abrir {nombre}",
+                perfiles.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        })
+        .collect()
+}
+
 /// Cómo abrir Claude Code en un perfil; el por defecto sin la variable (ver `en_perfil`).
 fn abrir(p: &Perfil) -> String {
     if p.dir == "~/.claude" {

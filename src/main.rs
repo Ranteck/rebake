@@ -367,6 +367,7 @@ fn instalar(
     let orden = instalador::planificar(r)?;
     if orden.is_empty() {
         println!("no hay recetas aprobadas");
+        print!("{}", servicio::texto_checklist(r));
         return Ok(true);
     }
     eprintln!("Va a instalar:");

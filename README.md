@@ -274,9 +274,26 @@ ajustes.
 
 ## Lo que queda a mano
 
+Los hooks reconocidos como parte de una herramienta siguen en el cookbook con «lo instala
+<herramienta>»: no se investigan, aprueban ni ejecutan aparte. Se vinculan por ejecutable,
+o por carpeta y nombre coincidentes. Una carpeta propia del home puede identificar una
+herramienta externa; directorios de perfil, menciones y casos ambiguos conservan el flujo
+anterior. Los scripts propios, como `load-intent.sh`, conservan su receta.
+
+Al investigar una herramienta con hooks vinculados, su receta pide el registro documentado
+después de instalarla. Si el instalador ya los crea, no se duplica; sin documentación,
+queda pendiente. Revisá las citas y los límites de soporte por perfil antes de aprobar.
+`c` comprueba los hooks vinculados por presencia en cada perfil sin ejecutarlos; un binario
+presente con hooks faltantes no hace que se saltee el registro. Nunca se copian hooks a mano.
+
+Los cookbooks nuevos guardan el responsable; si una versión anterior rechaza ese campo,
+su error muestra cómo actualizar rebake.
+
 La pestaña Pendientes, y la salida de `rebake instalar`, junta lo que rebake no hace por vos:
 
 - **Logins:** `claude` y `/login` en cada perfil, y `gh auth login`.
+- **Hooks de herramientas externas:** una línea por herramienta, con cantidad de hooks y
+  perfiles; aparecen al instalarla o abrirla. Rebake no instala esas herramientas ni hooks.
 - **Pasos a mano:** un bloque "revisá X" por cada receta que dejó algo para hacer vos, con una
   línea por perfil:
   - Los **servidores MCP**, como Serena, nunca se instalan solos. Su receta trae los pasos

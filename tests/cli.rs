@@ -457,3 +457,30 @@ fn sin_profile_no_consulta_shell_ni_registra_resolucion() {
     let log = std::fs::read_to_string(h.ruta().join(".local/state/rebake/rebake.log")).unwrap();
     assert!(!log.contains("resolver_cuenta"), "{log}");
 }
+#[test]
+fn instalar_sin_recetas_igual_muestra_hooks_externos() {
+    use rebake::modelo::{InstaladorHook, Item, Perfil, Recetario, Tipo};
+    let h = HomeFalso::nuevo();
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(Perfil {
+        nombre: "personal".into(),
+        dir: "~/.claude-personal".into(),
+    });
+    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook.perfiles.push("personal".into());
+    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    r.items.push(hook);
+    let ruta = h.ruta().join("cookbook.toml");
+    archivo::guardar(&ruta, &r).unwrap();
+    let o = recetario(
+        &h,
+        &["--archivo", ruta.to_str().unwrap(), "instalar", "--si"],
+        None,
+    );
+    assert!(o.status.success(), "{}", texto(&o));
+    let salida = texto(&o);
+    assert!(
+        salida.contains("1 hook [personal]") && salida.contains("instalar o abrir"),
+        "{salida}"
+    );
+}

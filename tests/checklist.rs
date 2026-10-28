@@ -270,3 +270,29 @@ fn el_registro_de_un_servidor_mcp_sale_una_vez_por_perfil() {
         ]
     );
 }
+#[test]
+fn hooks_externos_se_agrupan_sin_comandos_ni_aprobacion() {
+    use rebake::modelo::{InstaladorHook, Item, Recetario, Tipo};
+    let mut r = Recetario::nuevo();
+    for n in 0..15 {
+        let mut hook = Item::nuevo(&format!("hook:comando-privado-{n}"), Tipo::Hook);
+        hook.instalado_por = Some(InstaladorHook::Externo("orca".into()));
+        hook.perfiles = vec!["laburo".into(), "personal".into()];
+        r.items.push(hook);
+    }
+    let texto = rebake::servicio::texto_checklist(&r);
+    let filas: Vec<_> = texto.lines().filter(|s| s.contains("15 hooks")).collect();
+    assert_eq!(filas.len(), 1, "{texto}");
+    for palabra in ["orca", "laburo", "personal", "instalar o abrir"] {
+        assert!(filas[0].contains(palabra), "{texto}");
+    }
+    assert!(!texto.contains("comando-privado"));
+    let app = rebake::tui::app::App::nueva(r);
+    assert_eq!(
+        app.filas_checklist()
+            .iter()
+            .filter(|f| f.texto.contains("15 hooks"))
+            .count(),
+        1
+    );
+}

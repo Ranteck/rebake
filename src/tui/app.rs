@@ -721,6 +721,11 @@ impl App {
         let r = &self.recetario;
         let mut f = vec![Fila::titulo("Logins")];
         f.extend(checklist::logins(r).into_iter().map(Fila::marcable));
+        let externos = checklist::hooks_externos(r);
+        if !externos.is_empty() {
+            f.push(Fila::titulo("Hooks de herramientas externas"));
+            f.extend(externos.into_iter().map(Fila::marcable));
+        }
         let a_mano = checklist::a_mano(r);
         if !a_mano.is_empty() {
             f.push(Fila::titulo("Pasos a mano (rebake no los corre)"));
