@@ -34,6 +34,7 @@ fn texto(o: &Output) -> String {
 #[test]
 fn escanear_crea_recetario() {
     let h = HomeFalso::nuevo();
+    h.escribir(".claude.json", "{}");
     h.escribir(
         ".claude/settings.json",
         r#"{"enabledPlugins": {"codex@openai-codex": true}, "theme": "dark"}"#,
@@ -51,6 +52,7 @@ const RESPUESTA: &str = r#"{"type":"result","subtype":"success","is_error":false
 #[test]
 fn de_punta_a_punta_con_claude_falso() {
     let h = HomeFalso::nuevo();
+    h.escribir(".claude.json", "{}");
     let repo = h.repo_git(
         "Proyectos/house-rules",
         Some("https://github.com/ejemplo/house-rules"),
@@ -495,6 +497,7 @@ fn investigacion_con_hooks_registra_ok_pendiente_y_fallo_sin_secretos() {
     use rebake::modelo::{Fuente, Via};
     for resultado in ["ok", "pendiente", "fallo"] {
         let h = HomeFalso::nuevo();
+        h.escribir(".claude.json", "{}");
         h.binario("bin/pacman", b"#!/bin/sh\nexit 1\n");
         h.binario("bin/tool", b"#!/bin/sh\nexit 0\n");
         h.escribir(".claude/settings.json", r#"{"hooks":{"Stop":[{"hooks":[{"command":"API_TOKEN=secreto-sintetico tool hook"}]}]}}"#);
