@@ -2,32 +2,37 @@
 Estado: borrador
 
 ## Requisitos
-- REQ-1 MUST: Omitir sincronizados de cuenta al escanear, mostrar, investigar e instalar, incluso antiguos y en otra PC. En CLI, un sincronizado solicitado explícitamente se rechaza con guía, sin gastar/ejecutar. Origen: Resultado 1, «ni desde la CLI».
-- REQ-2 MUST: POR RESOLVER reúne sin receta/origen, por revisar, errores y posibles; LISTAS, aprobadas. Al escanear, las directas llegan armadas gratis, por revisar, sin sobrescribir recetas existentes. Hooks vinculados dentro de su herramienta; propios en lista; externos en Checklist; imports conservados. Origen: Resultado 2, «lo directo llega ya armado», y Restricciones.
-- REQ-3 MUST: Enter aprueba una por revisar y avanza; arma o acepta origen; sin origen abre Resolver: pegar link gratis, buscar individualmente, excluir o descartar posible. En LISTAS orienta al próximo pendiente/instalación; en excluidos indica cómo reincluir. Nunca desaprueba. Origen: Resultado 3, «acción siguiente del ítem».
-- REQ-4 MUST: Antes de cualquier corrida TUI, mostrar cantidad y esperar `s`; otra tecla cancela sin gasto. Aceptar origen puede requerir otra corrida, anunciada aparte. `t` solo arma con origen: gratis o tandas independientes de hasta cinco, sin búsquedas ni encadenamiento. Origen: Resultado 4, «nunca busca orígenes», y Restricciones.
-- REQ-5 MUST: `x` excluye inmediatamente, sin exigir motivo; `o` revela/oculta excluidos y `x` reincluye conservando receta. Persisten, cuentan y no se investigan mientras estén excluidos. Origen: Resultados 2 y 5, «motivo es opcional».
-- REQ-6 MUST: Mostrar COOKBOOK LISTO solo sin pendientes globales, trabajos activos ni error del último guardado; indicar publicación confirmada o «solo en esta PC» y siguiente paso. Origen: Resultado 6, «si quedó subido al repo».
-- REQ-7 MUST: Pestañas: 1 Armar, 2 Instalar, 3 Checklist. En 80×24, sin Shift/ventanas nuevas y respetando NO_COLOR, pie contextual: `q` salir, `Esc,q` desde entradas; indicar `s` cuando requiera confirmación. Avisar si salir intentará publicar y su resultado final. Origen: Resultados 7–8, «Cómo salir», y Restricciones.
-- REQ-8 MUST: Cada acción informa qué cambió hasta la próxima acción explícita; avisos de fondo no reemplazan ese resultado. Errores/resultados siguen consultables; guardado fallido impide LISTO. Origen: Resultado 8, «ningún aviso de fondo lo pisa».
-- REQ-9 MUST: Resolver usa flechas/Enter/Esc y foco visible; Esc cancela y restaura foco. Texto/pegado, incluso saltos, no ejecutan acciones. Conservar selección por id al reordenar y acotar scroll al filtrar/ocultar; si desaparece, elegir fila válida o ninguna si queda vacío. Origen: Resultados 2–3, «Resolver», y Restricciones; tui-design.
-- REQ-10 MUST: CLI: datos a stdout; costos/avisos/errores a stderr, con causa y guía; fallo o rechazo, incluso parcial, termina distinto de cero. Origen: Resultado 1 y Usuarios afectados; unix-cli.
+- REQ-1 MUST: Sincronizado: carpeta real dentro de la sincronización de cuenta (ej.: `~/.agents/skills/synced/`, `plugins/synced/`), incluidos enlaces `<perfil>/skills/<n>`. Recordarlo por instalación en cookbook: omitir listas/investigación/instalación, también sin archivos en otra PC; rechazar solicitud CLI explícita con guía. Homónimas propias fuera quedan intactas. Origen: Resultado 1.
+- REQ-2 MUST: POR RESOLVER: incluidos con decisiones de receta pendientes, errores y posibles no resueltos. LISTAS: aprobadas sin bloqueos. Directas nuevas llegan gratis por revisar; hooks propios/imports siguen; vinculados dentro de su herramienta, externos en Checklist. Origen: Resultado 2/Restricciones.
+- REQ-3 MUST: Enter aprueba/avanza, arma, acepta origen o abre Resolver: pegar link gratis, buscar, excluir, descartar posible; nunca desaprueba. LISTAS/excluidos indican siguiente paso. Origen: Resultado 3.
+- REQ-4 MUST: TUI: avisar cantidad antes de `s`; otra tecla cancela sin gasto. `t`: solo pendientes con origen confirmado, tandas de hasta cinco, sin posibles/búsquedas/encadenamiento. Origen: Resultado 4/Restricciones.
+- REQ-5 MUST: `x` excluye sin exigir motivo; `o` muestra/oculta excluidos; `x` reincluye conservando receta; persisten y no se investigan. Origen: Resultados 2/5.
+- REQ-6 MUST: LISTO requiere cero POR RESOLVER, nada corriendo y último guardado exitoso. Hooks vinculados/externos no bloquean: sin receta propia. Indicar publicación confirmada/local y siguiente paso. Origen: Resultado 6.
+- REQ-7 MUST: 80×24, NO_COLOR, sin Shift/ventanas nuevas: 1 Armar, 2 Instalar, 3 Checklist; salida siempre visible según foco (`q`; `Esc,q`; `s` si confirma), avisando si publicará y resultado. Origen: Resultados 7–8/Restricciones.
+- REQ-8 MUST: Resultado de última acción explica cambios en el pie hasta próxima acción de Denis; avisos de fondo no lo pisan. Errores en detalle del ítem y POR RESOLVER hasta resolverse, sin pantallas nuevas. Origen: Resultado 8.
+- REQ-9 MUST: Resolver: flechas/Enter/Esc, foco visible; Esc cancela/restaura. Texto/pegado sin acciones. Reordenar/filtrar/ocultar conserva selección por id y scroll acotado; si desaparece, fila válida/vacío. Origen: Resultados 2–3/Restricciones; tui-design.
+- REQ-10 MUST: CLI: datos stdout; avisos/errores stderr, con causa/guía. Operación pedida fallida, incluso parcial, o rechazo devuelve distinto de cero; avisos recuperados de Git conservan código y guardado local. Origen: Resultados 1/8; cookbook-remoto, REQ-8; unix-cli.
 
 ## Capacidades y escenarios
-### Exclusión y CLI (REQ-1, REQ-10)
-- GIVEN sincronizado antiguo WHEN escanear/investigar/instalar THEN lote lo omite; solicitud explícita falla con guía en stderr.
-### Organización (REQ-2, REQ-5)
-- GIVEN directa nueva, hooks propios/vinculados/externos e imports WHEN escanear THEN directa por revisar sin Claude; hooks en lista/herramienta/Checklist e imports presentes.
-- GIVEN receta excluida WHEN `o`, `x` THEN vuelve conservando pasos; excluir no exige motivo.
-### Acción y cuota (REQ-3, REQ-4)
-- GIVEN posible/origen conocido WHEN Enter/`t` THEN anuncia costo; sin `s`, cero corridas; aprobado avanza sin instalar.
-### Cierre y resultados (REQ-6, REQ-8)
-- GIVEN último pendiente WHEN aprobar THEN LISTO solo tras guardar bien; errores/posibles bloquean; publicación pendiente deja estado local y resultado durable.
-### Navegación (REQ-7, REQ-9)
-- GIVEN Resolver en 80×24 WHEN pegar/Esc/reordenar THEN sin ejecución accidental, foco/selección válidos y salida visible.
-- GIVEN repo configurado WHEN salir y fallar la subida THEN informa fallo y conserva estado «solo en esta PC».
+### Sincronizados y CLI (REQ-1, REQ-10)
+- GIVEN 2 skills homónimas, 1 real en synced y 1 propia fuera WHEN escanear THEN 1 propia elegible.
+- GIVEN 1 sincronizado recordado, otra PC sin archivos WHEN investigar/instalar THEN 0 corridas/instalaciones; solicitud explícita falla con guía.
+- GIVEN operación exitosa y 1 push fallido WHEN terminar THEN salida 0, aviso stderr y cookbook local.
+### Lista y cierre (REQ-2, REQ-5, REQ-6)
+- GIVEN 0 recetas pendientes, 0 errores/posibles, 1 hook vinculado, 1 externo, guardado exitoso WHEN terminar THEN LISTO.
+- GIVEN 1 excluida WHEN `o,x` THEN 1 reincluida conservando receta.
+### Acciones y cuota (REQ-3, REQ-4)
+- GIVEN 2 por revisar WHEN Enter THEN 1 aprobada, 1 seleccionada, 0 corridas/instalaciones.
+- GIVEN 1 receta Claude con origen WHEN Enter THEN pide `s`: «1 corrida»; `s` ejecuta 1, queda por revisar.
+- GIVEN 1 posible cuya receta usa Claude WHEN Enter THEN pide `s`: «1 corrida»; `s` acepta y ejecuta 1.
+- GIVEN 1 sin origen WHEN Resolver/pegar link THEN 1 origen guardado, 0 corridas, 0 aprobaciones.
+- GIVEN 1 sin origen WHEN Resolver/buscar THEN pide `s`: «1 corrida»; `s` realiza 1 búsqueda, 0 armados.
+- GIVEN confirmación de 1 corrida WHEN Esc THEN 0 corridas, 0 recetas nuevas.
+- GIVEN 6 pendientes Claude con origen y 1 posible WHEN `t,s` THEN 5 corridas, 1 pendiente sin armar, posible intacto, 0 búsquedas; no encadena.
+- GIVEN 1 directa nueva WHEN escanear THEN 1 por revisar, 0 corridas, sin pedir `s`.
+### Resultados y foco (REQ-7, REQ-8, REQ-9)
+- GIVEN 1 armado fallido WHEN llega aviso de fondo THEN resultado en pie; error en detalle/POR RESOLVER hasta resolverse.
+- GIVEN 1 Resolver WHEN pegar texto y Esc THEN 0 acciones, foco restaurado y salida visible.
 
 ## Concerns
-- «Subido» requiere publicación confirmada: guardar localmente no prueba sincronización.
-- No excluir una skill propia solo por compartir nombre con una sincronizada.
-- Mantener `--dry-run`/`--si`; no agregar confirmación a `rebake investigar` ni selectores nuevos a instalar.
+- Sin confirmación en `rebake investigar`; conservar `--dry-run`/`--si` y selección CLI actual.
