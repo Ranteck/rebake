@@ -35,3 +35,4 @@ Denis; la pestaña Recetas de la TUI (teclas, pie y lista). Cambia la restricci�
 Ninguna.
 
 ## Cambios
+- 2026-10-29: Enter aprueba la receta por revisar y avanza al próximo pendiente, por menos-ruido; aprobado por Denis.

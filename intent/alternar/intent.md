@@ -38,3 +38,4 @@ Quien arma el cookbook en la TUI de rebake; el cookbook (estado de cada ítem).
 Ninguna.
 
 ## Cambios
+- 2026-10-29: `x` excluye de un toque y el motivo pasa a ser opcional, por menos-ruido; aprobado por Denis.

@@ -53,3 +53,4 @@ Ninguna.
   La confirmación mantiene la decisión del 2026-10-14: ningún repo adivinado entra sin su OK.
 - 2026-10-22: `t` sigue buscando orígenes, pero por tandas de 5 con confirmación
   (`cuidar-cuota`). Lo pidió Denis para cuidar la cuota: "hay poco tokens".
+- 2026-10-29: `t` arma solo lo que tiene origen y deja de buscar orígenes, por menos-ruido; aprobado por Denis.

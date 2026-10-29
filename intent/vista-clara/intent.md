@@ -45,3 +45,4 @@ Ninguna.
 - 2026-10-15: Denis no sabía para qué sirven las pestañas Checklist e Instalación; se suma
   que cada pestaña diga para qué es. Aprobar en lote y ver la diferencia entre el cookbook y
   la PC quedan para otras features (la segunda en `intent/diferencias/`). Aprobado por Denis.
+- 2026-10-29: cambian las teclas, el orden de las pestañas y la acción contextual de Enter, por menos-ruido; aprobado por Denis.

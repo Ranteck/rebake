@@ -39,3 +39,4 @@ Ninguna.
 - 2026-10-22: la tanda se confirma con `s` y no con Enter o Esc, como instalar y salir: Enter
   ya acepta un posible origen. Lo revisaron Codex y Antigravity. Aprobado por Denis.
 - 2026-10-27: aprobar todas las por revisar con confirmación, en aprobar-todas. Aprobado por Denis.
+- 2026-10-29: `t` arma solo lo que tiene origen y deja de buscar orígenes, por menos-ruido; aprobado por Denis.
