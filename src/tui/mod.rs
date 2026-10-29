@@ -242,7 +242,11 @@ fn escanear(app: &mut App, ruta: &Path) {
                 nuevos = res.nuevos,
                 hooks_vinculados = res.hooks_vinculados,
                 externos = res.externos,
-                avisos = res.avisos.len()
+                avisos = res.avisos.len(),
+                perfiles_quitados = res.perfiles_quitados,
+                ajustes_quitados = res.ajustes_quitados,
+                titulos_quitados = res.titulos_quitados,
+                referencias_quitadas = res.referencias_quitadas
             );
             let avisos = if res.avisos.is_empty() {
                 String::new()
