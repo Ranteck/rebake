@@ -816,6 +816,7 @@ fn registro_de_hooks_exige_documentacion_y_orden() {
     use rebake::modelo::InstaladorHook;
     for registro in [
         serde_json::json!({"tipo":"paso","indice":1}),
+        serde_json::json!({"tipo":"paso","indice":1,"cita":"tool init"}),
         serde_json::json!({"tipo":"integrado","cita":"El instalador registra sus hooks."}),
         serde_json::json!({"tipo":"pendiente"}),
         serde_json::Value::Null,
@@ -849,8 +850,20 @@ fn registro_de_hooks_exige_documentacion_y_orden() {
                 );
             }
         }
-        let mut mal = respuesta;
-        mal["structured_output"]["registro_hooks"] = serde_json::json!({"tipo":"paso","indice":0});
-        assert!(parsear_salida(&mal.to_string()).is_err());
+        for registro_invalido in [
+            serde_json::json!({"tipo":"paso","indice":0}),
+            serde_json::json!({"tipo":"paso","indice":0,"cita":"tool init"}),
+            serde_json::json!({"tipo":"paso","indice":2,"cita":"tool init"}),
+            serde_json::json!({"tipo":"paso","indice":1,"otro":"tool init"}),
+        ] {
+            let mut mal = respuesta.clone();
+            mal["structured_output"]["registro_hooks"] = registro_invalido;
+            assert!(parsear_salida(&mal.to_string()).is_err());
+        }
+        let mut sin_cita = respuesta;
+        sin_cita["structured_output"]["registro_hooks"] =
+            serde_json::json!({"tipo":"paso","indice":1,"cita":"tool init"});
+        sin_cita["structured_output"]["pasos"][1]["cita"] = serde_json::json!("");
+        assert!(parsear_salida(&sin_cita.to_string()).is_err());
     }
 }
