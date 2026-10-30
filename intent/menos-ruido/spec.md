@@ -1,5 +1,5 @@
 # Spec: rediseño de Recetas (desde intent.md 2026-10-29)
-Estado: borrador
+Estado: aceptado
 
 ## Requisitos
 - REQ-1 MUST: Sincronizado: carpeta real dentro de la sincronización de cuenta (ej.: `~/.agents/skills/synced/`, `plugins/synced/`), incluidos enlaces `<perfil>/skills/<n>`. Recordarlo por instalación en cookbook: omitir listas/investigación/instalación, también sin archivos en otra PC; rechazar solicitud CLI explícita con guía. Homónimas propias fuera quedan intactas. Origen: Resultado 1.
