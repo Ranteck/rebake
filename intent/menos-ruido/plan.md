@@ -1,5 +1,5 @@
 # Plan: rediseño de Recetas
-Estado: borrador
+Estado: aceptado
 Intent/spec aceptados: 2026-10-29; base v0.12.1.
 
 ## Archivos que cambian
