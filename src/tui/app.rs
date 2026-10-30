@@ -43,7 +43,7 @@ pub enum Modo {
     Ayuda,
 }
 
-/// Una fila de Pendientes: el texto corto de la lista y el completo para el panel de detalle.
+/// Una fila de Checklist: el texto corto de la lista y el completo para el panel de detalle.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fila {
     pub texto: String,
@@ -545,7 +545,7 @@ impl App {
         }
     }
 
-    /// La fila elegida en Pendientes, si hay alguna.
+    /// La fila elegida en Checklist, si hay alguna.
     pub fn fila_elegida(&self) -> Option<Fila> {
         self.filas_checklist()
             .into_iter()
@@ -1066,11 +1066,11 @@ impl App {
             .count();
         let a_mano = match a_mano {
             0 => String::new(),
-            n => format!(" · {n} con pasos a mano: mirá Pendientes"),
+            n => format!(" · {n} con pasos a mano: mirá Checklist"),
         };
         self.avisar(&format!(
             "Instalación terminada: {ok} instaladas, {salteadas} salteadas, {error} con error, \
-             {bloqueadas} bloqueadas{a_mano} · detalle en la pestaña 3 y en \
+             {bloqueadas} bloqueadas{a_mano} · detalle en la pestaña 2 y en \
              ~/.local/state/rebake/ultima-instalacion.log"
         ));
         self.pestana = Pestana::Checklist;

@@ -1462,7 +1462,8 @@ fn el_resumen_avisa_las_que_dejaron_pasos_a_mano() {
         Resultado::Ok,
     ));
     let m = app.mensaje.clone().unwrap();
-    assert!(m.contains("1 con pasos a mano: mirá Pendientes"), "{m}");
+    assert!(m.contains("1 con pasos a mano: mirá Checklist"), "{m}");
+    assert!(m.contains("detalle en la pestaña 2"), "{m}");
     assert!(pantalla(&app).contains("[ ] revisá codex@openai-codex"));
     // Logins tiene dos filas; la tercera elegible es el bloque, entero en el detalle.
     tecla(&mut app, KeyCode::Down);
@@ -1476,6 +1477,40 @@ fn el_resumen_avisa_las_que_dejaron_pasos_a_mano() {
         p.contains("[laburo] abrí `claude` y corré /codex:setup"),
         "{p}"
     );
+}
+
+#[test]
+fn titulos_de_panel_y_referencias_a_pestanas_usan_armar_instalar_y_checklist() {
+    let mut item = con_fuente("herramienta:tool");
+    item.estado = Estado::Aprobada;
+    item.pasos = vec![Paso {
+        cmd: "manual step".into(),
+        modo: Modo::Manual,
+        por_perfil: true,
+        cita: None,
+        nota: None,
+    }];
+    let mut r = Recetario::nuevo();
+    r.items.push(item);
+    let mut app = App::nueva(r);
+
+    // 1. Armar: título "Armar" y en paso manual "lo hacés vos (va a Checklist)"
+    let p_armar = pantalla(&app);
+    assert!(p_armar.contains("Armar"), "{p_armar}");
+    assert!(
+        p_armar.contains("lo hacés vos (va a Checklist)"),
+        "{p_armar}"
+    );
+
+    // 2. Instalar: título "Instalar"
+    tecla(&mut app, KeyCode::Char('2'));
+    let p_inst = pantalla(&app);
+    assert!(p_inst.contains("Instalar"), "{p_inst}");
+
+    // 3. Checklist: título "Checklist (espacio marca)"
+    tecla(&mut app, KeyCode::Char('3'));
+    let p_check = pantalla(&app);
+    assert!(p_check.contains("Checklist (espacio marca)"), "{p_check}");
 }
 
 fn con_pendientes() -> App {

@@ -14,7 +14,7 @@ const TECLAS_INSTALACION: &str =
     "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  p instalar  ? ayuda  q salir";
 const TECLAS_SIN_PLAN: &str = "1 volver a Armar  q salir  ? ayuda";
 const TECLAS_RESULTADOS: &str = "Esc volver al plan  ? ayuda  q salir";
-const TECLAS_PENDIENTES: &str = "espacio tilda  Enter ajustes  ? ayuda";
+const TECLAS_CHECKLIST: &str = "espacio tilda  Enter ajustes  ? ayuda";
 const PASOS: [&str; 4] = ["escanear", "armar recetas", "aprobar", "instalar"];
 /// Marca, nombre y estado (para el color) de cada entrada de la leyenda, en el orden del camino.
 const LEYENDA: [(&str, &str, Estado); 5] = [
@@ -266,7 +266,7 @@ fn recetas(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(
         Paragraph::new(lineas)
             .scroll((desde as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Recetas")),
+            .block(Block::default().borders(Borders::ALL).title("Armar")),
         izq,
     );
     let (titulo, detalle) = match app.seleccionado() {
@@ -548,7 +548,7 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
             let modo = if p.modo == ModoPaso::Auto {
                 "automático"
             } else {
-                "lo hacés vos (va a Pendientes)"
+                "lo hacés vos (va a Checklist)"
             };
             l.push(Line::from(format!("{}. {}", n + 1, p.cmd)));
             l.push(Line::from(format!("   {perfil}, {modo}")));
@@ -567,7 +567,7 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
 const DIRECTA: &str = "receta directa: ";
 
 fn checklist(f: &mut Frame, app: &App, area: Rect) {
-    // Como Recetas: la lista corta a la izquierda y lo elegido entero a la derecha.
+    // Como Armar: la lista corta a la izquierda y lo elegido entero a la derecha.
     let [izq, der] =
         Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)]).areas(area);
     let ancho = izq.width.saturating_sub(2) as usize;
@@ -608,7 +608,7 @@ fn checklist(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(lineas).scroll((desde as u16, 0)).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Pendientes (espacio marca)"),
+                .title("Checklist (espacio marca)"),
         ),
         izq,
     );
@@ -655,7 +655,7 @@ fn plan_instalacion(f: &mut Frame, app: &App, area: Rect) {
             let aviso = "No hay recetas aprobadas: investigá (i) y aprobá (a) en la pestaña 1.";
             f.render_widget(
                 Paragraph::new(aviso)
-                    .block(Block::default().borders(Borders::ALL).title("Instalación")),
+                    .block(Block::default().borders(Borders::ALL).title("Instalar")),
                 area,
             );
             return;
@@ -665,7 +665,7 @@ fn plan_instalacion(f: &mut Frame, app: &App, area: Rect) {
             f.render_widget(
                 Paragraph::new(format!("{e:#}"))
                     .wrap(Wrap { trim: false })
-                    .block(Block::default().borders(Borders::ALL).title("Instalación")),
+                    .block(Block::default().borders(Borders::ALL).title("Instalar")),
                 area,
             );
             return;
@@ -703,7 +703,7 @@ fn plan_instalacion(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(
         Paragraph::new(lineas)
             .scroll((desde as u16, 0))
-            .block(Block::default().borders(Borders::ALL).title("Instalación")),
+            .block(Block::default().borders(Borders::ALL).title("Instalar")),
         izq,
     );
     let (titulo, detalle) = match plan
@@ -750,7 +750,7 @@ fn instalacion(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(
         Paragraph::new(lineas)
             .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Instalación")),
+            .block(Block::default().borders(Borders::ALL).title("Instalar")),
         izq,
     );
     let alto = der.height.saturating_sub(2) as usize;
@@ -990,7 +990,7 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             spans.extend(teclas(&teclas_de_receta(item)));
         }
     } else if app.pestana == Pestana::Checklist {
-        spans.push(Span::raw(format!("  {TECLAS_PENDIENTES}")));
+        spans.push(Span::raw(format!("  {TECLAS_CHECKLIST}")));
     } else {
         let texto = if app.viendo_plan() && app.plan().is_empty() {
             TECLAS_SIN_PLAN

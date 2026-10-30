@@ -27,7 +27,7 @@ struct Cli {
     /// Alias o función de zsh/bash cuya cuenta usan las corridas de claude -p
     #[arg(long, global = true)]
     profile: Option<String>,
-    /// URL del repo de tu cookbook: lo clona la primera vez y abre la pantalla en Instalación
+    /// URL del repo de tu cookbook: lo clona la primera vez y abre la pantalla en Instalar
     url: Option<String>,
     #[command(subcommand)]
     comando: Option<Comando>,

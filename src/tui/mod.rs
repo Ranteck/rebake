@@ -24,7 +24,7 @@ type Buscado = (String, Result<Posible>);
 
 #[derive(Default)]
 pub struct Arranque {
-    /// Abrir en la pestaña Instalación.
+    /// Abrir en la pestaña Instalar.
     pub instalacion: bool,
     pub novedades: HashMap<String, Novedad>,
     /// La revisión de versión que `main` lanzó al arrancar.
