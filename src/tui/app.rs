@@ -230,12 +230,38 @@ impl App {
             .items
             .iter()
             .filter(|i| {
-                !i.es_sincronizado() && (self.mostrar_excluidas || i.estado != Estado::Excluida)
+                !i.es_sincronizado()
+                    && i.instalado_por.is_none()
+                    && (self.mostrar_excluidas || i.estado != Estado::Excluida)
             })
             .filter(|i| i.id.to_lowercase().contains(&filtro))
             .collect();
-        items.sort_by(|a, b| (a.tipo, &a.id).cmp(&(b.tipo, &b.id)));
+        items.sort_by(|a, b| (a.seccion(), a.tipo, &a.id).cmp(&(b.seccion(), b.tipo, &b.id)));
         items
+    }
+
+    pub fn por_resolver(&self) -> Vec<&Item> {
+        self.recetario
+            .items
+            .iter()
+            .filter(|i| {
+                !i.es_sincronizado()
+                    && i.instalado_por.is_none()
+                    && i.seccion() == crate::modelo::SeccionRecetas::PorResolver
+            })
+            .collect()
+    }
+
+    pub fn esta_listo(&self) -> bool {
+        self.por_resolver().is_empty()
+            && self.investigando.is_empty()
+            && self.buscando.is_empty()
+            && !self.instalando
+            && self
+                .recetario
+                .items
+                .iter()
+                .any(|i| !i.es_sincronizado() && i.instalado_por.is_none())
     }
 
     pub fn seleccionado(&self) -> Option<&Item> {

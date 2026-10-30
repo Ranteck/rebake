@@ -46,6 +46,14 @@ pub enum Estado {
     Excluida,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SeccionRecetas {
+    PorResolver,
+    Listas,
+    Excluidas,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Via {
@@ -231,6 +239,23 @@ impl Item {
 
     pub fn es_sincronizado(&self) -> bool {
         !self.sincronizado_en.is_empty() && self.perfiles_propios().next().is_none()
+    }
+
+    pub fn seccion(&self) -> SeccionRecetas {
+        if self.estado == Estado::Excluida {
+            SeccionRecetas::Excluidas
+        } else if self.error.is_some()
+            || self
+                .posible
+                .as_ref()
+                .is_some_and(|p| p.pendiente().is_some())
+        {
+            SeccionRecetas::PorResolver
+        } else if self.estado == Estado::Aprobada {
+            SeccionRecetas::Listas
+        } else {
+            SeccionRecetas::PorResolver
+        }
     }
 
     pub fn nuevo(id: &str, tipo: Tipo) -> Self {

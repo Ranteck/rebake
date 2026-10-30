@@ -227,8 +227,23 @@ fn recetas(f: &mut Frame, app: &App, area: Rect) {
         Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(area);
     let mut lineas: Vec<Line> = Vec::new();
     let mut linea_sel = 0;
+    let mut seccion_actual = None;
     let mut tipo_actual = None;
     for (n, item) in app.visibles().into_iter().enumerate() {
+        let sec = item.seccion();
+        if seccion_actual != Some(sec) {
+            seccion_actual = Some(sec);
+            tipo_actual = None;
+            let titulo = match sec {
+                crate::modelo::SeccionRecetas::PorResolver => "POR RESOLVER",
+                crate::modelo::SeccionRecetas::Listas => "LISTAS",
+                crate::modelo::SeccionRecetas::Excluidas => "EXCLUIDAS",
+            };
+            lineas.push(Line::from(Span::styled(
+                titulo,
+                Style::default().add_modifier(Modifier::BOLD),
+            )));
+        }
         if tipo_actual != Some(item.tipo) {
             tipo_actual = Some(item.tipo);
             lineas.push(Line::from(Span::styled(
@@ -427,6 +442,17 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
                 .map(String::as_str)
                 .collect::<Vec<_>>()
                 .join(", ")
+        )));
+    }
+    let hooks_vinculados: Vec<&Item> = app.recetario.hooks_de(&item.id).collect();
+    if !hooks_vinculados.is_empty() {
+        let nombres: Vec<&str> = hooks_vinculados
+            .iter()
+            .map(|h| h.id.strip_prefix("hook:").unwrap_or(&h.id))
+            .collect();
+        l.push(Line::from(Span::styled(
+            format!("Hooks vinculados: {}", nombres.join(", ")),
+            Style::default().add_modifier(Modifier::BOLD),
         )));
     }
     let doc = item.fuente.as_ref().and_then(|f| f.doc.as_deref());
@@ -795,6 +821,14 @@ fn siguiente_paso(app: &App) -> String {
             .filter(|i| !i.es_sincronizado() && i.instalado_por.is_none() && f(i))
             .count()
     };
+    if app.esta_listo() {
+        let n = contar(&|i| i.estado == Estado::Aprobada);
+        return if n > 0 {
+            format!("COOKBOOK LISTO · en una PC nueva, `3` y `p` instalan las {n} aprobadas")
+        } else {
+            "COOKBOOK LISTO · no hay recetas aprobadas para instalar".into()
+        };
+    }
     let (gratis, investigar, buscar) = app.por_armar();
     let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
     match paso_actual(app) {

@@ -566,7 +566,11 @@ fn con_un_item(item: Item) -> App {
 #[test]
 fn sin_origen_va_contra_el_borde_del_panel() {
     let p = pantalla(&App::nueva(recetario()));
-    let linea = p.lines().find(|l| l.contains("statusline.sh")).unwrap();
+    let linea = p
+        .lines()
+        .filter(|l| !l.starts_with('┌'))
+        .find(|l| l.contains("statusline.sh"))
+        .unwrap();
     assert!(linea.contains("sin origen│"), "{linea}");
 }
 
@@ -2193,12 +2197,20 @@ fn herramienta_presente_con_hook_faltante_sigue_marcada_para_instalar() {
 #[test]
 fn hook_muestra_responsable_a_80_columnas_sin_ofrecer_receta() {
     let mut r = Recetario::nuevo();
-    let mut hook = Item::nuevo("hook:tool hook", Tipo::Hook);
-    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
-    r.items.push(hook);
-    let app = App::nueva(r);
+    let mut tool = Item::nuevo("herramienta:tool", Tipo::Herramienta);
+    tool.estado = Estado::Aprobada;
+    let mut hook_vinculado = Item::nuevo("hook:tool hook", Tipo::Hook);
+    hook_vinculado.instalado_por = Some(InstaladorHook::Item("herramienta:tool".into()));
+    let mut hook_externo = Item::nuevo("hook:ext hook", Tipo::Hook);
+    hook_externo.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    r.items = vec![tool, hook_vinculado, hook_externo];
+
+    let mut app = App::nueva(r);
     let pantalla = pantalla_en(&app, 80, 24);
-    assert!(pantalla.contains("lo instala tool"), "{pantalla}");
+    assert!(
+        pantalla.contains("Hooks vinculados: tool hook"),
+        "{pantalla}"
+    );
     assert!(
         !pantalla.lines().next().unwrap().contains("sin receta"),
         "{pantalla}"
@@ -2208,6 +2220,116 @@ fn hook_muestra_responsable_a_80_columnas_sin_ofrecer_receta() {
         "{pantalla}"
     );
     assert!(!pantalla.contains("no sé de qué repo viene"), "{pantalla}");
+
+    app.pestana = Pestana::Checklist;
+    let pantalla_chk = pantalla_en(&app, 80, 24);
+    assert!(pantalla_chk.contains("tool: 1 hook"), "{pantalla_chk}");
+}
+
+#[test]
+fn grupos_imports_hooks_propios_vinculados_y_externos_en_pantalla_y_listo() {
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(Perfil {
+        nombre: "personal".into(),
+        dir: "~/.claude".into(),
+    });
+
+    let mut tool = Item::nuevo("herramienta:jq", Tipo::Herramienta);
+    tool.estado = Estado::Aprobada;
+    let mut hook_vinculado = Item::nuevo("hook:jq-format", Tipo::Hook);
+    hook_vinculado.instalado_por = Some(InstaladorHook::Item("herramienta:jq".into()));
+    hook_vinculado.estado = Estado::Pendiente;
+
+    let mut hook_externo = Item::nuevo("hook:git-sync", Tipo::Hook);
+    hook_externo.instalado_por = Some(InstaladorHook::Externo("git".into()));
+    hook_externo.estado = Estado::Pendiente;
+
+    let mut import_item = Item::nuevo("import:house-rules", Tipo::Import);
+    import_item.estado = Estado::Aprobada;
+
+    let mut hook_propio = Item::nuevo("hook:mi-hook", Tipo::Hook);
+    hook_propio.estado = Estado::Pendiente;
+
+    let mut skill_item = Item::nuevo("skill:extra", Tipo::Skill);
+    skill_item.estado = Estado::PorRevisar;
+
+    r.items = vec![
+        tool,
+        hook_vinculado,
+        hook_externo,
+        import_item,
+        hook_propio,
+        skill_item,
+    ];
+
+    let mut app = App::nueva(r);
+
+    let visibles = app.visibles();
+    let ids_visibles: Vec<&str> = visibles.iter().map(|i| i.id.as_str()).collect();
+    assert!(
+        !ids_visibles.contains(&"hook:jq-format"),
+        "hook vinculado no debe ser visible"
+    );
+    assert!(
+        !ids_visibles.contains(&"hook:git-sync"),
+        "hook externo no debe ser visible"
+    );
+    assert!(ids_visibles.contains(&"herramienta:jq"));
+    assert!(ids_visibles.contains(&"import:house-rules"));
+    assert!(ids_visibles.contains(&"hook:mi-hook"));
+    assert!(ids_visibles.contains(&"skill:extra"));
+
+    let pos_skill = ids_visibles
+        .iter()
+        .position(|id| *id == "skill:extra")
+        .unwrap();
+    let pos_hook_propio = ids_visibles
+        .iter()
+        .position(|id| *id == "hook:mi-hook")
+        .unwrap();
+    let pos_jq = ids_visibles
+        .iter()
+        .position(|id| *id == "herramienta:jq")
+        .unwrap();
+    let pos_import = ids_visibles
+        .iter()
+        .position(|id| *id == "import:house-rules")
+        .unwrap();
+    assert!(pos_skill < pos_jq);
+    assert!(pos_hook_propio < pos_jq);
+    assert!(pos_skill < pos_import);
+    assert!(pos_hook_propio < pos_import);
+
+    let p = pantalla(&app);
+    assert!(p.contains("POR RESOLVER"), "{p}");
+    assert!(p.contains("LISTAS"), "{p}");
+
+    let idx_jq = ids_visibles
+        .iter()
+        .position(|id| *id == "herramienta:jq")
+        .unwrap();
+    app.seleccion = idx_jq;
+    let p_jq = pantalla(&app);
+    assert!(p_jq.contains("Hooks vinculados: jq-format"), "{p_jq}");
+
+    app.pestana = Pestana::Checklist;
+    let p_check = pantalla(&app);
+    assert!(
+        p_check.contains("Hooks de herramientas externas"),
+        "{p_check}"
+    );
+    assert!(p_check.contains("git: 1 hook"), "{p_check}");
+
+    assert!(!app.esta_listo());
+
+    app.recetario.item_mut("hook:mi-hook").unwrap().estado = Estado::Aprobada;
+    app.recetario.item_mut("skill:extra").unwrap().estado = Estado::Aprobada;
+    app.pestana = Pestana::Recetas;
+
+    assert!(app.por_resolver().is_empty());
+    assert!(app.esta_listo());
+    let p_listo = pantalla(&app);
+    assert!(p_listo.contains("COOKBOOK LISTO"), "{p_listo}");
 }
 
 #[test]
@@ -2333,7 +2455,12 @@ fn excluir_ocultar_y_reincluir_conserva_pasos_y_una_seleccion_valida() {
     tecla(&mut app, KeyCode::Char('o'));
     assert_eq!(app.seleccionado().unwrap().id, "plugin:c@x");
     assert_eq!(app.visibles().len(), 3);
-    app.seleccion = 1;
+    let idx_b = app
+        .visibles()
+        .iter()
+        .position(|i| i.id == "plugin:b@x")
+        .unwrap();
+    app.seleccion = idx_b;
     assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
     assert_eq!(
         app.recetario.item("plugin:b@x").unwrap().estado,

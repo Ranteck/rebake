@@ -382,17 +382,31 @@ fn comprobar_marca_real(nombre: &str, esperado: rebake::modelo::InstaladorHook) 
     let hook = r.items.iter().find(|i| i.tipo == Tipo::Hook).unwrap();
     assert_eq!(hook.instalado_por.as_ref(), Some(&esperado), "{nombre}");
     let mut app = rebake::tui::app::App::nueva(r);
-    app.filtro = "hook:".into();
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-    terminal
-        .draw(|f| rebake::tui::vista::dibujar(f, &app))
-        .unwrap();
-    let buffer = terminal.backend().buffer();
-    let pantalla: String = buffer.content.iter().map(|c| c.symbol()).collect();
-    assert!(
-        pantalla.contains(&format!("lo instala {}", esperado.nombre())),
-        "{pantalla}"
-    );
+    match &esperado {
+        rebake::modelo::InstaladorHook::Item(responsable) => {
+            app.filtro = responsable.clone();
+            terminal
+                .draw(|f| rebake::tui::vista::dibujar(f, &app))
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let pantalla: String = buffer.content.iter().map(|c| c.symbol()).collect();
+            assert!(pantalla.contains("Hooks vinculados:"), "{pantalla}");
+            assert!(pantalla.contains(responsable.as_str()), "{pantalla}");
+        }
+        rebake::modelo::InstaladorHook::Externo(responsable) => {
+            app.pestana = rebake::tui::app::Pestana::Checklist;
+            terminal
+                .draw(|f| rebake::tui::vista::dibujar(f, &app))
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let pantalla: String = buffer.content.iter().map(|c| c.symbol()).collect();
+            assert!(
+                pantalla.contains(&format!("{responsable}: 1 hook")),
+                "{pantalla}"
+            );
+        }
+    }
 }
 
 #[test]
