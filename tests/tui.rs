@@ -1169,6 +1169,55 @@ fn alternar_aprobacion_dos_veces_conserva_seleccion_por_id_con_multiples_items()
 }
 
 #[test]
+fn hook_con_instalador_excluido_se_ve_con_o_se_reincluye_con_x_y_avisa_responsable_con_a() {
+    let mut hook = con_fuente("hook:cmd");
+    hook.tipo = Tipo::Hook;
+    hook.instalado_por = Some(InstaladorHook::Externo("orca".into()));
+    hook.estado = Estado::Excluida;
+    hook.motivo = Some("no se usa".into());
+
+    let mut item_herramienta = con_fuente("herramienta:tool");
+    item_herramienta.estado = Estado::Aprobada;
+
+    let mut r = Recetario::nuevo();
+    r.items.push(hook);
+    r.items.push(item_herramienta);
+    let mut app = App::nueva(r);
+
+    // Inicialmente mostrar_excluidas es false: el hook excluido con instalado_por NO es visible.
+    assert_eq!(app.visibles().len(), 1);
+    assert_eq!(app.visibles()[0].id, "herramienta:tool");
+
+    // Presionar 'o': ahora el hook excluido debe verse.
+    tecla(&mut app, KeyCode::Char('o'));
+    assert_eq!(app.visibles().len(), 2);
+    assert!(app.visibles().iter().any(|i| i.id == "hook:cmd"));
+
+    // Seleccionamos hook:cmd.
+    app.restaurar_seleccion(Some("hook:cmd"));
+    assert_eq!(app.seleccionado().unwrap().id, "hook:cmd");
+
+    // Presionar 'a' sobre el hook con instalado_por avisa "lo instala orca".
+    let efecto = tecla(&mut app, KeyCode::Char('a'));
+    assert_eq!(efecto, Efecto::Nada);
+    assert_eq!(app.mensaje.as_deref(), Some("lo instala orca"));
+    assert_eq!(
+        app.recetario.item("hook:cmd").unwrap().estado,
+        Estado::Excluida
+    );
+
+    // Presionar 'x' lo reincluye.
+    let efecto = tecla(&mut app, KeyCode::Char('x'));
+    assert_eq!(efecto, Efecto::Guardar);
+    assert_ne!(
+        app.recetario.item("hook:cmd").unwrap().estado,
+        Estado::Excluida
+    );
+    // Ya no está excluido; como tiene instalado_por, se oculta de Armar.
+    assert!(!app.visibles().iter().any(|i| i.id == "hook:cmd"));
+}
+
+#[test]
 fn espacio_no_aprueba_sin_receta_ni_excluida() {
     let mut app = con_un_item(con_fuente("plugin:b@x"));
     assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Nada);

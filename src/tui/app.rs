@@ -230,9 +230,14 @@ impl App {
             .items
             .iter()
             .filter(|i| {
-                !i.es_sincronizado()
-                    && i.instalado_por.is_none()
-                    && (self.mostrar_excluidas || i.estado != Estado::Excluida)
+                if i.es_sincronizado() {
+                    return false;
+                }
+                if i.estado == Estado::Excluida {
+                    self.mostrar_excluidas
+                } else {
+                    i.instalado_por.is_none()
+                }
             })
             .filter(|i| i.id.to_lowercase().contains(&filtro))
             .collect();
@@ -296,7 +301,7 @@ impl App {
         (gratis, investigar, buscar)
     }
 
-    pub(crate) fn restaurar_seleccion(&mut self, elegido: Option<&str>) {
+    pub fn restaurar_seleccion(&mut self, elegido: Option<&str>) {
         let visibles = self.visibles();
         let siguiente = elegido.and_then(|id| visibles.iter().position(|i| i.id == id));
         self.seleccion =
