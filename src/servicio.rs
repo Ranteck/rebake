@@ -14,14 +14,68 @@ pub struct ResumenEscaneo {
     pub avisos: Vec<String>,
     pub hooks_vinculados: usize,
     pub externos: usize,
+    pub perfiles_quitados: usize,
+    pub ajustes_quitados: usize,
+    pub titulos_quitados: usize,
+    pub referencias_quitadas: usize,
 }
 
 pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> {
     let detectados = perfiles::detectar(&entorno.home)?;
+    let mut avisos = Vec::new();
+    let mut quitar = HashSet::new();
+    for perfil in &r.perfiles {
+        let dir = crate::rutas::expandir(&perfil.dir, &entorno.home);
+        let comprobacion = match std::fs::metadata(&dir) {
+            Ok(m) if m.is_dir() => perfiles::es_perfil(&dir, &entorno.home),
+            Ok(_) => continue,
+            // Un perfil de otra PC puede ser un destino de reinstalación.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => Err(e),
+        };
+        match comprobacion {
+            Ok(true) => {}
+            Ok(false) => {
+                let ajustes = r
+                    .checklist
+                    .ajustes
+                    .iter()
+                    .filter(|a| a.perfil == perfil.nombre)
+                    .count();
+                avisos.push(format!(
+                    "{} no es un perfil de Claude Code: quitado con {ajustes} ajustes",
+                    perfil.nombre
+                ));
+                quitar.insert(perfil.nombre.clone());
+            }
+            Err(e) => avisos.push(format!(
+                "no pude verificar el perfil {}: {e}; se conserva",
+                perfil.nombre
+            )),
+        }
+    }
+    r.perfiles.retain(|p| !quitar.contains(&p.nombre));
+    let ajustes_antes = r.checklist.ajustes.len();
+    let titulos_antes = r.checklist.titulos.len();
+    r.checklist.ajustes.retain(|a| !quitar.contains(&a.perfil));
+    r.checklist.titulos.retain(|t| !quitar.contains(&t.perfil));
+    let ajustes_quitados = ajustes_antes - r.checklist.ajustes.len();
+    let titulos_quitados = titulos_antes - r.checklist.titulos.len();
+    let mut referencias_quitadas = 0;
+    for item in &mut r.items {
+        let antes = item.perfiles.len();
+        item.perfiles.retain(|p| !quitar.contains(p));
+        referencias_quitadas += antes - item.perfiles.len();
+        if antes > 0 && item.perfiles.is_empty() && item.estado != Estado::Excluida {
+            // Sin perfiles, el instalador trataría sus pasos como comandos globales.
+            item.estado = Estado::Pendiente;
+            item.error = Some("sin perfiles válidos: revisá los perfiles antes de aprobar".into());
+        }
+    }
     fusion::asegurar_perfiles(r, &detectados, &entorno.home);
     let antes: HashSet<String> = r.items.iter().map(|i| i.id.clone()).collect();
     let escaneo = escaner::escanear(entorno, &r.perfiles);
-    let mut avisos = escaneo.avisos.clone();
+    avisos.extend(escaneo.avisos.clone());
     let existe = |nombre: &str| entorno.path.iter().any(|d| d.join(nombre).is_file());
     fusion::fusionar(r, escaneo, &existe);
     avisos.extend(escaner::comandos::vincular(r, entorno));
@@ -39,6 +93,10 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
         avisos,
         hooks_vinculados,
         externos,
+        perfiles_quitados: quitar.len(),
+        ajustes_quitados,
+        titulos_quitados,
+        referencias_quitadas,
     })
 }
 

@@ -277,6 +277,10 @@ fn ejecutar_comando(
                 avisos = resumen.avisos.len(),
                 hooks_vinculados = resumen.hooks_vinculados,
                 externos = resumen.externos,
+                perfiles_quitados = resumen.perfiles_quitados,
+                ajustes_quitados = resumen.ajustes_quitados,
+                titulos_quitados = resumen.titulos_quitados,
+                referencias_quitadas = resumen.referencias_quitadas,
                 resultado = "ok"
             );
             println!(

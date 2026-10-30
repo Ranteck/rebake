@@ -34,6 +34,7 @@ fn texto(o: &Output) -> String {
 #[test]
 fn escanear_crea_recetario() {
     let h = HomeFalso::nuevo();
+    h.escribir(".claude.json", "{}");
     h.escribir(
         ".claude/settings.json",
         r#"{"enabledPlugins": {"codex@openai-codex": true}, "theme": "dark"}"#,
@@ -46,11 +47,71 @@ fn escanear_crea_recetario() {
     assert!(r.checklist.ajustes.iter().any(|a| a.clave == "theme"));
 }
 
+#[test]
+fn escanear_limpia_perfiles_y_registra_cantidades_sin_rutas_privadas() {
+    use rebake::modelo::{Ajuste, Item, Perfil, Recetario, Tipo, TituloClaudeMd};
+    let h = HomeFalso::nuevo();
+    h.escribir(".claude-mem/settings.json", "{}");
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(Perfil {
+        nombre: "mem".into(),
+        dir: "~/.claude-mem".into(),
+    });
+    r.checklist.ajustes = (0..11)
+        .map(|n| Ajuste {
+            perfil: "mem".into(),
+            clave: format!("dato{n}"),
+            valor: "valor".into(),
+        })
+        .collect();
+    r.checklist.titulos.push(TituloClaudeMd {
+        perfil: "mem".into(),
+        texto: "Propio".into(),
+    });
+    let mut item = Item::nuevo("skill:anterior", Tipo::Skill);
+    item.perfiles.push("mem".into());
+    r.items.push(item);
+    let ruta = h.ruta().join("Documents/rebake/cookbook.toml");
+    archivo::guardar(&ruta, &r).unwrap();
+
+    let o = recetario(&h, &["escanear"], None);
+
+    assert!(o.status.success(), "{}", texto(&o));
+    let guardado = archivo::leer(&ruta).unwrap();
+    assert!(guardado.perfiles.is_empty());
+    assert!(guardado.checklist.ajustes.is_empty());
+    assert!(guardado.checklist.titulos.is_empty());
+    assert!(guardado.item("skill:anterior").unwrap().perfiles.is_empty());
+    assert!(
+        String::from_utf8_lossy(&o.stderr)
+            .contains("mem no es un perfil de Claude Code: quitado con 11 ajustes"),
+        "{}",
+        texto(&o)
+    );
+    let log = std::fs::read_to_string(h.ruta().join(".local/state/rebake/rebake.log")).unwrap();
+    let eventos: Vec<_> = log
+        .lines()
+        .filter(|l| l.contains("comando=\"escanear\""))
+        .collect();
+    assert_eq!(eventos.len(), 1, "{log}");
+    for campo in [
+        "perfiles_quitados=1",
+        "ajustes_quitados=11",
+        "titulos_quitados=1",
+        "referencias_quitadas=1",
+    ] {
+        assert!(eventos[0].contains(campo), "{log}");
+    }
+    assert!(!eventos[0].contains(h.ruta().to_str().unwrap()), "{log}");
+    assert!(!eventos[0].contains(".claude-mem"), "{log}");
+}
+
 const RESPUESTA: &str = r#"{"type":"result","subtype":"success","is_error":false,"structured_output":{"repo":"https://github.com/ejemplo/house-rules","doc":"https://github.com/ejemplo/house-rules#install","verificar":"test -f \"$CLAUDE_CONFIG_DIR/instalado\"","pasos":[{"cmd":"touch \"$CLAUDE_CONFIG_DIR/instalado\"","modo":"auto","por_perfil":true,"cita":"install.sh"},{"cmd":"/algo:setup","modo":"manual","por_perfil":false,"cita":"/algo:setup"}],"requiere":[]}}"#;
 
 #[test]
 fn de_punta_a_punta_con_claude_falso() {
     let h = HomeFalso::nuevo();
+    h.escribir(".claude.json", "{}");
     let repo = h.repo_git(
         "Proyectos/house-rules",
         Some("https://github.com/ejemplo/house-rules"),
@@ -495,6 +556,7 @@ fn investigacion_con_hooks_registra_ok_pendiente_y_fallo_sin_secretos() {
     use rebake::modelo::{Fuente, Via};
     for resultado in ["ok", "pendiente", "fallo"] {
         let h = HomeFalso::nuevo();
+        h.escribir(".claude.json", "{}");
         h.binario("bin/pacman", b"#!/bin/sh\nexit 1\n");
         h.binario("bin/tool", b"#!/bin/sh\nexit 0\n");
         h.escribir(".claude/settings.json", r#"{"hooks":{"Stop":[{"hooks":[{"command":"API_TOKEN=secreto-sintetico tool hook"}]}]}}"#);

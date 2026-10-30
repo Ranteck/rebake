@@ -309,7 +309,7 @@ pub struct Receta {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "tipo", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RegistroHooks {
-    Paso { indice: usize },
+    Paso { indice: usize, cita: Option<String> },
     Integrado { cita: String },
     Pendiente,
 }
@@ -571,7 +571,7 @@ pub fn parsear_salida(stdout: &str) -> Result<Receta> {
             .collect(),
     };
     match &receta.registro_hooks {
-        Some(RegistroHooks::Paso { indice })
+        Some(RegistroHooks::Paso { indice, .. })
             if *indice == 0
                 || receta
                     .pasos

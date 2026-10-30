@@ -244,6 +244,7 @@ fn vincula_hooks_por_ejecucion_y_conserva_scripts_propios() {
         ),
     ] {
         let h = HomeFalso::nuevo();
+        h.escribir(".claude.json", "{}");
         h.binario("bin/rtk", b"#!/bin/sh\n");
         h.escribir(".claude/skills/impeccable/SKILL.md", "skill");
         h.escribir(".claude/skills/ai-native-sdlc/SKILL.md", "skill");
@@ -267,6 +268,7 @@ fn ruta_absoluta_solo_vincula_al_ejecutable_del_path() {
     use rebake::{modelo::Recetario, servicio};
     for (ruta, vinculado) in [("bin/rtk", true), ("otro/rtk", false)] {
         let h = HomeFalso::nuevo();
+        h.escribir(".claude.json", "{}");
         h.binario("bin/rtk", b"\x7fELF");
         let ejecutable = h.binario(ruta, b"\x7fELF");
         h.escribir(".claude/settings.json", &serde_json::json!({"hooks":{"Stop":[{"hooks":[{"command":format!("{} hook", ejecutable.display())}]}]}}).to_string());
@@ -281,6 +283,8 @@ fn ruta_absoluta_solo_vincula_al_ejecutable_del_path() {
 fn nuevos_hooks_invalidan_receta_del_responsable_y_preservan_exclusiones() {
     use rebake::{modelo::*, servicio};
     let h = HomeFalso::nuevo();
+    h.escribir(".claude.json", "{}");
+    h.escribir(".claude-personal/.claude.json", "{}");
     h.binario("bin/rtk", b"#!/bin/sh\n");
     let settings = r#"{"hooks":{"Stop":[{"hooks":[{"command":"rtk hook claude"}]}]}}"#;
     h.escribir(".claude/settings.json", settings);
@@ -320,6 +324,7 @@ fn escanear_comando_real(
     let h = HomeFalso::nuevo();
     let fixtures: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/hooks-herramientas.json")).unwrap();
+    h.escribir(".claude.json", "{}");
     let comando = fixtures[nombre]
         .as_str()
         .unwrap()
@@ -404,6 +409,7 @@ fn segmentos_neutros_no_anulan_pero_pipes_y_responsables_distintos_si() {
         ("printf '~/.orca/hook.sh'; export X=1; exit 0", false),
     ] {
         let h = HomeFalso::nuevo();
+        h.escribir(".claude.json", "{}");
         h.escribir(
             ".claude/settings.json",
             &serde_json::json!({"hooks":{"Stop":[{"hooks":[{"command":comando}]}]}}).to_string(),
@@ -433,6 +439,7 @@ fn scripts_propios_load_intent_sync_y_herdr_siguen_con_receta() {
         ".claude/hooks/herdr-agent-state.sh",
     ] {
         let h = HomeFalso::nuevo();
+        h.escribir(".claude.json", "{}");
         h.escribir(".claude/skills/ai-native-sdlc/SKILL.md", "skill");
         let script = h.escribir(ruta, "#!/bin/sh\n");
         h.escribir(".claude/settings.json", &serde_json::json!({"hooks":{"Stop":[{"hooks":[{"command":format!("sh '{}'", script.display())}]}]}}).to_string());

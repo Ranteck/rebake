@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,7 +24,10 @@ pub fn detectar(home: &Path) -> Result<Vec<PerfilDetectado>> {
             },
         };
         let dir = entrada.path();
-        if dir.is_dir() && dir.join("settings.json").is_file() {
+        if dir.is_dir()
+            && es_perfil(&dir, home)
+                .with_context(|| format!("no pude reconocer el perfil {sugerido}"))?
+        {
             encontrados.push(PerfilDetectado {
                 nombre_sugerido: sugerido,
                 dir,
@@ -32,4 +36,18 @@ pub fn detectar(home: &Path) -> Result<Vec<PerfilDetectado>> {
     }
     encontrados.sort_by(|a, b| a.dir.cmp(&b.dir));
     Ok(encontrados)
+}
+
+pub(crate) fn es_perfil(dir: &Path, home: &Path) -> io::Result<bool> {
+    Ok(es_archivo(&dir.join("settings.json"))?
+        && (es_archivo(&dir.join(".claude.json"))?
+            || (dir == home.join(".claude") && es_archivo(&home.join(".claude.json"))?)))
+}
+
+fn es_archivo(ruta: &Path) -> io::Result<bool> {
+    match fs::metadata(ruta) {
+        Ok(m) => Ok(m.is_file()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
 }

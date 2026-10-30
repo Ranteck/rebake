@@ -1,3 +1,5 @@
+mod comun;
+use comun::{HomeFalso, PacmanFalso, entorno, perfil};
 use rebake::modelo::{Estado, Item, Modo, Paso, Recetario, Tipo};
 use rebake::servicio::{self, Novedad, mensaje_commit};
 
@@ -134,4 +136,122 @@ fn sin_origen_lista_pendientes_sin_fuente_y_trabajos_sin_ids_las_excluye() {
     let t = servicio::trabajos(&r, &[], std::path::Path::new("/tmp")).unwrap();
     assert_eq!(t.len(), 1);
     assert_eq!(t[0].id, "b");
+}
+
+#[test]
+fn escanear_quita_perfiles_existentes_sin_marcador_y_sus_referencias() {
+    use rebake::modelo::{Ajuste, TituloClaudeMd};
+    let h = HomeFalso::nuevo();
+    for dir in [".claude", ".claude-personal", "perfiles/equipo"] {
+        h.escribir(&format!("{dir}/settings.json"), "{}");
+        h.escribir(&format!("{dir}/.claude.json"), "{}");
+    }
+    h.escribir("almacen/settings.json", "{}");
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        perfil("claude", "~/.claude"),
+        perfil("personal", "~/.claude-personal"),
+        perfil("datos", "~/almacen"),
+        perfil("viaje", "~/.claude-viaje"),
+        perfil("equipo", "~/perfiles/equipo"),
+    ];
+    r.checklist.ajustes = (0..11)
+        .map(|n| Ajuste {
+            perfil: "datos".into(),
+            clave: format!("dato{n}"),
+            valor: "valor".into(),
+        })
+        .chain(std::iter::once(Ajuste {
+            perfil: "viaje".into(),
+            clave: "theme".into(),
+            valor: "dark".into(),
+        }))
+        .collect();
+    r.checklist.titulos = ["datos", "viaje"]
+        .map(|p| TituloClaudeMd {
+            perfil: p.into(),
+            texto: "Propio".into(),
+        })
+        .to_vec();
+    let mut item = aprobada("skill:compartida", "true");
+    item.perfiles = vec!["datos".into(), "personal".into(), "viaje".into()];
+    let pasos = item.pasos.clone();
+    r.items.push(item);
+    let pacman = PacmanFalso(vec![]);
+
+    let resumen = servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+
+    assert_eq!(
+        r.perfiles
+            .iter()
+            .map(|p| p.nombre.as_str())
+            .collect::<Vec<_>>(),
+        ["claude", "personal", "viaje", "equipo"]
+    );
+    assert_eq!(r.checklist.ajustes.len(), 1);
+    assert_eq!(r.checklist.ajustes[0].perfil, "viaje");
+    assert_eq!(r.checklist.titulos.len(), 1);
+    assert_eq!(r.checklist.titulos[0].perfil, "viaje");
+    let item = r.item("skill:compartida").unwrap();
+    assert_eq!(item.perfiles, ["personal", "viaje"]);
+    assert_eq!(item.estado, Estado::Aprobada);
+    assert_eq!(item.pasos, pasos);
+    assert!(
+        resumen
+            .avisos
+            .iter()
+            .any(|a| a.contains("datos no es un perfil de Claude Code: quitado con 11 ajustes")),
+        "{:?}",
+        resumen.avisos
+    );
+    let antes = r.clone();
+    let otra = servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+    assert_eq!(r, antes);
+    assert!(!otra.avisos.iter().any(|a| a.contains("quitado")));
+    assert!(h.ruta().join("almacen/settings.json").is_file());
+}
+
+#[test]
+fn perder_el_ultimo_perfil_impide_instalar_la_receta_globalmente() {
+    let h = HomeFalso::nuevo();
+    h.escribir("datos/settings.json", "{}");
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(perfil("datos", "~/datos"));
+    for (id, estado) in [
+        ("skill:sola", Estado::Aprobada),
+        ("skill:excluida", Estado::Excluida),
+    ] {
+        let mut item = aprobada(id, "touch ejecucion-accidental");
+        item.estado = estado;
+        item.perfiles.push("datos".into());
+        item.pasos[0].por_perfil = true;
+        r.items.push(item);
+    }
+    let pacman = PacmanFalso(vec![]);
+    servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+    assert_eq!(r.item("skill:sola").unwrap().estado, Estado::Pendiente);
+    assert!(r.item("skill:sola").unwrap().perfiles.is_empty());
+    assert_eq!(r.item("skill:excluida").unwrap().estado, Estado::Excluida);
+    assert!(rebake::instalador::planificar(&r).unwrap().is_empty());
+}
+
+#[test]
+fn escanear_conserva_el_perfil_si_no_puede_verificar_su_marcador() {
+    let h = HomeFalso::nuevo();
+    h.escribir("perfil/settings.json", "{}");
+    let marcador = h.ruta().join("perfil/.claude.json");
+    h.enlazar("perfil/.claude.json", &marcador);
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(perfil("equipo", "~/perfil"));
+    let pacman = PacmanFalso(vec![]);
+    let resumen = servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+    assert_eq!(r.perfiles, [perfil("equipo", "~/perfil")]);
+    assert!(
+        resumen
+            .avisos
+            .iter()
+            .any(|a| a.contains("no pude verificar el perfil equipo") && a.contains("se conserva")),
+        "{:?}",
+        resumen.avisos
+    );
 }
