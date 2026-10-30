@@ -1,47 +1,52 @@
 # Plan: rediseño de Recetas
 Estado: borrador
-Desde intent y spec aceptados del 2026-10-29; base v0.12.1. Ejecución propia, secuencial.
+Intent/spec aceptados: 2026-10-29; base v0.12.1.
 
 ## Archivos que cambian
-Existentes: `src/modelo.rs`, `src/escaner/mod.rs`, `src/escaner/archivos.rs`, `src/escaner/plugins.rs`, `src/fusion.rs`, `src/servicio.rs`, `src/instalador.rs`, `src/acciones.rs`, `src/investigador.rs`, `src/main.rs`, `src/sincro.rs`, `src/tui/app.rs`, `src/tui/vista.rs`, `src/tui/mod.rs`, `tests/comun/mod.rs`, `README.md`, `Cargo.toml`, `Cargo.lock` y los tests de la tabla.
-Nuevo: `intent/menos-ruido/plan.md`. No crear módulos ni dependencias para lógica ya existente.
+Existen: `src/modelo.rs`, `src/escaner/mod.rs`, `src/escaner/archivos.rs`, `src/escaner/plugins.rs`, `src/fusion.rs`, `src/servicio.rs`, `src/instalador.rs`, `src/checklist.rs`, `src/acciones.rs`, `src/investigador.rs`, `src/main.rs`, `src/sincro.rs`, `src/tui/app.rs`, `src/tui/vista.rs`, `src/tui/mod.rs`, `tests/comun/mod.rs`, `tests/checklist.rs`, `README.md`, `Cargo.toml`, `Cargo.lock` y los tests de la tabla. Nuevos: ninguno.
 
 ## Tests a escribir
-Extender suites existentes; cada fila representa pruebas separadas por caso.
+Ampliar suites.
 
-| Comportamiento observable | Ubicación | REQ |
+| Comportamiento | Ubicación | REQ |
 | --- | --- | --- |
-| Skills/plugins: destino real synced; dos homónimas, solo propia elegible | `tests/escaner_archivos.rs`, `tests/escaner_plugins.rs` | REQ-1 |
-| Marca por instalación sobrevive guardar/cargar, renombrar/perder perfiles y otra PC sin archivos; cookbook antiguo válido | `tests/archivo.rs`, `tests/fusion.rs`, `tests/servicio.rs`, `tests/acciones.rs` | REQ-1 |
-| Omitir lotes y destinos sincronizados; rechazo explícito antes de ejecutar | `tests/instalador.rs`, `tests/cli.rs` | REQ-1, REQ-10 |
+| Destinos reales skills/plugins; dos homónimas, una propia elegible | `tests/escaner_archivos.rs`, `tests/escaner_plugins.rs` | REQ-1 |
+| Marca persiste: guardar/cargar, renombrar/perder perfiles, otra PC sin archivos; cookbook antiguo válido | `tests/archivo.rs`, `tests/fusion.rs`, `tests/servicio.rs`, `tests/acciones.rs` | REQ-1 |
+| Lotes/destinos omiten sincronizados; rechazar solicitud explícita antes de ejecutar | `tests/instalador.rs`, `tests/cli.rs` | REQ-1, REQ-10 |
+| Checklist: sincronizado ausente; receta mixta lista solo destinos propios | `tests/checklist.rs` | REQ-1 |
+| Git hijo ignora configuración inválida y no hereda variables inyectadas | `tests/escaner_archivos.rs`, `tests/comun/mod.rs` | REQ-1 |
 | x sin motivo, o muestra/oculta, x reincluye conservando pasos; selección/filtro vacío válidos | `tests/acciones.rs`, `tests/tui.rs` | REQ-5, REQ-9 |
-| Grupos, imports y hooks propios/vinculados/externos; estos últimos no bloquean LISTO | `tests/tui.rs` | REQ-2, REQ-6 |
-| Una directa nueva: una por revisar, cero Claude, sin s; no sobrescribir existentes | `tests/servicio.rs`, `tests/investigador.rs` | REQ-2, REQ-4 |
-| Enter: dos por revisar, una aprobada y siguiente seleccionada; cero instalación | `tests/tui.rs` | REQ-3 |
-| Enter arma: avisa una corrida, cero antes de s, una después | `tests/tui.rs` | REQ-3, REQ-4 |
-| Aceptar posible: una corrida tras s; descartar: cero | `tests/tui.rs` | REQ-3, REQ-4 |
-| Pegar link: origen guardado, cero corridas/aprobaciones | `tests/tui.rs` | REQ-3 |
-| Buscar origen: una búsqueda tras s, cero armados | `tests/tui.rs` | REQ-3, REQ-4 |
-| Cancelar confirmación: cero corridas/recetas nuevas | `tests/tui.rs` | REQ-4 |
-| Seis pendientes Claude y un posible: t+s lanza cinco, queda uno; posible intacto, sin encadenar | `tests/tui.rs` | REQ-4 |
-| Resolver, Esc/foco, paste con saltos/q y resultados tardíos; id/scroll estables | `tests/tui.rs`, `src/tui/mod.rs` | REQ-9 |
-| LISTO bloqueado por cada error/posible/corrida/guardado fallido, incluso con filtro | `tests/tui.rs`, `src/tui/mod.rs` | REQ-6 |
-| Última acción permanece en pie ante aviso; error en detalle hasta resolución | `tests/tui.rs`, `src/tui/mod.rs` | REQ-8 |
-| 80×24, cifras triples, Unicode/NO_COLOR, pestañas y salida visibles en cada modo | `tests/tui.rs` | REQ-7 |
-| Publicación/no repo/fallo Git: estado veraz; stdout/stderr y fallo parcial versus aviso recuperado | `tests/sincro.rs`, `tests/cli.rs` | REQ-6, REQ-7, REQ-10 |
-| Eventos éxito/fallo con contadores y sin secretos/rutas privadas, usando capturar_logs | `src/tui/mod.rs` | REQ-1, REQ-4, REQ-5, REQ-8 |
+| Grupos/imports/hooks propios/vinculados/externos; vinculados/externos no bloquean LISTO | `tests/tui.rs` | REQ-2, REQ-6 |
+| Directa nueva: una por revisar, cero Claude/s; existentes intactas | `tests/servicio.rs`, `tests/investigador.rs` | REQ-2, REQ-4 |
+| Enter aprueba una de dos, selecciona siguiente; cero instalación | `tests/tui.rs` | REQ-3 |
+| Enter arma: anuncia una corrida; cero antes de s, una después | `tests/tui.rs` | REQ-3, REQ-4 |
+| Aceptar posible cuesta una tras s; descartarlo cuesta cero | `tests/tui.rs` | REQ-3, REQ-4 |
+| Pegar link guarda origen; cero corridas/aprobaciones | `tests/tui.rs` | REQ-3 |
+| Buscar exige s: una búsqueda, cero armados | `tests/tui.rs` | REQ-3, REQ-4 |
+| Cancelar: cero corridas/recetas nuevas | `tests/tui.rs` | REQ-4 |
+| t+s: cinco de seis Claude, queda uno; posible intacto, sin encadenar | `tests/tui.rs` | REQ-4 |
+| i/r pagas, con/sin origen: cero antes de s, una después | `tests/tui.rs` | REQ-4 |
+| Enter en LISTAS indica «2 Instalar»: estado intacto, cero corridas/instalaciones | `tests/tui.rs` | REQ-3 |
+| Enter excluido indica «x reincluir»: estado intacto, cero corridas/instalaciones | `tests/tui.rs` | REQ-3 |
+| Resolver, Esc/foco, paste con saltos/q, resultados tardíos; id/scroll estables | `tests/tui.rs`, `src/tui/mod.rs` | REQ-9 |
+| Cada error/posible/corrida/guardado fallido bloquea LISTO, incluso filtrando | `tests/tui.rs`, `src/tui/mod.rs` | REQ-6 |
+| Pie: avisos no pisan última acción; detalle: error permanece hasta resolverse | `tests/tui.rs`, `src/tui/mod.rs` | REQ-8 |
+| 80×24, cifras triples, Unicode/NO_COLOR, pestañas/salida en todos los modos | `tests/tui.rs` | REQ-7 |
+| Publicación/sin repo/fallo Git: estado, stdout/stderr, fallo parcial versus aviso recuperado | `tests/sincro.rs`, `tests/cli.rs` | REQ-6, REQ-7, REQ-10 |
+| capturar_logs: éxito/fallo, contadores, sin secretos/rutas privadas | `src/tui/mod.rs` | REQ-1, REQ-4, REQ-5, REQ-8 |
 
-## Orden por fases integrables y publicables
-Cada fase: tests rojos, cambio mínimo, tests focalizados y suite completa verdes, README, commit independiente; TUI usable sin flags temporales. Publicar requiere aprobación y actualizar Cargo.toml/Cargo.lock mediante el flujo existente.
+## Orden de trabajo
+Cada fase exige tests rojos, suite verde, README y commit; entrega una TUI usable. Publicar requiere aprobación y actualizar Cargo.toml/Cargo.lock.
 
-1. **Quitar ruido** (REQ-1, REQ-5, REQ-9, REQ-10): añadir clasificación persistente por perfil a Item/Hallazgo, compatible con cookbooks antiguos. Resolver carpetas reales, agrupar/fusionar sin contaminar homónimos propios; conservar marcas ausentes y actualizar referencias al renombrar. Compartir criterio entre trabajos, sin_origen, por_armar, instalación y visibles. Motivo opcional, o/x y restauración de selección antes de ocultar. Entrega: sincronizados inaccesibles y excluidos recuperables.
-2. **Ordenar y preparar** (REQ-2, REQ-6): reutilizar receta_directa/aplicar al escanear; separar POR RESOLVER/LISTAS, hooks agrupados y Checklist externo. Conservar el recorrido actual mientras llega Enter nuevo.
-3. **Guiar acciones** (REQ-3, REQ-4, REQ-9): ampliar Modo/Efecto existentes para Resolver y confirmación individual; enlazar sin investigar automáticamente, sin confirmar en la CLI. Mantener tandas/IDs fijados, excluir posibles de t; un lector Crossterm procesa paste sin acciones y restaura foco/terminal.
-4. **Cerrar claramente** (REQ-6–REQ-8, REQ-10): guardar informa éxito a App; separar resultados de avisos, conservar errores en ítems. Reutilizar Rama/publicar para estado local/subido, pasarlo al arranque y reportar salida; conservar recuperación Git y código original. Reordenar pestañas, pie, ayuda y README.
+1. **Quitar ruido** (REQ-1, REQ-5, REQ-9, REQ-10). Persistir la clasificación por instalación/perfil, compatible con cookbooks antiguos. Compartir el filtro en trabajos, sin_origen, por_armar, instalación, visibles y Checklist/a_mano/lineas_de, incluidos destinos mixtos. Conservar marcas ausentes y referencias al renombrar. Denis deja de ver sincronizados y recupera excluidos con o/x sin perder recetas.
+2. **Ordenar y preparar** (REQ-2, REQ-6, REQ-7). Reusar receta_directa/aplicar al escanear. Denis ve POR RESOLVER/LISTAS, directas listas para revisar, hooks agrupados y externos en Checklist. Reordenar pestañas/ayuda.
+3. **Guiar acciones** (REQ-3, REQ-4, REQ-9). Ampliar Modo/Efecto y reutilizar confirmaciones para Enter/Resolver e i/r, que se conservan con s si gastan. Implementar las orientaciones de la tabla. Un lector Crossterm maneja paste y restaura foco. Denis conoce el costo antes de confirmar; la CLI no agrega confirmaciones.
+4. **Cerrar claramente** (REQ-6–REQ-8, REQ-10). Guardar informa éxito a App; separar resultados/avisos y conservar errores. Reusar Rama/publicar para arranque/salida. Denis ve qué cambió, qué falta, dónde quedó guardado y cómo salir.
 
 ## Riesgos
-No confundir falta de carpeta con desincronización, ni perfiles vacíos con ejecución global; conservar fixes v0.12.1. Ajustar expectativas antiguas solo por cambios aprobados.
+Una carpeta ausente no borra marcas; perfiles vacíos no habilitan ejecución global. Conservar fixes v0.12.1. Los tests antiguos de i/r, link vacío y cuota incorporan s porque REQ-4 sustituye el lanzamiento inmediato, sin perder validaciones.
 
 ## Prueba
-HomeFalso/tempfile, Git bare local, Claude/binarios falsos; aislar HOME, XDG, CLAUDE_CONFIG_DIR y configuración Git por proceso, sin modificar variables globales. Nunca leer perfiles reales ni usar red/Claude real. Regla 4.4: logs en main/tui, éxito incluido; helpers puros aportan contexto; capturar_logs existente, sin subscribers duplicados.
-Por fase: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --locked`; luego PTY aislada 80×24: recorrido, resize, pegado, errores, salida y restauración de terminal.
+HomeFalso/tempfile, Git bare y Claude falsos evitan configuración real/red. Ejecutar casos de escaneo con Git en hijos current_exe/--exact, como `tests/investigador.rs`: cada Command usa env_clear, HOME temporal, XDG_CONFIG_HOME, PATH de fixtures, GIT_CONFIG_NOSYSTEM=1 y GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM=/dev/null. Git espía verifica herencia; configs inválidas prueban aislamiento, sin variables globales.
+Regla 4.4: logs estructurados en main/tui, éxito incluido; helpers puros aportan contexto. Usar capturar_logs existente sin duplicar subscribers.
+Cada fase ejecuta `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --locked` y PTY aislada: 80×24, resize, pegado, errores, salida/restauración.
