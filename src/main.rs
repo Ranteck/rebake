@@ -285,6 +285,7 @@ fn ejecutar_comando(
                 items = r.items.len(),
                 nuevos = resumen.nuevos,
                 sincronizados = resumen.sincronizados,
+                directas = resumen.directas,
                 avisos = resumen.avisos.len(),
                 hooks_vinculados = resumen.hooks_vinculados,
                 externos = resumen.externos,

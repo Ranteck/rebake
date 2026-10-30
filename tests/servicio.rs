@@ -324,3 +324,36 @@ fn perder_perfil_de_cuenta_conserva_marca_y_no_habilita_instalacion_global() {
     rebake::archivo::guardar(&p, &r).unwrap();
     assert!(rebake::archivo::leer(&p).unwrap().items[0].es_sincronizado());
 }
+
+#[test]
+fn directa_nueva_queda_por_revisar_sin_claude_y_existente_queda_intacta() {
+    if !comun::aislado("directa_nueva_queda_por_revisar_sin_claude_y_existente_queda_intacta") {
+        return;
+    }
+    let h = HomeFalso::nuevo();
+    h.escribir(".claude/settings.json", "{}");
+    h.escribir(".claude/.claude.json", "{}");
+    h.escribir(
+        ".claude/plugins/known_marketplaces.json",
+        r#"{"oficial": {"source": {"source": "github", "repo": "anthropics/claude-plugins"}}}"#,
+    );
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(perfil("laburo", "~/.claude"));
+    let mut existente = Item::nuevo("skill:propia", Tipo::Skill);
+    existente.estado = Estado::Pendiente;
+    existente.perfiles.push("laburo".into());
+    r.items.push(existente);
+
+    let pacman = PacmanFalso(vec![]);
+    let resumen = servicio::escanear(&mut r, &entorno(&h, &pacman)).unwrap();
+
+    let mkt = r.item("marketplace:oficial").unwrap();
+    assert_eq!(mkt.estado, Estado::PorRevisar);
+    assert!(!mkt.pasos.is_empty());
+    assert!(mkt.investigado.is_some());
+    assert_eq!(resumen.directas, 1);
+
+    let prop = r.item("skill:propia").unwrap();
+    assert_eq!(prop.estado, Estado::Pendiente);
+    assert!(prop.pasos.is_empty());
+}

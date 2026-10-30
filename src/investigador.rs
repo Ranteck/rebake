@@ -437,7 +437,7 @@ fn es_repo_seguro(s: &str) -> bool {
 }
 
 /// Lo que tiene instalador conocido no necesita a Claude; si algo no es seguro, se investiga.
-pub(crate) fn receta_directa(r: &Recetario, item: &Item) -> Option<Receta> {
+pub fn receta_directa(r: &Recetario, item: &Item) -> Option<Receta> {
     if item.instalado_por.is_some() || r.hooks_de(&item.id).next().is_some() {
         return None;
     }

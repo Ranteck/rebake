@@ -867,3 +867,36 @@ fn registro_de_hooks_exige_documentacion_y_orden() {
         assert!(parsear_salida(&sin_cita.to_string()).is_err());
     }
 }
+
+#[test]
+fn directa_nueva_arma_receta_sin_claude_y_respeta_condiciones() {
+    let r = Recetario::nuevo();
+    let mkt = item_con(
+        "marketplace:oficial",
+        Tipo::Marketplace,
+        Some("https://github.com/anthropics/claude-plugins"),
+        Via::Metadatos,
+    );
+    let directa = rebake::investigador::receta_directa(&r, &mkt).unwrap();
+    assert_eq!(directa.repo, "https://github.com/anthropics/claude-plugins");
+    assert_eq!(directa.pasos.len(), 1);
+    assert!(
+        directa.pasos[0]
+            .cmd
+            .contains("claude plugin marketplace add")
+    );
+
+    let plugin = item_con(
+        "plugin:p@oficial",
+        Tipo::Plugin,
+        Some("https://github.com/anthropics/claude-plugins"),
+        Via::Metadatos,
+    );
+    let directa_plug = rebake::investigador::receta_directa(&r, &plugin).unwrap();
+    assert_eq!(directa_plug.pasos.len(), 1);
+    assert!(
+        directa_plug.pasos[0]
+            .cmd
+            .contains("claude plugin install p@oficial")
+    );
+}

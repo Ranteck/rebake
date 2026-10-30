@@ -274,6 +274,7 @@ fn escanear(app: &mut App, ruta: &Path) {
                 resultado = "ok",
                 nuevos = res.nuevos,
                 sincronizados = res.sincronizados,
+                directas = res.directas,
                 hooks_vinculados = res.hooks_vinculados,
                 externos = res.externos,
                 avisos = res.avisos.len(),

@@ -1,7 +1,7 @@
 use crate::checklist;
 use crate::escaner::{self, Entorno};
 use crate::fusion;
-use crate::investigador::{Trabajo, trabajo_para};
+use crate::investigador::{self, Trabajo, trabajo_para};
 use crate::modelo::{Estado, Recetario};
 use crate::perfiles;
 use anyhow::{Result, bail};
@@ -12,6 +12,7 @@ use std::path::Path;
 pub struct ResumenEscaneo {
     pub nuevos: usize,
     pub sincronizados: usize,
+    pub directas: usize,
     pub avisos: Vec<String>,
     pub hooks_vinculados: usize,
     pub externos: usize,
@@ -82,6 +83,21 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     avisos.extend(escaner::comandos::vincular(r, entorno));
     let mut vistos = HashSet::new();
     avisos.retain(|aviso| vistos.insert(aviso.clone()));
+    let hoy = crate::rutas::hoy();
+    let mut directas = 0;
+    let candidatas: Vec<String> = r
+        .items
+        .iter()
+        .filter(|i| !antes.contains(&i.id) && !i.es_sincronizado() && i.estado == Estado::Pendiente)
+        .filter(|i| investigador::receta_directa(r, i).is_some())
+        .map(|i| i.id.clone())
+        .collect();
+    for id in candidatas {
+        if let Some(receta) = r.item(&id).and_then(|i| investigador::receta_directa(r, i)) {
+            investigador::aplicar(r, &id, Ok(receta), &hoy);
+            directas += 1;
+        }
+    }
     let nuevos = r
         .items
         .iter()
@@ -97,6 +113,7 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     Ok(ResumenEscaneo {
         nuevos,
         sincronizados,
+        directas,
         avisos,
         hooks_vinculados,
         externos,
