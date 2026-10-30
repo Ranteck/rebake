@@ -1,3 +1,6 @@
+#[cfg(test)]
+extern crate self as rebake;
+
 pub mod acciones;
 pub mod actualizar;
 pub mod archivo;

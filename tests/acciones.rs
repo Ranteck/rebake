@@ -46,9 +46,11 @@ fn aprobar_pendiente_se_rechaza() {
 }
 
 #[test]
-fn excluir_exige_motivo() {
+fn excluir_admite_motivo_opcional() {
     let mut r = recetario_con(Estado::Pendiente);
-    assert!(excluir(&mut r, ID, "   ").is_err());
+    excluir(&mut r, ID, "   ").unwrap();
+    assert_eq!(r.item(ID).unwrap().estado, Estado::Excluida);
+    assert!(r.item(ID).unwrap().motivo.is_none());
     excluir(&mut r, ID, "no me interesa").unwrap();
     let x = r.item(ID).unwrap();
     assert_eq!(x.estado, Estado::Excluida);

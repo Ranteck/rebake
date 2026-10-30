@@ -81,6 +81,7 @@ fn hook_vinculado_no_ofrece_corridas_ni_aprobacion() {
 #[test]
 fn recetas_muestra_grupos_estados_y_detalle() {
     let mut app = App::nueva(recetario());
+    tecla(&mut app, KeyCode::Char('o'));
     let p = pantalla(&app);
     for esperado in [
         "Claude Code",
@@ -109,14 +110,11 @@ fn excluir_desde_el_teclado() {
     let mut app = App::nueva(recetario());
     app.filtro = "statusline".into();
     app.seleccion = 0;
-    assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Nada);
-    for c in "no lo uso".chars() {
-        tecla(&mut app, KeyCode::Char(c));
-    }
-    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
     let x = app.recetario.item("statusline:statusline.sh").unwrap();
     assert_eq!(x.estado, Estado::Excluida);
-    assert_eq!(x.motivo.as_deref(), Some("no lo uso"));
+    assert!(x.motivo.is_none());
+    assert!(app.visibles().is_empty());
 }
 
 #[test]
@@ -254,9 +252,7 @@ fn excluir_usa_el_item_elegido_aunque_cambie_la_lista() {
         .unwrap();
     app.seleccion = pos;
     tecla(&mut app, KeyCode::Char('x'));
-    for c in "no lo uso".chars() {
-        tecla(&mut app, KeyCode::Char(c));
-    }
+    let elegido = app.seleccionado().unwrap().id.clone();
     // Llega una investigación que agrega un requisito que se ordena antes.
     let receta = Receta {
         registro_hooks: None,
@@ -270,8 +266,7 @@ fn excluir_usa_el_item_elegido_aunque_cambie_la_lista() {
         verificar: None,
     };
     app.registrar_investigacion("plugin:codex@openai-codex", Ok(receta), "2026-10-07");
-    assert_eq!(app.seleccionado().unwrap().id, "statusline:statusline.sh");
-    tecla(&mut app, KeyCode::Enter);
+    assert_eq!(app.seleccionado().unwrap().id, elegido);
     assert_eq!(
         app.recetario
             .item("statusline:statusline.sh")
@@ -598,7 +593,9 @@ fn el_detalle_dice_que_falta_en_cada_estado() {
         (aprobada, "en una PC nueva se instala con esto"),
         (excluida, "No se instala"),
     ] {
-        let p = pantalla(&con_un_item(item));
+        let mut app = con_un_item(item);
+        tecla(&mut app, KeyCode::Char('o'));
+        let p = pantalla(&app);
         assert!(p.contains(texto), "falta «{texto}» en:\n{p}");
     }
 }
@@ -677,7 +674,9 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
         ),
         (excluida, " x  volver a incluir   e  editar"),
     ] {
-        let pie = pie(&con_un_item(item));
+        let mut app = con_un_item(item);
+        tecla(&mut app, KeyCode::Char('o'));
+        let pie = pie(&app);
         // Las teclas de todas las recetas viven en `?`: el pie solo suma la de la ayuda.
         assert!(
             pie[0].contains(" ?  ayuda ") && pie[0].ends_with(esperado),
@@ -1125,28 +1124,20 @@ fn espacio_no_aprueba_sin_receta_ni_excluida() {
     let mut excluida = con_fuente("plugin:b@x");
     excluida.estado = Estado::Excluida;
     let mut app = con_un_item(excluida);
+    tecla(&mut app, KeyCode::Char('o'));
     assert_eq!(tecla(&mut app, KeyCode::Char('a')), Efecto::Nada);
     assert_eq!(estado(&app), Estado::Excluida);
     assert!(app.mensaje.as_deref().unwrap().contains("`x` lo devuelve"));
 }
 
 #[test]
-fn x_excluye_con_motivo_y_x_otra_vez_lo_devuelve_sin_preguntar() {
+fn x_excluye_sin_motivo_y_o_permite_recuperarla_sin_preguntar() {
     let mut app = por_revisar_con_pasos();
-    tecla(&mut app, KeyCode::Char('x'));
-    assert_eq!(
-        tecla(&mut app, KeyCode::Enter),
-        Efecto::Nada,
-        "motivo vacío"
-    );
-    assert_eq!(estado(&app), Estado::PorRevisar);
-    tecla(&mut app, KeyCode::Char('x'));
-    for c in "duplicado".chars() {
-        tecla(&mut app, KeyCode::Char(c));
-    }
-    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
     assert_eq!(estado(&app), Estado::Excluida);
-
+    assert!(app.recetario.item("plugin:b@x").unwrap().motivo.is_none());
+    assert!(app.seleccionado().is_none());
+    tecla(&mut app, KeyCode::Char('o'));
     assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
     assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert_eq!(estado(&app), Estado::PorRevisar);
@@ -2307,4 +2298,84 @@ fn tanda_con_herramienta_con_hooks_vinculados_sin_registro_hooks_no_cuenta_como_
         app.recetario.item("herramienta:tool").unwrap().estado,
         Estado::Pendiente
     );
+}
+
+#[test]
+fn sincronizados_no_aparecen_ni_entran_en_armar_o_aprobar() {
+    let mut i = con_fuente("skill:pdf");
+    i.perfiles = vec!["laburo".into()];
+    i.sincronizado_en = vec!["laburo".into()];
+    let mut app = con_un_item(i);
+    assert!(app.visibles().is_empty());
+    assert_eq!(app.por_armar(), (vec![], vec![], vec![]));
+    app.recetario.items[0].estado = Estado::PorRevisar;
+    tecla(&mut app, KeyCode::Char('v'));
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+    assert!(!pantalla(&app).contains("pdf"));
+}
+
+#[test]
+fn excluir_ocultar_y_reincluir_conserva_pasos_y_una_seleccion_valida() {
+    let mut app = App::nueva(Recetario::nuevo());
+    for id in ["plugin:a@x", "plugin:b@x", "plugin:c@x"] {
+        app.recetario.items.push(con_fuente(id));
+    }
+    app.seleccion = 1;
+    assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
+    assert_eq!(
+        app.recetario.item("plugin:b@x").unwrap().estado,
+        Estado::Excluida
+    );
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:c@x");
+    assert_eq!(app.visibles().len(), 2);
+    let p = pantalla(&app);
+    assert!(p.contains("1 excluidas"), "{p}");
+    tecla(&mut app, KeyCode::Char('o'));
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:c@x");
+    assert_eq!(app.visibles().len(), 3);
+    app.seleccion = 1;
+    assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
+    assert_eq!(
+        app.recetario.item("plugin:b@x").unwrap().estado,
+        Estado::Pendiente
+    );
+    app.filtro = "no-existe".into();
+    tecla(&mut app, KeyCode::Char('o'));
+    assert!(app.seleccionado().is_none());
+    assert_eq!(app.seleccion, 0);
+    pantalla(&app);
+}
+
+#[test]
+fn ocultar_ultimo_excluido_no_deja_indice_fuera_de_lista() {
+    let mut app = con_un_item(con_fuente("plugin:a@x"));
+    tecla(&mut app, KeyCode::Char('x'));
+    assert!(app.visibles().is_empty());
+    assert!(app.seleccionado().is_none());
+    assert_eq!(app.seleccion, 0);
+    tecla(&mut app, KeyCode::Char('o'));
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
+    tecla(&mut app, KeyCode::Char('x'));
+    assert_eq!(app.seleccionado().unwrap().estado, Estado::Pendiente);
+}
+
+#[test]
+fn detalle_de_receta_mixta_solo_anuncia_el_perfil_propio() {
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        Perfil {
+            nombre: "cuenta".into(),
+            dir: "~/.claude".into(),
+        },
+        Perfil {
+            nombre: "personal".into(),
+            dir: "~/.claude-personal".into(),
+        },
+    ];
+    let mut i = con_fuente("skill:mixta");
+    i.perfiles = vec!["cuenta".into(), "personal".into()];
+    i.sincronizado_en = vec!["cuenta".into()];
+    r.items.push(i);
+    let p = pantalla(&App::nueva(r));
+    assert!(p.contains("Solo en: personal"), "{p}");
 }

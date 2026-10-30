@@ -75,7 +75,12 @@ fn leyenda(app: &App) -> Vec<Span<'static>> {
 /// El primer paso del camino que todavía tiene trabajo.
 fn paso_actual(app: &App) -> usize {
     let items = &app.recetario.items;
-    let hay = |f: &dyn Fn(&Item) -> bool| items.iter().filter(|i| i.instalado_por.is_none()).any(f);
+    let hay = |f: &dyn Fn(&Item) -> bool| {
+        items
+            .iter()
+            .filter(|i| !i.es_sincronizado() && i.instalado_por.is_none())
+            .any(f)
+    };
     let (gratis, investigar, buscar) = app.por_armar();
     if items.is_empty() {
         0
@@ -123,7 +128,11 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
     let contar = |e: Estado| {
         r.items
             .iter()
-            .filter(|i| i.instalado_por.is_none() && i.estado == e)
+            .filter(|i| {
+                !i.es_sincronizado()
+                    && i.estado == e
+                    && (e == Estado::Excluida || i.instalado_por.is_none())
+            })
             .count()
     };
     let perfiles: Vec<&str> = r.perfiles.iter().map(|p| p.nombre.as_str()).collect();
@@ -148,7 +157,7 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
         ("□", contar(Estado::PorRevisar), "por revisar"),
         ("·", sin_receta, "sin receta"),
         ("?", sin_origen, "sin origen"),
-        ("✗", contar(Estado::Excluida), "excluidas"),
+        ("✗", contar(Estado::Excluida), "excluidas (o)"),
         ("…", app.investigando.len(), "investigando"),
         (spinner(app), app.buscando.len(), "buscando origen"),
     ]
@@ -156,6 +165,9 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
     .filter(|(_, n, _)| *n > 0)
     .map(|(marca, n, nombre)| {
         if corta {
+            if marca == "✗" {
+                return format!("{marca}{n}(o)");
+            }
             format!("{marca}{n}")
         } else {
             format!("{marca} {n} {nombre}")
@@ -387,7 +399,13 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
     if let Some(r) = &item.instalado_por {
         return vec![
             Line::from(format!("lo instala {}", r.nombre())),
-            Line::from(format!("Perfiles: {}", item.perfiles.join(", "))),
+            Line::from(format!(
+                "Perfiles: {}",
+                item.perfiles_propios()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
             Line::from("Comprobar revisa si el hook está en la configuración de cada perfil."),
             Line::from("No necesita receta ni aprobación independiente."),
         ];
@@ -401,8 +419,15 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
     }
     let mut l = vec![Line::from(primera)];
     // La primera línea ya dice el estado; los perfiles importan solo si no son todos.
-    if !item.perfiles.is_empty() && item.perfiles.len() < app.recetario.perfiles.len() {
-        l.push(Line::from(format!("Solo en: {}", item.perfiles.join(", "))));
+    let propios = item.perfiles_propios().count();
+    if propios > 0 && propios < app.recetario.perfiles.len() {
+        l.push(Line::from(format!(
+            "Solo en: {}",
+            item.perfiles_propios()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
     }
     let doc = item.fuente.as_ref().and_then(|f| f.doc.as_deref());
     match &item.fuente {
@@ -767,7 +792,7 @@ fn siguiente_paso(app: &App) -> String {
     let contar = |f: &dyn Fn(&Item) -> bool| {
         r.items
             .iter()
-            .filter(|i| i.instalado_por.is_none() && f(i))
+            .filter(|i| !i.es_sincronizado() && i.instalado_por.is_none() && f(i))
             .count()
     };
     let (gratis, investigar, buscar) = app.por_armar();
@@ -819,7 +844,7 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
             "t arma gratis y pregunta antes de cada tanda de hasta 5 corridas; s confirma, otra tecla cancela. i sigue de a una.",
         ),
         Line::from(
-            "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; v aprueba todas; x excluye y vuelve a incluir, e edita.",
+            "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; v aprueba todas; x excluye sin pedir motivo; o muestra/oculta excluidas, x las reincluye; e edita.",
         ),
         Line::from(
             "4. instalar (3, p): en una PC nueva instala lo aprobado; después, 2 Pendientes.",
@@ -839,7 +864,7 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         Line::from(""),
         titulo("Otras teclas"),
         Line::from(
-            "↑↓ o j k mover  t armar todas  v aprobar todas  s escanear  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
+            "↑↓ o j k mover  t armar todas  v aprobar todas  s escanear  o excluidas  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
         ),
     ];
     f.render_widget(Clear, area);
@@ -860,7 +885,9 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         .recetario
         .items
         .iter()
-        .filter(|i| i.instalado_por.is_none() && i.estado == Estado::PorRevisar)
+        .filter(|i| {
+            !i.es_sincronizado() && i.instalado_por.is_none() && i.estado == Estado::PorRevisar
+        })
         .count();
     let compactar = app.pestana == Pestana::Recetas && gratis + claude > 0 && por_revisar > 0;
 
@@ -954,7 +981,6 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         Modo::Escribiendo { para, texto } => {
             let etiqueta = match para {
                 Entrada::Link { .. } => "Link del repo",
-                Entrada::Motivo { .. } => "Motivo para excluir",
                 Entrada::Filtro => "Filtro",
             };
             let ayuda = match para {

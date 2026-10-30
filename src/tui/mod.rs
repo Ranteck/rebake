@@ -174,7 +174,39 @@ fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
     let aprobando_todas = app.modo == Modo::Normal
         && app.pestana == Pestana::Recetas
         && tecla.code == KeyCode::Char('v');
+    let exclusion = app.modo == Modo::Normal
+        && app.pestana == Pestana::Recetas
+        && matches!(tecla.code, KeyCode::Char('x' | 'o'));
+    let contar_excluidas = |app: &App| {
+        app.recetario
+            .items
+            .iter()
+            .filter(|i| !i.es_sincronizado() && i.estado == crate::modelo::Estado::Excluida)
+            .count()
+    };
+    let antes = exclusion.then(|| contar_excluidas(app));
     let efecto = app.tecla(tecla);
+    if let Some(antes) = antes {
+        let excluidas = contar_excluidas(app);
+        let accion = if tecla.code == KeyCode::Char('o') {
+            "ver_excluidas"
+        } else if excluidas < antes {
+            "reincluir"
+        } else {
+            "excluir"
+        };
+        let resultado = if tecla.code == KeyCode::Char('o') || efecto == Efecto::Guardar {
+            "ok"
+        } else {
+            "sin_seleccion"
+        };
+        tracing::info!(
+            accion,
+            resultado,
+            excluidas,
+            visibles = app.mostrar_excluidas
+        );
+    }
     if let Some(total) = confirmando_aprobacion {
         let decision = if tecla.code == KeyCode::Char('s') {
             "confirmar"
@@ -234,12 +266,14 @@ fn guardar(app: &mut App, ruta: &Path) {
 
 fn escanear(app: &mut App, ruta: &Path) {
     let pacman = PacmanReal;
+    let elegido = app.seleccionado().map(|i| i.id.clone());
     match Entorno::real(&pacman).and_then(|e| servicio::escanear(&mut app.recetario, &e)) {
         Ok(res) => {
             tracing::info!(
                 accion = "escanear",
                 resultado = "ok",
                 nuevos = res.nuevos,
+                sincronizados = res.sincronizados,
                 hooks_vinculados = res.hooks_vinculados,
                 externos = res.externos,
                 avisos = res.avisos.len(),
@@ -254,6 +288,7 @@ fn escanear(app: &mut App, ruta: &Path) {
                 format!(" · aviso: {}", res.avisos.join(" · "))
             };
             app.mensaje = Some(format!("escaneo: {} nuevos{avisos}", res.nuevos));
+            app.restaurar_seleccion(elegido.as_deref());
             guardar(app, ruta);
         }
         Err(e) => {
@@ -312,6 +347,7 @@ fn buscar(app: &App, home: &Path, ids: Vec<String>, tx: &mpsc::Sender<Buscado>) 
     let trabajos = ids
         .iter()
         .filter_map(|id| app.recetario.item(id))
+        .filter(|i| !i.es_sincronizado())
         .map(|i| (i.id.clone(), investigador::prompt_origen(i, home)))
         .collect();
     let rx = investigador::buscar_origenes(
@@ -489,7 +525,12 @@ fn editar(
 }
 
 #[cfg(test)]
+#[path = "../../tests/comun/mod.rs"]
+mod apoyo_pruebas;
+
+#[cfg(test)]
 mod tests {
+    use super::apoyo_pruebas::capturar_logs;
     #[test]
     fn comprobar_incluye_hooks_sin_aprobar() {
         use crate::modelo::{InstaladorHook, Item, Perfil, Recetario, Tipo};
@@ -516,7 +557,6 @@ mod tests {
     use super::*;
     use crate::modelo::{Estado, Fuente, Item, Recetario, Tipo, Via};
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use std::io::Write;
     use std::sync::{Arc, Mutex};
 
     fn pendiente() -> App {
@@ -575,30 +615,6 @@ mod tests {
             app.tecla(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
             Efecto::Investigar(vec!["mcp:privado".into()])
         );
-    }
-
-    struct Captura(Arc<Mutex<Vec<u8>>>);
-    impl Write for Captura {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    fn capturar_logs(salida: Arc<Mutex<Vec<u8>>>) -> impl tracing::Subscriber + Send + Sync {
-        static INICIAR: std::sync::Once = std::sync::Once::new();
-        INICIAR.call_once(|| {
-            // Evita cachear Interest::never si otro hilo estrena un evento sin captura.
-            tracing::subscriber::set_global_default(tracing_subscriber::registry()).unwrap();
-        });
-        tracing_subscriber::fmt()
-            .without_time()
-            .with_ansi(false)
-            .with_writer(move || Captura(salida.clone()))
-            .finish()
     }
 
     #[test]
@@ -746,5 +762,113 @@ mod tests {
         assert!(log.contains("cantidad=1"), "{log}");
         assert!(log.contains("cantidad=0"), "{log}");
         assert!(!log.contains("privado"), "{log}");
+    }
+    #[test]
+    fn escaneo_registra_omitidos_y_fallo_sin_datos_privados() {
+        const NOMBRE: &str = "tui::tests::escaneo_registra_omitidos_y_fallo_sin_datos_privados";
+        if std::env::var("REBAKE_TEST_LOG_SCAN").as_deref() != Ok("hijo") {
+            let h = tempfile::tempdir().unwrap();
+            let salida = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", NOMBRE, "--nocapture"])
+                .env_clear()
+                .env("HOME", h.path())
+                .env("PATH", h.path().join("bin"))
+                .env("XDG_CONFIG_HOME", h.path().join("xdg"))
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .env("REBAKE_TEST_LOG_SCAN", "hijo")
+                .output()
+                .unwrap();
+            assert!(
+                salida.status.success(),
+                "{} {}",
+                String::from_utf8_lossy(&salida.stdout),
+                String::from_utf8_lossy(&salida.stderr)
+            );
+            return;
+        }
+        let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+        for (rel, txt) in [
+            (".claude/settings.json", "{}"),
+            (".claude/.claude.json", "{}"),
+            (".agents/skills/synced/cuenta/pdf/SKILL.md", "sync"),
+            (".claude/skills/propia/SKILL.md", "propia"),
+        ] {
+            let p = home.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, txt).unwrap();
+        }
+        std::os::unix::fs::symlink(
+            home.join(".agents/skills/synced/cuenta/pdf"),
+            home.join(".claude/skills/pdf"),
+        )
+        .unwrap();
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = capturar_logs(salida.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            let mut app = App::nueva(Recetario::nuevo());
+            escanear(&mut app, &home.join("cookbook.toml"));
+            std::fs::remove_dir_all(&home).unwrap();
+            std::fs::write(&home, "no es directorio").unwrap();
+            escanear(&mut app, &home.join("cookbook.toml"));
+            std::fs::remove_file(&home).unwrap();
+            std::fs::create_dir(&home).unwrap();
+        });
+        let texto = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        assert!(texto.contains("sincronizados=1"), "{texto}");
+        assert!(
+            texto.contains("resultado=\"ok\"") && texto.contains("resultado=\"fallo\""),
+            "{texto}"
+        );
+        assert_eq!(texto.lines().count(), 2, "{texto}");
+        assert!(
+            !texto.contains("pdf") && !texto.contains(home.to_str().unwrap()),
+            "{texto}"
+        );
+    }
+
+    #[test]
+    fn exclusion_y_visibilidad_registran_resultados_sin_identificadores() {
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = capturar_logs(salida.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            let mut r = Recetario::nuevo();
+            r.items
+                .push(Item::nuevo("skill:privada", crate::modelo::Tipo::Skill));
+            let mut app = App::nueva(r);
+            for (key, esperado) in [
+                ('x', Efecto::Guardar),
+                ('o', Efecto::Nada),
+                ('x', Efecto::Guardar),
+            ] {
+                assert_eq!(
+                    tecla_registrada(
+                        &mut app,
+                        KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE)
+                    ),
+                    esperado
+                );
+            }
+            app.filtro = "inexistente".into();
+            tecla_registrada(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+            );
+        });
+        let texto = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        for accion in ["excluir", "ver_excluidas", "reincluir"] {
+            assert!(texto.contains(accion), "{texto}");
+        }
+        assert!(
+            texto.contains("resultado=\"ok\"") && texto.contains("sin_seleccion"),
+            "{texto}"
+        );
+        assert!(
+            texto.contains("excluidas=1") && texto.contains("excluidas=0"),
+            "{texto}"
+        );
+        assert_eq!(texto.lines().count(), 4, "{texto}");
+        assert!(!texto.contains("privada"), "{texto}");
     }
 }

@@ -53,12 +53,9 @@ pub fn incluir(r: &mut Recetario, id: &str) -> Result<Estado> {
 
 pub fn excluir(r: &mut Recetario, id: &str, motivo: &str) -> Result<()> {
     let motivo = motivo.trim();
-    if motivo.is_empty() {
-        bail!("el motivo no puede estar vacío");
-    }
     let item = buscar(r, id)?;
     item.estado = Estado::Excluida;
-    item.motivo = Some(motivo.into());
+    item.motivo = (!motivo.is_empty()).then(|| motivo.to_string());
     Ok(())
 }
 

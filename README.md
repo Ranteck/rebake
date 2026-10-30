@@ -85,6 +85,11 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    El cookbook se crea en `~/Documentos/rebake/cookbook.toml` (`~/Documents/…` en un sistema
    en inglés).
 
+   Las skills y los plugins sincronizados por Claude desde tu cuenta no aparecen ni se
+   investigan o instalan: Claude se ocupa de ellos. Rebake reconoce su carpeta real de
+   sincronización y lo recuerda en el cookbook, incluso en otra PC sin esos archivos.
+   Una skill propia con el mismo nombre sigue disponible en sus perfiles propios.
+
 3. Apretá `t` para armar todas las recetas. Las de marketplaces, plugins y skills de skills.sh
    salen al toque, sin Claude. El resto va por tandas de hasta 5 corridas de Claude: el pie
    pregunta antes de cada tanda, `s` confirma y cualquier otra tecla cancela. Las tandas no
@@ -95,6 +100,8 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    qué parte de la documentación sale cada comando.
 
 5. Apretá `a` (o espacio) para aprobarla. Lo que no querés instalar, excluilo con `x`.
+   Se oculta sin pedir motivo. `o` muestra u oculta los excluidos; sobre uno de ellos,
+   `x` lo vuelve a incluir conservando su receta. El motivo es opcional y se puede editar con `e`.
 
 6. Salí con `q`. Todo queda guardado en el cookbook.
 
@@ -108,6 +115,8 @@ rebake investigar
 `rebake escanear` termina con una línea como `91 ítems (91 nuevos) en
 ~/Documentos/rebake/cookbook.toml`, y `rebake investigar`, con `N por revisar, 0 con error`.
 Aprobar se hace en la pantalla.
+Los comandos también omiten lo sincronizado; pedir su id con `rebake investigar` falla
+sin gastar corridas y explica cómo volver a escanear si cambiaste su origen.
 
 ## Guardar el cookbook en un repo
 
@@ -237,7 +246,8 @@ no consume lugares de la tanda.
 | `l` | pegar el link del repo |
 | `a` o espacio | aprobar o desaprobar una receta armada |
 | `v` | aprobar todas las recetas por revisar (pregunta en el pie y confirma con `s`) |
-| `x` | excluir, con motivo; sobre una excluida, la vuelve a incluir |
+| `x` | excluir sin pedir motivo; sobre una excluida, la vuelve a incluir conservando la receta |
+| `o` | mostrar u ocultar los excluidos (ocultos al arrancar) |
 | `e` | editar la receta en `$VISUAL` o `$EDITOR`; queda por revisar |
 | `r` | volver a investigar |
 | `/` | filtrar |

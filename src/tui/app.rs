@@ -17,11 +17,10 @@ pub enum Pestana {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-/// Motivo y link guardan el ítem al empezar a escribir: una investigación en segundo plano
+/// El link guarda el ítem al empezar a escribir: una investigación en segundo plano
 /// puede reordenar la lista mientras tanto.
 pub enum Entrada {
     Link { id: String },
-    Motivo { id: String },
     Filtro,
 }
 
@@ -115,6 +114,7 @@ pub struct App {
     pub pestana: Pestana,
     pub seleccion: usize,
     pub filtro: String,
+    pub mostrar_excluidas: bool,
     pub modo: Modo,
     pub mensaje: Option<String>,
     pub investigando: HashSet<String>,
@@ -152,6 +152,7 @@ impl App {
             pestana: Pestana::Recetas,
             seleccion: 0,
             filtro: String::new(),
+            mostrar_excluidas: false,
             modo: Modo::Normal,
             mensaje: None,
             investigando: HashSet::new(),
@@ -228,6 +229,9 @@ impl App {
             .recetario
             .items
             .iter()
+            .filter(|i| {
+                !i.es_sincronizado() && (self.mostrar_excluidas || i.estado != Estado::Excluida)
+            })
             .filter(|i| i.id.to_lowercase().contains(&filtro))
             .collect();
         items.sort_by(|a, b| (a.tipo, &a.id).cmp(&(b.tipo, &b.id)));
@@ -245,7 +249,8 @@ impl App {
             .items
             .iter()
             .filter(|i| {
-                i.estado == Estado::Pendiente
+                !i.es_sincronizado()
+                    && i.estado == Estado::Pendiente
                     && i.instalado_por.is_none()
                     && !self.investigando.contains(&i.id)
                     && !self.buscando.contains(&i.id)
@@ -263,6 +268,13 @@ impl App {
             }
         }
         (gratis, investigar, buscar)
+    }
+
+    pub(crate) fn restaurar_seleccion(&mut self, elegido: Option<&str>) {
+        let visibles = self.visibles();
+        let siguiente = elegido.and_then(|id| visibles.iter().position(|i| i.id == id));
+        self.seleccion =
+            siguiente.unwrap_or_else(|| self.seleccion.min(visibles.len().saturating_sub(1)));
     }
 
     fn id_seleccionado(&self) -> Option<String> {
@@ -509,6 +521,7 @@ impl App {
 
     fn recetas(&mut self, codigo: KeyCode) -> Efecto {
         let total = self.visibles().len();
+        self.seleccion = self.seleccion.min(total.saturating_sub(1));
         let id = self.id_seleccionado();
         if let Some(responsable) = self.seleccionado().and_then(|i| i.instalado_por.as_ref())
             && matches!(
@@ -526,6 +539,10 @@ impl App {
             (KeyCode::Up | KeyCode::Char('k'), _) => {
                 self.seleccion = self.seleccion.saturating_sub(1)
             }
+            (KeyCode::Char('o'), elegido) => {
+                self.mostrar_excluidas = !self.mostrar_excluidas;
+                self.restaurar_seleccion(elegido.as_deref());
+            }
             (KeyCode::Char('/'), _) => {
                 self.modo = Modo::Escribiendo {
                     para: Entrada::Filtro,
@@ -536,13 +553,16 @@ impl App {
                 if self.recetario.item(&id).map(|i| i.estado) == Some(Estado::Excluida) =>
             {
                 let resultado = acciones::incluir(&mut self.recetario, &id);
-                return self.guardar_cambio(&id, resultado);
+                let efecto = self.guardar_cambio(&id, resultado);
+                self.restaurar_seleccion(Some(&id));
+                return efecto;
             }
             (KeyCode::Char('x'), Some(id)) => {
-                self.modo = Modo::Escribiendo {
-                    para: Entrada::Motivo { id },
-                    texto: String::new(),
-                }
+                let resultado =
+                    acciones::excluir(&mut self.recetario, &id, "").map(|()| Estado::Excluida);
+                let efecto = self.guardar_cambio(&id, resultado);
+                self.restaurar_seleccion(Some(&id));
+                return efecto;
             }
             (KeyCode::Char('l'), Some(id)) => {
                 self.modo = Modo::Escribiendo {
@@ -596,7 +616,11 @@ impl App {
                     .recetario
                     .items
                     .iter()
-                    .filter(|i| i.instalado_por.is_none() && i.estado == Estado::PorRevisar)
+                    .filter(|i| {
+                        !i.es_sincronizado()
+                            && i.instalado_por.is_none()
+                            && i.estado == Estado::PorRevisar
+                    })
                     .map(|i| i.id.clone())
                     .collect();
                 if ids.is_empty() {
@@ -627,6 +651,10 @@ impl App {
         match resultado {
             Ok(Estado::Aprobada) => {
                 self.avisar(&format!("{id}: aprobada (queda guardado en el cookbook)"));
+                Efecto::Guardar
+            }
+            Ok(Estado::Excluida) => {
+                self.avisar("excluida; o muestra las excluidas para volver a incluir");
                 Efecto::Guardar
             }
             Ok(Estado::PorRevisar) => {
@@ -710,7 +738,10 @@ impl App {
             .filter(|id| !self.buscando.contains(id) && !self.investigando.contains(id))
             .filter(|id| {
                 self.recetario.item(id).is_some_and(|i| {
-                    i.instalado_por.is_none() && i.estado != Estado::Excluida && i.fuente.is_none()
+                    !i.es_sincronizado()
+                        && i.instalado_por.is_none()
+                        && i.estado != Estado::Excluida
+                        && i.fuente.is_none()
                 })
             })
             .collect();
@@ -767,9 +798,11 @@ impl App {
             .into_iter()
             .filter(|id| !self.investigando.contains(id))
             .filter(|id| {
-                self.recetario
-                    .item(id)
-                    .is_some_and(|i| i.instalado_por.is_none() && i.estado != Estado::Excluida)
+                self.recetario.item(id).is_some_and(|i| {
+                    !i.es_sincronizado()
+                        && i.instalado_por.is_none()
+                        && i.estado != Estado::Excluida
+                })
             })
             .collect();
         if ids.is_empty() {
@@ -816,25 +849,15 @@ impl App {
                     self.seleccion = 0;
                     return Efecto::Nada;
                 }
-                let (Entrada::Motivo { id } | Entrada::Link { id }) = &para else {
+                let Entrada::Link { id } = &para else {
                     return Efecto::Nada;
                 };
                 let id = id.clone();
-                if matches!(para, Entrada::Link { .. }) && texto.trim().is_empty() {
+                if texto.trim().is_empty() {
                     return self.buscar(vec![id]);
                 }
-                let resultado = if matches!(para, Entrada::Motivo { .. }) {
-                    acciones::excluir(&mut self.recetario, &id, &texto).map(|_| Efecto::Guardar)
-                } else {
-                    acciones::pegar_link(&mut self.recetario, &id, &texto)
-                        .map(|_| Efecto::Investigar(vec![id.clone()]))
-                };
-                return match resultado {
-                    Ok(Efecto::Investigar(ids)) => self.investigar(ids),
-                    Ok(efecto) => {
-                        self.avisar(&format!("{id} actualizado"));
-                        efecto
-                    }
+                return match acciones::pegar_link(&mut self.recetario, &id, &texto) {
+                    Ok(()) => self.investigar(vec![id]),
                     Err(e) => {
                         self.avisar(&format!("{e:#}"));
                         Efecto::Nada
@@ -932,9 +955,7 @@ impl App {
         let elegido = self.id_seleccionado();
         aplicar(&mut self.recetario, id, resultado, hoy);
         // Un requisito nuevo reordena la lista: la selección sigue al mismo ítem.
-        if let Some(pos) = elegido.and_then(|e| self.visibles().iter().position(|i| i.id == e)) {
-            self.seleccion = pos;
-        }
+        self.restaurar_seleccion(elegido.as_deref());
         if esta_en_tanda && let Some(t) = &mut self.tanda_activa {
             if let Some(item) = self.recetario.item(id) {
                 if item.estado == Estado::PorRevisar {
