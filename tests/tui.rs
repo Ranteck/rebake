@@ -1116,6 +1116,59 @@ fn espacio_y_a_alternan_la_aprobacion_y_guardan() {
 }
 
 #[test]
+fn alternar_aprobacion_dos_veces_conserva_seleccion_por_id_con_multiples_items() {
+    let mut item_a = con_fuente("plugin:a@x");
+    item_a.estado = Estado::PorRevisar;
+    item_a.pasos = vec![Paso {
+        cmd: "cmd a".into(),
+        modo: Modo::Auto,
+        por_perfil: true,
+        cita: None,
+        nota: None,
+    }];
+    let mut item_b = con_fuente("plugin:b@x");
+    item_b.estado = Estado::PorRevisar;
+    item_b.pasos = vec![Paso {
+        cmd: "cmd b".into(),
+        modo: Modo::Auto,
+        por_perfil: true,
+        cita: None,
+        nota: None,
+    }];
+    let mut r = Recetario::nuevo();
+    r.items.push(item_a);
+    r.items.push(item_b);
+    let mut app = App::nueva(r);
+
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
+
+    // Primera 'a': aprueba plugin:a@x y lo mueve a LISTAS.
+    tecla(&mut app, KeyCode::Char('a'));
+    assert_eq!(
+        app.recetario.item("plugin:a@x").unwrap().estado,
+        Estado::Aprobada
+    );
+    assert_eq!(
+        app.recetario.item("plugin:b@x").unwrap().estado,
+        Estado::PorRevisar
+    );
+    // La selección debe seguir a plugin:a@x
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
+
+    // Segunda 'a': desaprueba plugin:a@x en vez de aprobar plugin:b@x.
+    tecla(&mut app, KeyCode::Char('a'));
+    assert_eq!(
+        app.recetario.item("plugin:a@x").unwrap().estado,
+        Estado::PorRevisar
+    );
+    assert_eq!(
+        app.recetario.item("plugin:b@x").unwrap().estado,
+        Estado::PorRevisar
+    );
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
+}
+
+#[test]
 fn espacio_no_aprueba_sin_receta_ni_excluida() {
     let mut app = con_un_item(con_fuente("plugin:b@x"));
     assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Nada);

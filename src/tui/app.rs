@@ -351,6 +351,7 @@ impl App {
                 }
             }
             Modo::ConfirmarAprobacion { ids } => {
+                let elegido = self.id_seleccionado();
                 self.modo = Modo::Normal;
                 if k.code != KeyCode::Char('s') {
                     self.avisar("aprobación cancelada; no se aprobó nada");
@@ -362,6 +363,7 @@ impl App {
                         aprobadas += 1;
                     }
                 }
+                self.restaurar_seleccion(elegido.as_deref());
                 if aprobadas > 0 {
                     self.avisar(&format!(
                         "{aprobadas} recetas aprobadas (queda guardado en el cookbook)"
@@ -579,16 +581,12 @@ impl App {
                 if self.recetario.item(&id).map(|i| i.estado) == Some(Estado::Excluida) =>
             {
                 let resultado = acciones::incluir(&mut self.recetario, &id);
-                let efecto = self.guardar_cambio(&id, resultado);
-                self.restaurar_seleccion(Some(&id));
-                return efecto;
+                return self.guardar_cambio(&id, resultado);
             }
             (KeyCode::Char('x'), Some(id)) => {
                 let resultado =
                     acciones::excluir(&mut self.recetario, &id, "").map(|()| Estado::Excluida);
-                let efecto = self.guardar_cambio(&id, resultado);
-                self.restaurar_seleccion(Some(&id));
-                return efecto;
+                return self.guardar_cambio(&id, resultado);
             }
             (KeyCode::Char('l'), Some(id)) => {
                 self.modo = Modo::Escribiendo {
@@ -674,6 +672,7 @@ impl App {
     }
 
     fn guardar_cambio(&mut self, id: &str, resultado: anyhow::Result<Estado>) -> Efecto {
+        self.restaurar_seleccion(Some(id));
         match resultado {
             Ok(Estado::Aprobada) => {
                 self.avisar(&format!("{id}: aprobada (queda guardado en el cookbook)"));
