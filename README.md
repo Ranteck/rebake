@@ -10,7 +10,7 @@ PC nueva, rebake ejecuta las recetas aprobadas y te deja una lista de lo que que
 
 ```text
 esta PC:   escanear  ›  armar recetas  ›  aprobar        (cookbook.toml, en tu repo privado)
-PC nueva:  rebake <url-del-cookbook>  ›  instalar  ›  Pendientes (lo que queda a mano)
+PC nueva:  rebake <url-del-cookbook>  ›  instalar  ›  Checklist (lo que queda a mano)
 ```
 
 No copia memorias, historial ni credenciales, y no instala paquetes del sistema.
@@ -78,10 +78,10 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    rebake
    ```
 
-   Arranca en la pestaña **Recetas**. Con un cookbook vacío, el pie dice
+   Arranca en la pestaña **Armar** (pestaña 1). Con un cookbook vacío, el pie dice
    `` Siguiente: `s` escanea esta PC ``.
 
-2. Apretá `s` para escanear. Aparece cada cosa instalada en tus perfiles, agrupada por tipo.
+2. Apretá `s` para escanear. Aparece cada cosa instalada en tus perfiles, dividida en **POR RESOLVER** (decisiones de receta pendientes, errores o posibles orígenes) y **LISTAS** (las aprobadas), agrupada por tipo.
    El cookbook se crea en `~/Documentos/rebake/cookbook.toml` (`~/Documents/…` en un sistema
    en inglés).
 
@@ -90,8 +90,10 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    sincronización y lo recuerda en el cookbook, incluso en otra PC sin esos archivos.
    Una skill propia con el mismo nombre sigue disponible en sus perfiles propios.
 
-3. Apretá `t` para armar todas las recetas. Las de marketplaces, plugins y skills de skills.sh
-   salen al toque, sin Claude. El resto va por tandas de hasta 5 corridas de Claude: el pie
+   Los hooks vinculados a una herramienta se ven dentro de ella en el panel de detalle;
+   los propios siguen en la lista y los externos, en la pestaña Checklist.
+
+3. Lo directo (marketplaces, plugins oficiales y skills de skills.sh) llega ya armado al escanear, gratis, listo para revisar. Apretá `t` para armar el resto de las recetas pendientes con origen. Van por tandas de hasta 5 corridas de Claude: el pie
    pregunta antes de cada tanda, `s` confirma y cualquier otra tecla cancela. Las tandas no
    se encadenan. Cada búsqueda de origen también cuenta como una corrida
    (ver [Cómo arma cada receta](#cómo-arma-cada-receta)).
@@ -152,7 +154,7 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 
 1. Instalá Claude Code y logueate.
 2. Instalá rebake (ver [Instalar](#instalar)).
-3. Traé tu cookbook y abrí la pantalla en **Instalación**:
+3. Traé tu cookbook y abrí la pantalla en **Instalar** (pestaña 2):
 
    ```bash
    rebake https://github.com/<tu-usuario>/<tu-cookbook>
@@ -163,7 +165,7 @@ ln -s ~/mi-repo-privado/cookbook.toml ~/Documentos/rebake/cookbook.toml
 
 4. Apretá `c` para comprobar cuáles ya están en esta PC.
 5. Desmarcá con espacio lo que no quieras. Lo que desmarcás vale solo para esta instalación.
-6. Apretá `p` para instalar. Al terminar, la pantalla pasa sola a **Pendientes**.
+6. Apretá `p` para instalar. Al terminar, la pantalla pasa sola a **Checklist** (pestaña 3).
 7. Seguí la lista de [Lo que queda a mano](#lo-que-queda-a-mano).
 
 Lo mismo sin pantalla:
@@ -223,21 +225,21 @@ mismas de la lista. El pie muestra las teclas de lo que tenés elegido y, debajo
 actual, qué significa cada marca, para qué es cada pestaña y todas las teclas. Ninguna tecla
 depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
 
-En Recetas, el pie separa las cuentas: `t armar 25 + 41 Claude` son 25 recetas gratis y
+En Armar, el pie separa las cuentas: `t armar 25 + 41 Claude` son 25 recetas gratis y
 41 corridas pendientes; cuenta corridas, no tokens ni porcentaje de cuota. Mientras haya
 corridas de Claude en curso, `t` sigue armando gratis y pide esperar. `i` sigue de a una y
 no consume lugares de la tanda.
 
 | Tecla | En todas las pestañas |
 |---|---|
-| `1` `2` `3` | Recetas, Pendientes, Instalación |
+| `1` `2` `3` | Armar, Instalar, Checklist |
 | `s` | escanear |
-| `p` | instalar lo marcado en Instalación |
+| `p` | instalar lo marcado en Instalar |
 | `u` | actualizar rebake, cuando la cabecera avisa |
 | `?` | ayuda |
 | `q` | salir |
 
-**Recetas**, en tu PC:
+**Armar** (pestaña 1), en tu PC:
 
 | Tecla | Acción |
 |---|---|
@@ -252,7 +254,7 @@ no consume lugares de la tanda.
 | `r` | volver a investigar |
 | `/` | filtrar |
 
-**Instalación**, en la PC nueva:
+**Instalar** (pestaña 2), en la PC nueva:
 
 | Tecla | Acción |
 |---|---|
@@ -262,7 +264,7 @@ no consume lugares de la tanda.
 | `c` | comprobar qué está instalado en cada perfil |
 | `Esc` | volver de los resultados al plan |
 
-**Pendientes**, después de instalar: la lista va a la izquierda y lo elegido, entero, a la
+**Checklist** (pestaña 3), después de instalar: la lista va a la izquierda y lo elegido, entero, a la
 derecha. Espacio tilda una línea (no se guarda en el cookbook) y Enter despliega o colapsa los
 ajustes.
 
@@ -300,7 +302,7 @@ presente con hooks faltantes no hace que se saltee el registro. Nunca se copian 
 Los cookbooks nuevos guardan el responsable; si una versión anterior rechaza ese campo,
 su error muestra cómo actualizar rebake.
 
-La pestaña Pendientes, y la salida de `rebake instalar`, junta lo que rebake no hace por vos:
+La pestaña Checklist, y la salida de `rebake instalar`, junta lo que rebake no hace por vos:
 
 - **Logins:** `claude` y `/login` en cada perfil, y `gh auth login`.
 - **Hooks de herramientas externas:** una línea por herramienta, con cantidad de hooks y

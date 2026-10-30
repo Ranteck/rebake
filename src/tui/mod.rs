@@ -165,17 +165,17 @@ fn bucle(
 fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
     let confirmando = matches!(app.modo, Modo::ConfirmarTanda { .. });
     let armando = app.modo == Modo::Normal
-        && app.pestana == Pestana::Recetas
+        && app.pestana == Pestana::Armar
         && matches!(tecla.code, KeyCode::Char('t' | 'I'));
     let confirmando_aprobacion = match &app.modo {
         Modo::ConfirmarAprobacion { ids } => Some(ids.len()),
         _ => None,
     };
     let aprobando_todas = app.modo == Modo::Normal
-        && app.pestana == Pestana::Recetas
+        && app.pestana == Pestana::Armar
         && tecla.code == KeyCode::Char('v');
     let exclusion = app.modo == Modo::Normal
-        && app.pestana == Pestana::Recetas
+        && app.pestana == Pestana::Armar
         && matches!(tecla.code, KeyCode::Char('x' | 'o'));
     let contar_excluidas = |app: &App| {
         app.recetario

@@ -11,9 +11,9 @@ const MAX_SALIDA: usize = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Pestana {
-    Recetas,
-    Checklist,
+    Armar,
     Instalacion,
+    Checklist,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -149,7 +149,7 @@ impl App {
     pub fn nueva(recetario: Recetario) -> Self {
         App {
             recetario,
-            pestana: Pestana::Recetas,
+            pestana: Pestana::Armar,
             seleccion: 0,
             filtro: String::new(),
             mostrar_excluidas: false,
@@ -413,9 +413,9 @@ impl App {
                 Some(version) => return Efecto::Actualizar(version),
                 None => self.avisar("rebake está al día"),
             },
-            KeyCode::Char('1') => self.pestana = Pestana::Recetas,
-            KeyCode::Char('2') => self.pestana = Pestana::Checklist,
-            KeyCode::Char('3') => self.pestana = Pestana::Instalacion,
+            KeyCode::Char('1') => self.pestana = Pestana::Armar,
+            KeyCode::Char('2') => self.pestana = Pestana::Instalacion,
+            KeyCode::Char('3') => self.pestana = Pestana::Checklist,
             KeyCode::Char('s') => return Efecto::Escanear,
             // Sin depender de Shift: la mayúscula queda por costumbre, el pie muestra la minúscula.
             KeyCode::Char('p' | 'P') => {
@@ -436,7 +436,7 @@ impl App {
             }
             _ if self.viendo_plan() => return self.plan_instalacion(codigo),
             _ if self.pestana == Pestana::Checklist => self.checklist(codigo),
-            _ if self.pestana == Pestana::Recetas => return self.recetas(codigo),
+            _ if self.pestana == Pestana::Armar => return self.recetas(codigo),
             _ => {}
         }
         Efecto::Nada

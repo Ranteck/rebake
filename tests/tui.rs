@@ -350,7 +350,7 @@ fn resaltar(app: &mut App, id: &str) {
 
 #[test]
 fn con_url_abre_en_instalacion_y_sin_url_en_recetas() {
-    assert_eq!(App::nueva(recetario()).pestana, Pestana::Recetas);
+    assert_eq!(App::nueva(recetario()).pestana, Pestana::Armar);
     let app = App::nueva(recetario()).con_arranque(true, Default::default());
     assert_eq!(app.pestana, Pestana::Instalacion);
 }
@@ -729,7 +729,7 @@ fn el_pie_con_todo_aprobado_ofrece_ir_a_instalar() {
     let mut item = con_fuente("plugin:a@x");
     item.estado = Estado::Aprobada;
     let pie = pie(&con_un_item(item));
-    assert!(pie[0].contains(" 3  ir a instalar "), "{pie:?}");
+    assert!(pie[0].contains(" 2  ir a instalar "), "{pie:?}");
 }
 
 #[test]
@@ -737,7 +737,7 @@ fn el_pie_con_solo_por_revisar_no_ofrece_otra_tecla_del_paso() {
     let mut item = con_fuente("plugin:a@x");
     item.estado = Estado::PorRevisar;
     let pie = pie(&con_un_item(item));
-    for tecla in [" t  ", " s  ", " 3  "] {
+    for tecla in [" t  ", " s  ", " 2  "] {
         assert!(!pie[0].contains(tecla), "{pie:?}");
     }
     assert!(pie[0].contains(" espacio/a  aprobar "), "{pie:?}");
@@ -974,13 +974,13 @@ fn en_80_columnas_la_cabecera_conserva_los_contadores() {
 #[test]
 fn instalacion_sin_aprobadas_solo_ofrece_lo_que_sirve() {
     let mut app = con_un_item(con_fuente("plugin:a@x"));
-    tecla(&mut app, KeyCode::Char('3'));
+    tecla(&mut app, KeyCode::Char('2'));
     let pie = pie(&app);
     for sobra in [" t ", " c ", " p ", "espacio"] {
         assert!(!pie[0].contains(sobra), "sobra {sobra:?} en {pie:?}");
     }
     assert!(
-        pie[0].contains("1 volver a Recetas") && pie[0].contains("q salir"),
+        pie[0].contains("1 volver a Armar") && pie[0].contains("q salir"),
         "{pie:?}"
     );
 }
@@ -1035,15 +1035,17 @@ fn el_signo_en_el_filtro_se_escribe() {
 fn la_ayuda_dice_para_que_es_cada_pestana() {
     let ayuda = con_ayuda(App::nueva(recetario()));
     for texto in [
-        "En esta PC: decidí cómo se instala cada cosa",
-        "Después de instalar: lo que rebake no hace por vos",
-        "En una PC nueva: instalá las recetas aprobadas",
+        "1 Armar. En esta PC: decidí cómo se instala cada cosa",
+        "2 Instalar. En una PC nueva: instalá las recetas aprobadas",
+        "3 Checklist. Después de instalar: lo que rebake no hace por vos",
     ] {
         assert!(ayuda.contains(texto), "falta {texto:?} en:\n{ayuda}");
     }
     let mut app = App::nueva(recetario());
     tecla(&mut app, KeyCode::Char('2'));
-    assert!(pie(&app)[0].contains(" 2 Pendientes "));
+    assert!(pie(&app)[0].contains(" 2 Instalar "));
+    tecla(&mut app, KeyCode::Char('3'));
+    assert!(pie(&app)[0].contains(" 3 Checklist "));
 }
 
 #[test]
@@ -1465,7 +1467,7 @@ fn las_teclas_de_pendientes_entran_enteras_a_80_columnas() {
     let app = con_pendientes();
     let p = pantalla_en(&app, 80, 24);
     assert!(
-        p.contains("2 Pendientes  3 Instalación   espacio tilda  Enter ajustes  ? ayuda"),
+        p.contains("1 Armar  2 Instalar  3 Checklist   espacio tilda  Enter ajustes  ? ayuda"),
         "{p}"
     );
 }
@@ -1674,7 +1676,7 @@ fn cualquier_otra_tecla_cancela_sin_hacer_su_accion_y_conserva_gratis() {
         };
         terminar_directas(&mut app, &ids);
         assert_eq!(tecla(&mut app, k), Efecto::Nada, "{k:?}");
-        assert_eq!(app.pestana, Pestana::Recetas);
+        assert_eq!(app.pestana, Pestana::Armar);
         assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
         assert!(pie(&app)[1].contains("no se gastó nada"), "{k:?}");
         assert!(app.buscando.is_empty());
@@ -1813,10 +1815,10 @@ fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
 fn el_pie_mide_80_columnas_con_cuentas_de_tres_cifras_incluso_con_filtro() {
     use unicode_width::UnicodeWidthStr;
     for (g, c, texto, ancho) in [
-        (107, 141, " t  armar 107 + 141 Claude ", 80),
-        (999, 999, " t  armar 999 + 999 Claude ", 80),
-        (999, 0, " t  armar 999 ", 67),
-        (0, 999, " t  armar 999 Claude ", 74),
+        (107, 141, " t  armar 107 + 141 Claude ", 74),
+        (999, 999, " t  armar 999 + 999 Claude ", 74),
+        (999, 0, " t  armar 999 ", 61),
+        (0, 999, " t  armar 999 Claude ", 68),
     ] {
         let mut app = con_cuota(g, 0, c);
         app.filtro = "bus-000".into();
@@ -1831,13 +1833,7 @@ fn el_pie_mide_80_columnas_con_cuentas_de_tres_cifras_incluso_con_filtro() {
         assert_eq!(UnicodeWidthStr::width(&linea[..fin]), ancho, "{linea}");
         let chica = pantalla_en(&app, 80, 24);
         let pie = chica.lines().nth(22).unwrap();
-        for esperado in [
-            "1 Recetas",
-            "2 Pendientes",
-            "3 Instalación",
-            " ?  ayuda ",
-            texto,
-        ] {
+        for esperado in ["1 Armar", "2 Instalar", "3 Checklist", " ?  ayuda ", texto] {
             assert!(pie.contains(esperado), "falta {esperado:?}: {pie}");
         }
         assert!(chica.lines().nth(23).unwrap().contains("Escaneo terminado"));
@@ -2162,16 +2158,16 @@ fn el_pie_en_80_columnas_con_pendientes_y_por_revisar_mide_78_columnas_hasta_v()
         + texto_v.len();
     assert_eq!(
         UnicodeWidthStr::width(&linea[..fin]),
-        78,
-        "el prefijo hasta v debe medir 78 cols: {linea}"
+        77,
+        "el prefijo hasta v debe medir 77 cols: {linea}"
     );
 
     let chica = pantalla_en(&app, 80, 24);
     let pie = chica.lines().nth(22).unwrap();
     for esperado in [
-        "1 Recetas",
-        "2 Pend",
-        "3 Inst",
+        "1 Armar",
+        "2 Inst",
+        "3 Check",
         " ?  ayuda ",
         " t  999 + 999 Claude ",
         " v  aprobar 999 ",
@@ -2324,12 +2320,56 @@ fn grupos_imports_hooks_propios_vinculados_y_externos_en_pantalla_y_listo() {
 
     app.recetario.item_mut("hook:mi-hook").unwrap().estado = Estado::Aprobada;
     app.recetario.item_mut("skill:extra").unwrap().estado = Estado::Aprobada;
-    app.pestana = Pestana::Recetas;
+    app.pestana = Pestana::Armar;
 
     assert!(app.por_resolver().is_empty());
     assert!(app.esta_listo());
     let p_listo = pantalla(&app);
     assert!(p_listo.contains("COOKBOOK LISTO"), "{p_listo}");
+}
+
+#[test]
+fn layout_80x24_pestanas_salida_en_todos_los_modos_y_no_color() {
+    let mut app = App::nueva(recetario());
+    app.color = false;
+
+    // 1. Armar
+    let p_armar = pantalla_en(&app, 80, 24);
+    assert_eq!(p_armar.lines().count(), 24);
+    assert!(
+        p_armar.contains("1 Armar  2 Instalar  3 Checklist"),
+        "{p_armar}"
+    );
+    assert!(p_armar.contains("?  ayuda"), "{p_armar}");
+
+    // 2. Instalar
+    app.pestana = Pestana::Instalacion;
+    let p_inst = pantalla_en(&app, 80, 24);
+    assert_eq!(p_inst.lines().count(), 24);
+    assert!(
+        p_inst.contains("1 Armar  2 Instalar  3 Checklist"),
+        "{p_inst}"
+    );
+    assert!(p_inst.contains("↑↓ mover"), "{p_inst}");
+
+    // 3. Checklist
+    app.pestana = Pestana::Checklist;
+    let p_check = pantalla_en(&app, 80, 24);
+    assert_eq!(p_check.lines().count(), 24);
+    assert!(
+        p_check.contains("1 Armar  2 Instalar  3 Checklist"),
+        "{p_check}"
+    );
+    assert!(p_check.contains("? ayuda"), "{p_check}");
+
+    // 4. Ayuda
+    app.modo = rebake::tui::app::Modo::Ayuda;
+    let p_ayuda = pantalla_en(&app, 80, 24);
+    assert_eq!(p_ayuda.lines().count(), 24);
+    assert!(p_ayuda.contains("1 Armar"), "{p_ayuda}");
+    assert!(p_ayuda.contains("2 Instalar"), "{p_ayuda}");
+    assert!(p_ayuda.contains("3 Checklist"), "{p_ayuda}");
+    assert!(p_ayuda.contains("Esc cierra"), "{p_ayuda}");
 }
 
 #[test]

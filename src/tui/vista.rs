@@ -12,7 +12,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const TECLAS_INSTALACION: &str =
     "↑↓ mover  espacio marcar  t todas/ninguna  c comprobar  p instalar  ? ayuda  q salir";
-const TECLAS_SIN_PLAN: &str = "1 volver a Recetas  q salir  ? ayuda";
+const TECLAS_SIN_PLAN: &str = "1 volver a Armar  q salir  ? ayuda";
 const TECLAS_RESULTADOS: &str = "Esc volver al plan  ? ayuda  q salir";
 const TECLAS_PENDIENTES: &str = "espacio tilda  Enter ajustes  ? ayuda";
 const PASOS: [&str; 4] = ["escanear", "armar recetas", "aprobar", "instalar"];
@@ -38,9 +38,9 @@ pub fn dibujar(f: &mut Frame, app: &App) {
         cabecera,
     );
     match app.pestana {
-        Pestana::Recetas => recetas(f, app, cuerpo),
-        Pestana::Checklist => checklist(f, app, cuerpo),
+        Pestana::Armar => recetas(f, app, cuerpo),
         Pestana::Instalacion => instalacion(f, app, cuerpo),
+        Pestana::Checklist => checklist(f, app, cuerpo),
     }
     if app.modo == Modo::Ayuda {
         ayuda(f, app, cuerpo);
@@ -405,7 +405,7 @@ fn que_falta(app: &App, item: &Item) -> &'static str {
         },
         Estado::Pendiente => "Esta PC lo tiene, pero todavía no hay receta: `i` la arma.",
         Estado::PorRevisar => "Hay receta: revisá qué va a ejecutar y `a` la aprueba.",
-        Estado::Aprobada => "Lista: en una PC nueva se instala con esto (pestaña 3).",
+        Estado::Aprobada => "Lista: en una PC nueva se instala con esto (pestaña 2).",
         Estado::Excluida => "No se instala.",
     }
 }
@@ -824,7 +824,7 @@ fn siguiente_paso(app: &App) -> String {
     if app.esta_listo() {
         let n = contar(&|i| i.estado == Estado::Aprobada);
         return if n > 0 {
-            format!("COOKBOOK LISTO · en una PC nueva, `3` y `p` instalan las {n} aprobadas")
+            format!("COOKBOOK LISTO · en una PC nueva, `2` y `p` instalan las {n} aprobadas")
         } else {
             "COOKBOOK LISTO · no hay recetas aprobadas para instalar".into()
         };
@@ -854,7 +854,7 @@ fn siguiente_paso(app: &App) -> String {
         ) {
             (0, 0) => String::new(),
             (0, n) => format!("Siguiente: {n} sin origen: elegí una; `i` te deja pegar el link"),
-            (n, _) => format!("Siguiente: en una PC nueva, `3` y `p` instalan las {n} aprobadas"),
+            (n, _) => format!("Siguiente: en una PC nueva, `2` y `p` instalan las {n} aprobadas"),
         },
     }
 }
@@ -881,19 +881,19 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
             "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; v aprueba todas; x excluye sin pedir motivo; o muestra/oculta excluidas, x las reincluye; e edita.",
         ),
         Line::from(
-            "4. instalar (3, p): en una PC nueva instala lo aprobado; después, 2 Pendientes.",
+            "4. instalar (2, p): en una PC nueva instala lo aprobado; después, 3 Checklist.",
         ),
         Line::from(""),
         titulo("Marcas"),
         Line::from(leyenda(app)),
         Line::from(""),
         titulo("Pestañas"),
-        Line::from("1 Recetas. En esta PC: decidí cómo se instala cada cosa."),
+        Line::from("1 Armar. En esta PC: decidí cómo se instala cada cosa."),
         Line::from(
-            "2 Pendientes. Después de instalar: lo que rebake no hace por vos (logins y ajustes).",
+            "2 Instalar. En una PC nueva: instalá las recetas aprobadas. c comprueba, espacio marca (solo para esa instalación) y p instala.",
         ),
         Line::from(
-            "3 Instalación. En una PC nueva: instalá las recetas aprobadas. c comprueba, espacio marca (solo para esa instalación) y p instala.",
+            "3 Checklist. Después de instalar: lo que rebake no hace por vos (logins y ajustes).",
         ),
         Line::from(""),
         titulo("Otras teclas"),
@@ -923,19 +923,19 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             !i.es_sincronizado() && i.instalado_por.is_none() && i.estado == Estado::PorRevisar
         })
         .count();
-    let compactar = app.pestana == Pestana::Recetas && gratis + claude > 0 && por_revisar > 0;
+    let compactar = app.pestana == Pestana::Armar && gratis + claude > 0 && por_revisar > 0;
 
     let pestanas = if compactar {
         [
-            (Pestana::Recetas, "1 Recetas"),
-            (Pestana::Checklist, "2 Pend"),
-            (Pestana::Instalacion, "3 Inst"),
+            (Pestana::Armar, "1 Armar"),
+            (Pestana::Instalacion, "2 Inst"),
+            (Pestana::Checklist, "3 Check"),
         ]
     } else {
         [
-            (Pestana::Recetas, "1 Recetas"),
-            (Pestana::Checklist, "2 Pendientes"),
-            (Pestana::Instalacion, "3 Instalación"),
+            (Pestana::Armar, "1 Armar"),
+            (Pestana::Instalacion, "2 Instalar"),
+            (Pestana::Checklist, "3 Checklist"),
         ]
     };
     let mut spans: Vec<Span> = Vec::new();
@@ -947,7 +947,7 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         };
         spans.push(Span::styled(format!(" {texto} "), estilo));
     }
-    if app.pestana == Pestana::Recetas {
+    if app.pestana == Pestana::Armar {
         // `?` va primero: en una terminal angosta se cortan las otras, no la que explica todo.
         spans.push(Span::raw(" "));
         spans.extend(teclas(&[("?", "ayuda")]));
@@ -975,7 +975,7 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
                 .iter()
                 .any(|i| i.estado == Estado::Aprobada) =>
             {
-                spans.extend(teclas(&[("3", "ir a instalar")]));
+                spans.extend(teclas(&[("2", "ir a instalar")]));
             }
             _ => {}
         }
