@@ -1218,6 +1218,34 @@ fn hook_con_instalador_excluido_se_ve_con_o_se_reincluye_con_x_y_avisa_responsab
 }
 
 #[test]
+fn comprobando_bloquea_esta_listo_y_cookbook_listo() {
+    let mut item = con_fuente("herramienta:tool");
+    item.estado = Estado::Aprobada;
+    let mut r = Recetario::nuevo();
+    r.items.push(item);
+    let mut app = App::nueva(r);
+
+    assert!(app.esta_listo());
+    assert!(pantalla(&app).contains("COOKBOOK LISTO"));
+
+    // 2 (Instalar), c (comprobar), 1 (Armar)
+    tecla(&mut app, KeyCode::Char('2'));
+    tecla(&mut app, KeyCode::Char('c'));
+    assert!(app.comprobando);
+    tecla(&mut app, KeyCode::Char('1'));
+
+    // Mientras comprueba, no está listo ni debe decir COOKBOOK LISTO
+    assert!(!app.esta_listo());
+    assert!(!pantalla(&app).contains("COOKBOOK LISTO"));
+
+    // Al terminar de comprobar, vuelve a estar listo
+    app.terminar_comprobacion();
+    assert!(!app.comprobando);
+    assert!(app.esta_listo());
+    assert!(pantalla(&app).contains("COOKBOOK LISTO"));
+}
+
+#[test]
 fn espacio_no_aprueba_sin_receta_ni_excluida() {
     let mut app = con_un_item(con_fuente("plugin:b@x"));
     assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Nada);

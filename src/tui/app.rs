@@ -262,6 +262,7 @@ impl App {
             && self.investigando.is_empty()
             && self.buscando.is_empty()
             && !self.instalando
+            && !self.comprobando
             && self
                 .recetario
                 .items
