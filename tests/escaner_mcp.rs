@@ -34,6 +34,9 @@ fn cookbook(
 
 #[test]
 fn de_claude_json_solo_llegan_los_servidores() {
+    if !comun::aislado("de_claude_json_solo_llegan_los_servidores") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(".claude.json", CLAUDE_JSON);
     h.binario(
@@ -82,6 +85,9 @@ fn de_claude_json_solo_llegan_los_servidores() {
 
 #[test]
 fn un_servidor_remoto_queda_con_su_host_sin_credenciales_ni_ruta() {
+    if !comun::aislado("un_servidor_remoto_queda_con_su_host_sin_credenciales_ni_ruta") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(".claude.json", CLAUDE_JSON);
     let (e, _) = cookbook(&h, &[perfil("laburo", "~/.claude")]);
@@ -99,6 +105,9 @@ fn un_servidor_remoto_queda_con_su_host_sin_credenciales_ni_ruta() {
 
 #[test]
 fn cada_perfil_lee_su_propio_claude_json() {
+    if !comun::aislado("cada_perfil_lee_su_propio_claude_json") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(
         ".claude.json",
@@ -133,6 +142,9 @@ fn cada_perfil_lee_su_propio_claude_json() {
 
 #[test]
 fn sin_claude_json_no_hay_aviso_y_uno_roto_avisa_sin_contenido() {
+    if !comun::aislado("sin_claude_json_no_hay_aviso_y_uno_roto_avisa_sin_contenido") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let (e, _) = cookbook(&h, &[perfil("laburo", "~/.claude")]);
     assert!(e.hallazgos.iter().all(|x| x.tipo != Tipo::Mcp));

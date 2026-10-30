@@ -60,7 +60,9 @@ pub fn planificar(r: &Recetario) -> Result<Vec<String>> {
     let aprobadas: HashSet<&str> = r
         .items
         .iter()
-        .filter(|i| i.estado == Estado::Aprobada && i.instalado_por.is_none())
+        .filter(|i| {
+            i.estado == Estado::Aprobada && i.instalado_por.is_none() && !i.es_sincronizado()
+        })
         .map(|i| i.id.as_str())
         .collect();
     let mut hecho = HashSet::new();
@@ -112,7 +114,7 @@ pub fn instalar(
     let mut resultados: Vec<(String, Resultado)> = Vec::new();
     for id in orden {
         let Some(item) = r.item(id) else { continue };
-        if item.instalado_por.is_some() {
+        if item.instalado_por.is_some() || item.es_sincronizado() {
             continue;
         }
         emitir(Evento::Inicio(id.clone()));
@@ -154,9 +156,9 @@ fn abrir_log(op: &Opciones) -> Option<File> {
 }
 
 fn perfiles_de(r: &Recetario, item: &Item, home: &Path) -> Vec<(String, PathBuf)> {
-    let mut nombres = item.perfiles.clone();
+    let mut nombres: Vec<_> = item.perfiles_propios().cloned().collect();
     for h in r.hooks_de(&item.id) {
-        for n in &h.perfiles {
+        for n in h.perfiles_propios() {
             if !nombres.contains(n) {
                 nombres.push(n.clone());
             }
@@ -164,6 +166,7 @@ fn perfiles_de(r: &Recetario, item: &Item, home: &Path) -> Vec<(String, PathBuf)
     }
     nombres
         .iter()
+        .filter(|n| !item.sincronizado_en.contains(n))
         .filter_map(|n| r.perfiles.iter().find(|p| &p.nombre == n))
         .map(|p| (p.nombre.clone(), expandir(&p.dir, home)))
         .collect()
@@ -200,6 +203,9 @@ pub fn comprobar(
 ) {
     for id in ids {
         let Some(item) = r.item(id) else { continue };
+        if item.es_sincronizado() {
+            continue;
+        }
         let presencia = if item.instalado_por.is_some() {
             presencia_hook(r, item, home)
         } else {

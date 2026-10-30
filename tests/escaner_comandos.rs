@@ -30,6 +30,9 @@ fn palabras_no_expande_home_literal_entre_comillas() {
 
 #[test]
 fn binario_de_pacman_no_aparece() {
+    if !comun::aislado("binario_de_pacman_no_aparece") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let jq = h.binario("bin/jq", b"#!/bin/sh\n");
     h.escribir(".claude/settings.json", r#"{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "jq --version"}]}]}}"#);
@@ -41,6 +44,9 @@ fn binario_de_pacman_no_aparece() {
 
 #[test]
 fn statusline_con_comillas_y_home() {
+    if !comun::aislado("statusline_con_comillas_y_home") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let bash = h.binario("bin/bash", b"#!/bin/sh\n");
     h.escribir(".claude/statusline.sh", "#!/bin/bash\n");
@@ -65,6 +71,9 @@ fn statusline_con_comillas_y_home() {
 
 #[test]
 fn hook_crea_herramienta_con_url_del_binario() {
+    if !comun::aislado("hook_crea_herramienta_con_url_del_binario") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.binario("bin/rtk", b"\x7fELF...https://github.com/ejemplo/rtk ... https://github.com/ejemplo/rtk/issues ... https://github.com/clap-rs/clap\0");
     h.escribir(".claude/settings.json", r#"{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "rtk hook claude"}]}]}}"#);
@@ -91,6 +100,9 @@ fn hook_crea_herramienta_con_url_del_binario() {
 
 #[test]
 fn claude_code_es_requisito_y_no_receta() {
+    if !comun::aislado("claude_code_es_requisito_y_no_receta") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(".claude/settings.json", "{}");
     h.escribir(".claude/skills/propia/SKILL.md", "x");
@@ -103,6 +115,9 @@ fn claude_code_es_requisito_y_no_receta() {
 
 #[test]
 fn hook_con_secreto_no_se_guarda() {
+    if !comun::aislado("hook_con_secreto_no_se_guarda") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.binario("bin/rtk", b"\x7fELF https://github.com/ejemplo/rtk\0");
     h.escribir(".claude/settings.json", r#"{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "API_TOKEN=supersecreto rtk hook claude"}]}]}}"#);
@@ -114,6 +129,9 @@ fn hook_con_secreto_no_se_guarda() {
 
 #[test]
 fn hook_con_script_resuelve_repo_y_usa_tilde() {
+    if !comun::aislado("hook_con_script_resuelve_repo_y_usa_tilde") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let sh = h.binario("bin/sh", b"#!/bin/sh\n");
     let repo = h.repo_git("Proyectos/sdlc", Some("https://github.com/ejemplo/sdlc"));
@@ -145,6 +163,9 @@ fn hook_con_script_resuelve_repo_y_usa_tilde() {
 
 #[test]
 fn statusline_que_es_el_script_queda_como_statusline() {
+    if !comun::aislado("statusline_que_es_el_script_queda_como_statusline") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.binario(".claude/statusline.sh", b"#!/bin/bash\n");
     h.escribir(
@@ -168,6 +189,9 @@ fn statusline_que_es_el_script_queda_como_statusline() {
 
 #[test]
 fn hook_que_es_el_script_resuelve_su_repo() {
+    if !comun::aislado("hook_que_es_el_script_resuelve_su_repo") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let repo = h.repo_git(
         "Proyectos/avisos",
@@ -192,6 +216,9 @@ fn hook_que_es_el_script_resuelve_su_repo() {
 
 #[test]
 fn hook_con_script_local_no_es_herramienta() {
+    if !comun::aislado("hook_con_script_local_no_es_herramienta") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.binario(".claude/hooks/local.sh", b"#!/bin/sh\necho hola\n");
     h.escribir(".claude/settings.json", r#"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "~/.claude/hooks/local.sh"}]}]}}"#);
@@ -210,6 +237,9 @@ fn hook_con_script_local_no_es_herramienta() {
 }
 #[test]
 fn vincula_hooks_por_ejecucion_y_conserva_scripts_propios() {
+    if !comun::aislado("vincula_hooks_por_ejecucion_y_conserva_scripts_propios") {
+        return;
+    }
     use rebake::{modelo::Recetario, servicio};
     for (comando, tipo, nombre) in [
         ("TOKEN=secreto rtk hook claude", "item", "herramienta:rtk"),
@@ -265,6 +295,9 @@ fn vincula_hooks_por_ejecucion_y_conserva_scripts_propios() {
 
 #[test]
 fn ruta_absoluta_solo_vincula_al_ejecutable_del_path() {
+    if !comun::aislado("ruta_absoluta_solo_vincula_al_ejecutable_del_path") {
+        return;
+    }
     use rebake::{modelo::Recetario, servicio};
     for (ruta, vinculado) in [("bin/rtk", true), ("otro/rtk", false)] {
         let h = HomeFalso::nuevo();
@@ -281,6 +314,9 @@ fn ruta_absoluta_solo_vincula_al_ejecutable_del_path() {
 }
 #[test]
 fn nuevos_hooks_invalidan_receta_del_responsable_y_preservan_exclusiones() {
+    if !comun::aislado("nuevos_hooks_invalidan_receta_del_responsable_y_preservan_exclusiones") {
+        return;
+    }
     use rebake::{modelo::*, servicio};
     let h = HomeFalso::nuevo();
     h.escribir(".claude.json", "{}");
@@ -361,6 +397,9 @@ fn comprobar_marca_real(nombre: &str, esperado: rebake::modelo::InstaladorHook) 
 
 #[test]
 fn comando_real_impeccable_con_ruta_absoluta_entre_comillas() {
+    if !comun::aislado("comando_real_impeccable_con_ruta_absoluta_entre_comillas") {
+        return;
+    }
     comprobar_marca_real(
         "impeccable",
         rebake::modelo::InstaladorHook::Item("skill:impeccable".into()),
@@ -369,6 +408,9 @@ fn comando_real_impeccable_con_ruta_absoluta_entre_comillas() {
 
 #[test]
 fn comando_real_orca_corto_con_export_y_fallbacks() {
+    if !comun::aislado("comando_real_orca_corto_con_export_y_fallbacks") {
+        return;
+    }
     comprobar_marca_real(
         "orca_corto",
         rebake::modelo::InstaladorHook::Externo("orca".into()),
@@ -377,6 +419,9 @@ fn comando_real_orca_corto_con_export_y_fallbacks() {
 
 #[test]
 fn comando_real_orca_largo_con_case_anidados() {
+    if !comun::aislado("comando_real_orca_largo_con_case_anidados") {
+        return;
+    }
     comprobar_marca_real(
         "orca_largo",
         rebake::modelo::InstaladorHook::Externo("orca".into()),
@@ -385,6 +430,9 @@ fn comando_real_orca_largo_con_case_anidados() {
 
 #[test]
 fn palabras_reservadas_de_hooks_no_producen_avisos_de_binarios() {
+    if !comun::aislado("palabras_reservadas_de_hooks_no_producen_avisos_de_binarios") {
+        return;
+    }
     for nombre in ["impeccable", "orca_corto", "orca_largo"] {
         let (_, _, resumen) = escanear_comando_real(nombre);
         assert!(resumen.avisos.is_empty(), "{nombre}: {:?}", resumen.avisos);
@@ -393,6 +441,9 @@ fn palabras_reservadas_de_hooks_no_producen_avisos_de_binarios() {
 
 #[test]
 fn segmentos_neutros_no_anulan_pero_pipes_y_responsables_distintos_si() {
+    if !comun::aislado("segmentos_neutros_no_anulan_pero_pipes_y_responsables_distintos_si") {
+        return;
+    }
     use rebake::{modelo::Recetario, servicio};
     for (comando, vinculado) in [
         ("export X=1; printf '{}'; exit 0; :; ~/.orca/hook.sh", true),
@@ -432,6 +483,9 @@ fn segmentos_neutros_no_anulan_pero_pipes_y_responsables_distintos_si() {
 
 #[test]
 fn scripts_propios_load_intent_sync_y_herdr_siguen_con_receta() {
+    if !comun::aislado("scripts_propios_load_intent_sync_y_herdr_siguen_con_receta") {
+        return;
+    }
     use rebake::{modelo::*, servicio};
     for ruta in [
         ".claude/skills/ai-native-sdlc/scripts/load-intent.sh",

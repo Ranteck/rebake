@@ -420,3 +420,63 @@ fn binario_existente_no_salta_registro_y_segunda_instalacion_no_duplica() {
         "registro\n"
     );
 }
+
+#[test]
+fn sincronizado_no_se_ejecuta_ni_al_pedir_su_id_directamente() {
+    let home = tempfile::tempdir().unwrap();
+    let marca = home.path().join("ejecutado");
+    let mut i = aprobado(
+        "skill:pdf",
+        &[],
+        vec![auto(&format!("touch '{}'", marca.display()), false)],
+    );
+    i.perfiles = vec!["laburo".into()];
+    i.sincronizado_en = vec!["laburo".into()];
+    let mut r = Recetario::nuevo();
+    r.items.push(i);
+    let salida = instalar(
+        &r,
+        &["skill:pdf".into()],
+        &opciones(home.path(), false),
+        &mut |_| {},
+    );
+    assert!(salida.is_empty());
+    assert!(!marca.exists());
+}
+
+#[test]
+fn receta_mixta_instala_solo_en_el_perfil_propio() {
+    let home = tempfile::tempdir().unwrap();
+    let marca = home.path().join("destinos");
+    let mut i = aprobado(
+        "skill:mixta",
+        &[],
+        vec![auto(
+            &format!(
+                r#"printf '%s\n' "$CLAUDE_CONFIG_DIR" >> '{}'"#,
+                marca.display()
+            ),
+            true,
+        )],
+    );
+    i.perfiles = vec!["laburo".into(), "personal".into()];
+    i.sincronizado_en = vec!["laburo".into()];
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        Perfil {
+            nombre: "laburo".into(),
+            dir: "~/.claude".into(),
+        },
+        Perfil {
+            nombre: "personal".into(),
+            dir: "~/.claude-personal".into(),
+        },
+    ];
+    r.items.push(i);
+    let (salida, _) = correr(&r, home.path(), false);
+    assert!(matches!(salida[0].1, Resultado::Ok));
+    assert_eq!(
+        fs::read_to_string(marca).unwrap(),
+        format!("{}\n", home.path().join(".claude-personal").display())
+    );
+}

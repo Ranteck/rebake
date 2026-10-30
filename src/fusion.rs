@@ -57,6 +57,16 @@ pub fn fusionar(r: &mut Recetario, escaneo: Escaneo, existe_herramienta: &dyn Fn
                 r.items.push(item);
             }
         }
+        let item = r.item_mut(&h.id).expect("hallazgo fusionado");
+        for (perfil, sincronizado) in h.sincronizacion {
+            if sincronizado {
+                if !item.sincronizado_en.contains(&perfil) {
+                    item.sincronizado_en.push(perfil);
+                }
+            } else {
+                item.sincronizado_en.retain(|p| p != &perfil);
+            }
+        }
     }
     for item in r.items.iter_mut().filter(|i| !vistos.contains(&i.id)) {
         // Las herramientas que agrega la investigación no salen en el escaneo: se mira el PATH.

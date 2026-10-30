@@ -22,6 +22,9 @@ fn perfil_con_plugins(h: &HomeFalso, dir: &str, settings: &str) {
 
 #[test]
 fn plugin_en_dos_perfiles_es_un_item() {
+    if !comun::aislado("plugin_en_dos_perfiles_es_un_item") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let settings =
         r#"{"enabledPlugins": {"codex@openai-codex": true, "canva@openai-codex": false}}"#;
@@ -47,6 +50,9 @@ fn plugin_en_dos_perfiles_es_un_item() {
 
 #[test]
 fn plugin_toma_repo_del_catalogo() {
+    if !comun::aislado("plugin_toma_repo_del_catalogo") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     perfil_con_plugins(
         &h,
@@ -83,6 +89,9 @@ fn plugin_toma_repo_del_catalogo() {
 
 #[test]
 fn settings_invalido_avisa_y_sigue() {
+    if !comun::aislado("settings_invalido_avisa_y_sigue") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(".claude/settings.json", "{esto no es json");
     perfil_con_plugins(
@@ -109,5 +118,42 @@ fn settings_invalido_avisa_y_sigue() {
         e.hallazgos
             .iter()
             .any(|x| x.id == "plugin:codex@openai-codex")
+    );
+}
+
+#[test]
+fn plugin_sincronizado_se_recuerda_sin_ocultar_el_homonimo_propio() {
+    if !comun::aislado("plugin_sincronizado_se_recuerda_sin_ocultar_el_homonimo_propio") {
+        return;
+    }
+    let h = HomeFalso::nuevo();
+    for (dir, ruta) in [
+        (".claude", ".claude/plugins/synced/cuenta/p"),
+        (".claude-personal", ".claude-personal/plugins/cache/m/p/1"),
+    ] {
+        h.escribir(
+            &format!("{dir}/settings.json"),
+            r#"{"enabledPlugins":{"p@m":true}}"#,
+        );
+        let manifest = h.escribir(
+            &format!("{ruta}/.claude-plugin/plugin.json"),
+            r#"{"name":"p"}"#,
+        );
+        let instalacion = manifest.parent().unwrap().parent().unwrap();
+        h.escribir(&format!("{dir}/plugins/installed_plugins.json"), &serde_json::json!({"version":2,"plugins":{"p@m":[{"scope":"user","installPath":instalacion,"version":"1","installedAt":"2026-10-29","lastUpdated":"2026-10-29","gitCommitSha":"abc"}]}}).to_string());
+    }
+    let perfiles = vec![
+        perfil("laburo", "~/.claude"),
+        perfil("personal", "~/.claude-personal"),
+    ];
+    let e = escanear(&entorno(&h, &PacmanFalso(vec![])), &perfiles);
+    let mut r = rebake::modelo::Recetario::nuevo();
+    r.perfiles = perfiles;
+    rebake::fusion::fusionar(&mut r, e, &|_| false);
+    let p = r.item("plugin:p@m").unwrap();
+    assert_eq!(p.sincronizado_en, ["laburo"]);
+    assert_eq!(
+        p.perfiles_propios().cloned().collect::<Vec<_>>(),
+        ["personal"]
     );
 }

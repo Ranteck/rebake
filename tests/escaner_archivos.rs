@@ -18,6 +18,9 @@ fn hallazgo<'a>(e: &'a Escaneo, id: &str) -> &'a rebake::escaner::Hallazgo {
 
 #[test]
 fn skill_symlink_a_repo_usa_remoto() {
+    if !comun::aislado("skill_symlink_a_repo_usa_remoto") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let repo = h.repo_git(
         "Proyectos/graph-engineer",
@@ -39,6 +42,9 @@ fn skill_symlink_a_repo_usa_remoto() {
 
 #[test]
 fn repo_sin_remoto_queda_con_pista() {
+    if !comun::aislado("repo_sin_remoto_queda_con_pista") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let repo = h.repo_git("Proyectos/ai-native-sdlc", None);
     h.escribir("Proyectos/ai-native-sdlc/AI-NATIVE-SDLC.md", "# reglas\n");
@@ -55,6 +61,9 @@ fn repo_sin_remoto_queda_con_pista() {
 
 #[test]
 fn skill_del_lock_usa_su_fuente() {
+    if !comun::aislado("skill_del_lock_usa_su_fuente") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let skill = h.escribir(
         ".agents/skills/pragmatic-programmer/SKILL.md",
@@ -79,6 +88,9 @@ fn skill_del_lock_usa_su_fuente() {
 
 #[test]
 fn synced_no_aparece() {
+    if !comun::aislado("synced_no_aparece") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(".claude/skills/synced/algo/SKILL.md", "x");
     h.escribir(".claude/skills/propia/SKILL.md", "x");
@@ -92,6 +104,9 @@ fn synced_no_aparece() {
 
 #[test]
 fn las_copias_de_backup_no_aparecen() {
+    if !comun::aislado("las_copias_de_backup_no_aparecen") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(
         ".claude/skills/graph-engineer.backup-20260730-171339/SKILL.md",
@@ -111,6 +126,9 @@ fn las_copias_de_backup_no_aparecen() {
 
 #[test]
 fn import_symlink_resuelve_repo() {
+    if !comun::aislado("import_symlink_resuelve_repo") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let repo = h.repo_git(
         "Proyectos/house-rules",
@@ -141,6 +159,9 @@ fn import_symlink_resuelve_repo() {
 
 #[test]
 fn remoto_con_credenciales_no_se_guarda() {
+    if !comun::aislado("remoto_con_credenciales_no_se_guarda") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let repo = h.repo_git(
         "Proyectos/privado",
@@ -186,6 +207,9 @@ fn normalizar_url_saca_query() {
 
 #[test]
 fn fuente_de_un_perfil_gana_a_la_pista_del_otro() {
+    if !comun::aislado("fuente_de_un_perfil_gana_a_la_pista_del_otro") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     let repo = h.repo_git(
         "Proyectos/graph-engineer",
@@ -213,4 +237,83 @@ fn fuente_de_un_perfil_gana_a_la_pista_del_otro() {
     let x = hallazgo(&e, "skill:graph-engineer");
     assert!(x.fuente.is_some());
     assert!(x.pista.is_none(), "{:?}", x.pista);
+}
+
+#[test]
+fn sincronizadas_y_propias_homonimas_se_distinguen_por_destino_real() {
+    if !comun::aislado("sincronizadas_y_propias_homonimas_se_distinguen_por_destino_real") {
+        return;
+    }
+    let h = HomeFalso::nuevo();
+    let synced = h.escribir(".agents/skills/synced/cuenta/pdf/SKILL.md", "sync");
+    h.enlazar(".claude/skills/pdf", synced.parent().unwrap());
+    h.escribir(".claude-personal/skills/pdf/SKILL.md", "propia");
+    let propia = h.escribir(".agents/skills/synced-propias/otra/SKILL.md", "propia");
+    h.enlazar(".claude/skills/otra", propia.parent().unwrap());
+    let perfiles = vec![
+        perfil("laburo", "~/.claude"),
+        perfil("personal", "~/.claude-personal"),
+    ];
+    let e = escanear(&entorno(&h, &PacmanFalso(vec![])), &perfiles);
+    let mut r = rebake::modelo::Recetario::nuevo();
+    r.perfiles = perfiles;
+    rebake::fusion::fusionar(&mut r, e, &|_| false);
+    let pdf = r.item("skill:pdf").unwrap();
+    assert_eq!(pdf.sincronizado_en, ["laburo"]);
+    assert_eq!(
+        pdf.perfiles_propios().cloned().collect::<Vec<_>>(),
+        ["personal"]
+    );
+    assert!(!pdf.es_sincronizado());
+    assert!(!r.item("skill:otra").unwrap().es_sincronizado());
+}
+
+#[test]
+fn git_del_escaneo_ignora_configuracion_invalida_en_home_aislado() {
+    if !comun::aislado("git_del_escaneo_ignora_configuracion_invalida_en_home_aislado") {
+        return;
+    }
+    assert!(std::env::var_os("CLAUDE_CONFIG_DIR").is_none());
+    assert!(std::env::var_os("GIT_CONFIG_COUNT").is_none());
+    let h = HomeFalso::nuevo();
+    let repo = h.repo_git("repo", Some("https://example.com/propia"));
+    h.escribir("repo/SKILL.md", "propia");
+    h.enlazar(".claude/skills/propia", &repo);
+    let e = escanear_laburo(&h);
+    assert_eq!(
+        hallazgo(&e, "skill:propia").fuente.as_ref().unwrap().repo,
+        "https://example.com/propia"
+    );
+    let env_home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    assert!(
+        std::fs::read_to_string(env_home.join("git-aislado"))
+            .unwrap()
+            .lines()
+            .count()
+            >= 3
+    );
+}
+
+#[test]
+fn destino_ausente_conserva_marca_y_destino_propio_verificado_la_quita() {
+    if !comun::aislado("destino_ausente_conserva_marca_y_destino_propio_verificado_la_quita") {
+        return;
+    }
+    let h = HomeFalso::nuevo();
+    let raiz = h.escribir(".agents/skills/synced/cuenta/pdf/SKILL.md", "sync");
+    h.enlazar(".claude/skills/pdf", raiz.parent().unwrap());
+    let mut r = rebake::modelo::Recetario::nuevo();
+    r.perfiles.push(perfil("laburo", "~/.claude"));
+    rebake::fusion::fusionar(&mut r, escanear_laburo(&h), &|_| false);
+    assert!(r.items[0].es_sincronizado());
+    std::fs::remove_file(h.ruta().join(".claude/skills/pdf")).unwrap();
+    rebake::fusion::fusionar(&mut r, escanear_laburo(&h), &|_| false);
+    assert!(r.items[0].es_sincronizado());
+    h.escribir(".claude/skills/pdf/SKILL.md", "ahora propia");
+    rebake::fusion::fusionar(&mut r, escanear_laburo(&h), &|_| false);
+    assert!(r.items[0].sincronizado_en.is_empty());
+    assert_eq!(
+        r.items[0].perfiles_propios().cloned().collect::<Vec<_>>(),
+        ["laburo"]
+    );
 }

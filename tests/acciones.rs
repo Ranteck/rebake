@@ -195,3 +195,19 @@ fn pegar_el_link_reemplaza_al_posible() {
     assert!(x.posible.is_none());
     assert_eq!(x.fuente.as_ref().unwrap().via, Via::Manual);
 }
+
+#[test]
+fn renombrar_perfil_conserva_su_clasificacion_sincronizada() {
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(Perfil {
+        nombre: "antes".into(),
+        dir: "~/.claude".into(),
+    });
+    let mut item = Item::nuevo("skill:pdf", Tipo::Skill);
+    item.perfiles = vec!["antes".into()];
+    item.sincronizado_en = vec!["antes".into()];
+    r.items.push(item);
+    rebake::acciones::renombrar_perfil(&mut r, "antes", "despues").unwrap();
+    assert_eq!(r.items[0].sincronizado_en, ["despues"]);
+    assert!(r.items[0].es_sincronizado());
+}

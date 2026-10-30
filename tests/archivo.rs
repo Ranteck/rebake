@@ -200,3 +200,28 @@ fn algo_desconocido_dice_como_actualizar_y_lo_mal_escrito_no() {
     let err = format!("{:#}", archivo::parsear(roto, "cookbook.toml").unwrap_err());
     assert!(!err.contains("actualizá"), "{err}");
 }
+
+#[test]
+fn sincronizacion_por_perfil_se_conserva_en_otra_pc_sin_archivos() {
+    let texto = r#"version = 1
+[[perfil]]
+nombre = "cuenta"
+dir = "~/.claude"
+[[item]]
+id = "skill:pdf"
+tipo = "skill"
+estado = "aprobada"
+perfiles = ["cuenta"]
+sincronizado_en = ["cuenta"]
+"#;
+    let r = archivo::parsear(texto, "prueba").unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let destino = home.path().join("cookbook.toml");
+    archivo::guardar(&destino, &r).unwrap();
+    let leido = archivo::leer(&destino).unwrap();
+    assert_eq!(
+        serde_json::to_value(&leido.items[0]).unwrap()["sincronizado_en"],
+        serde_json::json!(["cuenta"])
+    );
+    assert!(rebake::instalador::planificar(&leido).unwrap().is_empty());
+}

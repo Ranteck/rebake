@@ -91,6 +91,8 @@ pub struct Item {
     pub tipo: Tipo,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub perfiles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sincronizado_en: Vec<String>,
     pub estado: Estado,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instalado_por: Option<InstaladorHook>,
@@ -221,11 +223,22 @@ impl Recetario {
 }
 
 impl Item {
+    pub fn perfiles_propios(&self) -> impl Iterator<Item = &String> {
+        self.perfiles
+            .iter()
+            .filter(|p| !self.sincronizado_en.contains(p))
+    }
+
+    pub fn es_sincronizado(&self) -> bool {
+        !self.sincronizado_en.is_empty() && self.perfiles_propios().next().is_none()
+    }
+
     pub fn nuevo(id: &str, tipo: Tipo) -> Self {
         Item {
             id: id.into(),
             tipo,
             perfiles: vec![],
+            sincronizado_en: vec![],
             estado: Estado::Pendiente,
             instalado_por: None,
             fuente: None,

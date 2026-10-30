@@ -55,6 +55,7 @@ pub struct Hallazgo {
     pub id: String,
     pub tipo: Tipo,
     pub perfiles: Vec<String>,
+    pub sincronizacion: std::collections::BTreeMap<String, bool>,
     pub fuente: Option<Fuente>,
     pub pista: Option<String>,
     pub requiere: Vec<String>,
@@ -66,6 +67,7 @@ impl Hallazgo {
             id: id.into(),
             tipo,
             perfiles: perfil.into_iter().map(String::from).collect(),
+            sincronizacion: Default::default(),
             fuente: None,
             pista: None,
             requiere: vec![],
@@ -105,6 +107,7 @@ fn agrupar(hallazgos: Vec<Hallazgo>) -> Vec<Hallazgo> {
     for h in hallazgos {
         match unidos.iter_mut().find(|u| u.id == h.id) {
             Some(u) => {
+                u.sincronizacion.extend(h.sincronizacion);
                 for p in h.perfiles {
                     if !u.perfiles.contains(&p) {
                         u.perfiles.push(p);
@@ -186,4 +189,51 @@ pub fn asignar_origen(h: &mut Hallazgo, ruta: &Path, entorno: &Entorno) -> bool 
         }
         git::Origen::Desconocido => false,
     }
+}
+
+/// Una ruta ausente no desmiente lo recordado por un escaneo anterior.
+pub fn clasificar_sincronizacion(
+    h: &mut Hallazgo,
+    ruta: &Path,
+    perfil: &str,
+    dir: &Path,
+    entorno: &Entorno,
+    avisos: &mut Vec<String>,
+) -> bool {
+    let real = match std::fs::canonicalize(ruta) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return false,
+        Err(e) => {
+            avisos.push(format!(
+                "no pude clasificar {}: {e}",
+                rutas::contraer(ruta, &entorno.home)
+            ));
+            return false;
+        }
+    };
+    let raices = [
+        entorno.home.join(".agents/skills/synced"),
+        dir.join("skills/synced"),
+        entorno.home.join(".claude/plugins/synced"),
+        dir.join("plugins/synced"),
+    ];
+    let mut sincronizado = false;
+    for raiz in raices {
+        match std::fs::canonicalize(&raiz) {
+            Ok(r) => sincronizado |= real.starts_with(r),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                avisos.push(format!(
+                    "no pude clasificar {}: {e}",
+                    rutas::contraer(&raiz, &entorno.home)
+                ));
+                return false;
+            }
+        }
+    }
+    h.sincronizacion
+        .entry(perfil.to_string())
+        .and_modify(|previo| *previo &= sincronizado)
+        .or_insert(sincronizado);
+    h.sincronizacion[perfil]
 }

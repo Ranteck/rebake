@@ -150,7 +150,12 @@ pub fn renombrar_perfil(r: &mut Recetario, viejo: &str, nuevo: &str) -> Result<(
         .with_context(|| format!("no existe el perfil {viejo}"))?;
     perfil.nombre = nuevo.into();
     for item in &mut r.items {
-        for p in item.perfiles.iter_mut().filter(|p| *p == viejo) {
+        for p in item
+            .perfiles
+            .iter_mut()
+            .chain(item.sincronizado_en.iter_mut())
+            .filter(|p| *p == viejo)
+        {
             *p = nuevo.into();
         }
     }

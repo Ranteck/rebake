@@ -1,10 +1,15 @@
-use super::{Entorno, Escaneo, Hallazgo, leer_json, normalizar_url};
+use super::{Entorno, Escaneo, Hallazgo, clasificar_sincronizacion, leer_json, normalizar_url};
 use crate::modelo::{Fuente, Tipo, Via};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
 pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
+    let instalados = leer_json(
+        &dir.join("plugins/installed_plugins.json"),
+        entorno,
+        &mut salida.avisos,
+    );
     let mut repos: HashMap<String, Option<String>> = HashMap::new();
     if let Some(Value::Object(mapa)) = leer_json(
         &dir.join("plugins/known_marketplaces.json"),
@@ -18,6 +23,12 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
                 Tipo::Marketplace,
                 Some(perfil),
             );
+            let ruta = datos
+                .get("installLocation")
+                .and_then(Value::as_str)
+                .map(|p| crate::rutas::expandir(p, &entorno.home))
+                .unwrap_or_else(|| dir.join("plugins/marketplaces").join(&nombre));
+            clasificar_sincronizacion(&mut h, &ruta, perfil, dir, entorno, &mut salida.avisos);
             asignar(
                 &mut h,
                 repo.clone(),
@@ -44,6 +55,34 @@ pub fn detectar(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escane
             continue;
         };
         let mut h = Hallazgo::nuevo(&format!("plugin:{clave}"), Tipo::Plugin, Some(perfil));
+        let rutas: Vec<_> = instalados
+            .as_ref()
+            .and_then(|v| v.get("plugins"))
+            .and_then(|v| v.get(clave))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.get("installPath").and_then(Value::as_str))
+            .map(|p| crate::rutas::expandir(p, &entorno.home))
+            .collect();
+        if rutas.is_empty() {
+            clasificar_sincronizacion(
+                &mut h,
+                &dir.join("plugins/marketplaces").join(mkt),
+                perfil,
+                dir,
+                entorno,
+                &mut salida.avisos,
+            );
+        } else {
+            for ruta in rutas {
+                clasificar_sincronizacion(&mut h, &ruta, perfil, dir, entorno, &mut salida.avisos);
+            }
+        }
+        if h.sincronizacion.get(perfil) == Some(&true) {
+            salida.hallazgos.push(h);
+            continue;
+        }
         h.requiere = vec![format!("marketplace:{mkt}")];
         let repo_mkt = repos.get(mkt).cloned().flatten();
         let repo = repo_del_plugin(entorno, dir, nombre, mkt, repo_mkt, &mut salida.avisos);

@@ -80,3 +80,74 @@ pub fn perfil(nombre: &str, dir: &str) -> rebake::modelo::Perfil {
         dir: dir.into(),
     }
 }
+
+/// Ejecuta el caso completo, incluidos sus git, sin configuración del usuario.
+pub fn aislado(nombre: &str) -> bool {
+    if std::env::var("REBAKE_TEST_AISLADO").as_deref() == Ok(nombre) {
+        return true;
+    }
+    let h = HomeFalso::nuevo();
+    h.escribir(".gitconfig", "CONFIGURACION INVALIDA\n");
+    h.escribir("xdg/git/config", "CONFIGURACION XDG INVALIDA\n");
+    h.binario(
+        "bin/git",
+        br#"#!/bin/sh
+test -z "${CLAUDE_CONFIG_DIR+x}${GIT_CONFIG_COUNT+x}" || exit 90
+test "$GIT_CONFIG_NOSYSTEM" = 1 || exit 91
+test "$GIT_CONFIG_GLOBAL" = /dev/null || exit 92
+test "$GIT_CONFIG_SYSTEM" = /dev/null || exit 93
+printf 'git aislado\n' >> "$HOME/git-aislado"
+exec /usr/bin/git "$@"
+"#,
+    );
+    let salida = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", nombre, "--nocapture"])
+        .env_clear()
+        .env(
+            "PATH",
+            format!("{}:/usr/bin:/bin", h.ruta().join("bin").display()),
+        )
+        .env("HOME", h.ruta())
+        .env("XDG_CONFIG_HOME", h.ruta().join("xdg"))
+        .env("XDG_DATA_HOME", h.ruta().join("data"))
+        .env("XDG_STATE_HOME", h.ruta().join("state"))
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("REBAKE_TEST_AISLADO", nombre)
+        .output()
+        .unwrap();
+    assert!(
+        salida.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&salida.stdout),
+        String::from_utf8_lossy(&salida.stderr)
+    );
+    false
+}
+
+struct Captura(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+impl std::io::Write for Captura {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub fn capturar_logs(
+    salida: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+) -> impl tracing::Subscriber + Send + Sync {
+    static INICIAR: std::sync::Once = std::sync::Once::new();
+    INICIAR.call_once(|| {
+        // Evita cachear Interest::never si otro hilo estrena un evento sin captura.
+        tracing::subscriber::set_global_default(tracing_subscriber::registry()).unwrap();
+    });
+    tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_writer(move || Captura(salida.clone()))
+        .finish()
+}

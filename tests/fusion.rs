@@ -218,3 +218,19 @@ fn perfil_ilegible_no_borra_lo_revisado_ni_su_checklist() {
     assert_eq!(valores, [("laburo", "dracula"), ("personal", "light")]);
     assert_eq!(r.checklist.titulos.len(), 1);
 }
+
+#[test]
+fn carpeta_ausente_no_olvida_sincronizacion_ni_habilita_destino_global() {
+    let mut r = base();
+    let mut i = Item::nuevo("skill:pdf", Tipo::Skill);
+    i.perfiles = vec!["laburo".into()];
+    i.sincronizado_en = vec!["laburo".into()];
+    i.estado = Estado::Aprobada;
+    r.items.push(i);
+    fusionar(&mut r, escaneo(vec![]), &nunca);
+    assert!(r.items[0].ausente);
+    assert!(r.items[0].es_sincronizado());
+    assert!(rebake::instalador::planificar(&r).unwrap().is_empty());
+    r.items[0].perfiles.clear();
+    assert!(r.items[0].es_sincronizado());
+}
