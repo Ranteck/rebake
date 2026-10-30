@@ -87,11 +87,21 @@ fn main() -> ExitCode {
         tracing::info!(propia, nueva = %nueva, "hay una versión nueva");
         eprintln!("hay rebake {nueva} (tenés {propia}): abrí `rebake` para actualizar");
     }
+    finalizar(resultado)
+}
+
+fn finalizar(resultado: Result<bool>) -> ExitCode {
     match resultado {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
-            if let Some(cuenta) = e.downcast_ref::<investigador::ErrorCuenta>() {
+            if e.is::<servicio::ErrorSincronizado>() {
+                tracing::info!(
+                    accion = "investigar",
+                    resultado = "rechazado",
+                    causa = "sincronizado"
+                );
+            } else if let Some(cuenta) = e.downcast_ref::<investigador::ErrorCuenta>() {
                 if cuenta.operativo {
                     tracing::error!(
                         accion = "resolver_cuenta",
@@ -274,6 +284,7 @@ fn ejecutar_comando(
                 comando = "escanear",
                 items = r.items.len(),
                 nuevos = resumen.nuevos,
+                sincronizados = resumen.sincronizados,
                 avisos = resumen.avisos.len(),
                 hooks_vinculados = resumen.hooks_vinculados,
                 externos = resumen.externos,
@@ -285,7 +296,7 @@ fn ejecutar_comando(
             );
             println!(
                 "{} ítems ({} nuevos) en {}",
-                r.items.len(),
+                r.items.iter().filter(|i| !i.es_sincronizado()).count(),
                 resumen.nuevos,
                 ruta.display()
             );
@@ -496,4 +507,29 @@ fn confirmar(pregunta: &str) -> Result<bool> {
         .read_line(&mut linea)
         .context("no pude leer la respuesta")?;
     Ok(matches!(linea.trim(), "s" | "S" | "si" | "sí"))
+}
+
+#[cfg(test)]
+#[path = "../tests/comun/mod.rs"]
+mod apoyo_pruebas;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn rechazo_sincronizado_no_se_registra_como_fallo_operativo() {
+        let salida = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = super::apoyo_pruebas::capturar_logs(salida.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            assert_eq!(
+                super::finalizar(Err(rebake::servicio::ErrorSincronizado.into())),
+                std::process::ExitCode::FAILURE
+            );
+        });
+        let texto = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        assert!(
+            texto.contains("INFO") && texto.contains("causa=\"sincronizado\""),
+            "{texto}"
+        );
+        assert!(!texto.contains("ERROR"), "{texto}");
+    }
 }

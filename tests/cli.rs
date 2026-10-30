@@ -9,7 +9,14 @@ fn recetario(h: &HomeFalso, args: &[&str], claude: Option<&str>) -> Output {
 
 fn comando(h: &HomeFalso, args: &[&str], claude: Option<&str>) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_rebake"));
-    c.args(args)
+    c.env_clear()
+        .args(args)
+        .env("XDG_CONFIG_HOME", h.ruta().join("xdg"))
+        .env("XDG_DATA_HOME", h.ruta().join("data"))
+        .env("XDG_STATE_HOME", h.ruta().join("state"))
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
         .env("HOME", h.ruta())
         .env("REBAKE_BASE_URL", format!("file://{}", h.ruta().display()))
         .env(
@@ -618,4 +625,84 @@ fn investigacion_con_hooks_registra_ok_pendiente_y_fallo_sin_secretos() {
             }
         );
     }
+}
+
+#[test]
+fn sincronizados_recordados_no_gastan_ni_se_instalan_en_otra_pc() {
+    let h = HomeFalso::nuevo();
+    let mut r = rebake::modelo::Recetario::nuevo();
+    r.perfiles.push(comun::perfil("cuenta", "~/.claude"));
+    let mut i = rebake::modelo::Item::nuevo("skill:pdf", rebake::modelo::Tipo::Skill);
+    i.perfiles = vec!["cuenta".into()];
+    i.sincronizado_en = vec!["cuenta".into()];
+    i.estado = Estado::Aprobada;
+    i.fuente = Some(rebake::modelo::Fuente {
+        repo: "https://example.com/pdf".into(),
+        via: rebake::modelo::Via::Manual,
+        doc: None,
+    });
+    i.pasos.push(rebake::modelo::Paso {
+        cmd: "touch ejecutado".into(),
+        modo: rebake::modelo::Modo::Auto,
+        por_perfil: false,
+        cita: None,
+        nota: None,
+    });
+    r.items.push(i);
+    let ruta = h.ruta().join("cookbook.toml");
+    archivo::guardar(&ruta, &r).unwrap();
+    let falso = h.binario(
+        "bin/claude",
+        r#"#!/bin/sh
+touch "$HOME/corrida"
+exit 99
+"#
+        .as_bytes(),
+    );
+    for args in [vec!["investigar"], vec!["instalar", "--si"]] {
+        let mut cmd = vec!["--archivo", ruta.to_str().unwrap()];
+        cmd.extend(args);
+        let salida = recetario(&h, &cmd, Some(falso.to_str().unwrap()));
+        assert!(salida.status.success(), "{}", texto(&salida));
+        assert!(!texto(&salida).contains("skill:pdf"));
+    }
+    let salida = recetario(
+        &h,
+        &[
+            "--archivo",
+            ruta.to_str().unwrap(),
+            "investigar",
+            "skill:pdf",
+        ],
+        Some(falso.to_str().unwrap()),
+    );
+    assert!(!salida.status.success());
+    let err = String::from_utf8_lossy(&salida.stderr);
+    assert!(
+        err.contains("sincroniza") && err.contains("escanear"),
+        "{err}"
+    );
+    assert!(salida.stdout.is_empty());
+    assert!(!h.ruta().join("corrida").exists());
+    assert!(!h.ruta().join("ejecutado").exists());
+}
+
+#[test]
+fn escanear_cuenta_solo_items_propios_sin_exponer_sincronizados() {
+    let h = HomeFalso::nuevo();
+    h.escribir(".claude/settings.json", "{}");
+    h.escribir(".claude/.claude.json", "{}");
+    let sync = h.escribir(".agents/skills/synced/cuenta/pdf/SKILL.md", "sync");
+    h.enlazar(".claude/skills/pdf", sync.parent().unwrap());
+    h.escribir(".claude/skills/propia/SKILL.md", "propia");
+    let ruta = h.ruta().join("cookbook.toml");
+    let salida = recetario(&h, &["--archivo", ruta.to_str().unwrap(), "escanear"], None);
+    assert!(salida.status.success(), "{}", texto(&salida));
+    assert!(
+        String::from_utf8_lossy(&salida.stdout).contains("1 ítems (1 nuevos)"),
+        "{}",
+        texto(&salida)
+    );
+    let r = archivo::leer(&ruta).unwrap();
+    assert!(r.item("skill:pdf").unwrap().es_sincronizado());
 }

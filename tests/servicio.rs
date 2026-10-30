@@ -140,6 +140,9 @@ fn sin_origen_lista_pendientes_sin_fuente_y_trabajos_sin_ids_las_excluye() {
 
 #[test]
 fn escanear_quita_perfiles_existentes_sin_marcador_y_sus_referencias() {
+    if !comun::aislado("escanear_quita_perfiles_existentes_sin_marcador_y_sus_referencias") {
+        return;
+    }
     use rebake::modelo::{Ajuste, TituloClaudeMd};
     let h = HomeFalso::nuevo();
     for dir in [".claude", ".claude-personal", "perfiles/equipo"] {
@@ -213,6 +216,9 @@ fn escanear_quita_perfiles_existentes_sin_marcador_y_sus_referencias() {
 
 #[test]
 fn perder_el_ultimo_perfil_impide_instalar_la_receta_globalmente() {
+    if !comun::aislado("perder_el_ultimo_perfil_impide_instalar_la_receta_globalmente") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir("datos/settings.json", "{}");
     let mut r = Recetario::nuevo();
@@ -237,6 +243,9 @@ fn perder_el_ultimo_perfil_impide_instalar_la_receta_globalmente() {
 
 #[test]
 fn escanear_conserva_el_perfil_si_no_puede_verificar_su_marcador() {
+    if !comun::aislado("escanear_conserva_el_perfil_si_no_puede_verificar_su_marcador") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir("perfil/settings.json", "{}");
     let marcador = h.ruta().join("perfil/.claude.json");
@@ -254,4 +263,64 @@ fn escanear_conserva_el_perfil_si_no_puede_verificar_su_marcador() {
         "{:?}",
         resumen.avisos
     );
+}
+
+#[test]
+fn sincronizados_no_entran_en_trabajos_ni_en_la_cuenta_sin_origen() {
+    let h = HomeFalso::nuevo();
+    let mut r = Recetario::nuevo();
+    let mut i = Item::nuevo("skill:pdf", Tipo::Skill);
+    i.perfiles = vec!["laburo".into()];
+    i.sincronizado_en = vec!["laburo".into()];
+    r.items.push(i);
+    assert!(servicio::sin_origen(&r).is_empty());
+    assert!(servicio::trabajos(&r, &[], h.ruta()).unwrap().is_empty());
+    let err = servicio::trabajos(&r, &["skill:pdf".into()], h.ruta())
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(err.contains("sincroniza"), "{err}");
+    assert!(err.contains("Claude"), "{err}");
+}
+
+#[test]
+fn trabajo_mixto_no_describe_el_destino_sincronizado() {
+    let h = HomeFalso::nuevo();
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        perfil("cuenta", "~/.claude"),
+        perfil("propio", "~/.claude-personal"),
+    ];
+    let mut i = Item::nuevo("statusline:mixta", Tipo::Statusline);
+    i.perfiles = vec!["cuenta".into(), "propio".into()];
+    i.sincronizado_en = vec!["cuenta".into()];
+    r.items.push(i);
+    let trabajos = servicio::trabajos(&r, &["statusline:mixta".into()], h.ruta()).unwrap();
+    assert_eq!(trabajos.len(), 1);
+    assert!(trabajos[0].prompt.contains("propio"));
+    assert!(!trabajos[0].prompt.contains("cuenta"));
+}
+
+#[test]
+fn perder_perfil_de_cuenta_conserva_marca_y_no_habilita_instalacion_global() {
+    if !comun::aislado("perder_perfil_de_cuenta_conserva_marca_y_no_habilita_instalacion_global") {
+        return;
+    }
+    let h = HomeFalso::nuevo();
+    h.escribir(".claude-mem/settings.json", "{}");
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(perfil("mem", "~/.claude-mem"));
+    let mut i = Item::nuevo("skill:pdf", Tipo::Skill);
+    i.perfiles = vec!["mem".into()];
+    i.sincronizado_en = vec!["mem".into()];
+    i.estado = Estado::Aprobada;
+    r.items.push(i);
+    servicio::escanear(&mut r, &entorno(&h, &PacmanFalso(vec![]))).unwrap();
+    assert!(r.perfiles.is_empty());
+    assert!(r.items[0].perfiles.is_empty());
+    assert_eq!(r.items[0].sincronizado_en, ["mem"]);
+    assert!(rebake::instalador::planificar(&r).unwrap().is_empty());
+    let p = h.ruta().join("cookbook.toml");
+    rebake::archivo::guardar(&p, &r).unwrap();
+    assert!(rebake::archivo::leer(&p).unwrap().items[0].es_sincronizado());
 }

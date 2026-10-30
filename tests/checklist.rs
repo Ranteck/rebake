@@ -163,6 +163,9 @@ fn un_comando_de_claude_por_perfil_dice_como_abrir_cada_perfil() {
 
 #[test]
 fn no_filtra_secretos() {
+    if !comun::aislado("no_filtra_secretos") {
+        return;
+    }
     let h = HomeFalso::nuevo();
     h.escribir(".claude/.credentials.json", r#"{"token": "SECRETO-XYZ"}"#);
     h.escribir(".claude.json", r#"{"oauthAccount": "SECRETO-XYZ"}"#);
@@ -295,4 +298,34 @@ fn hooks_externos_se_agrupan_sin_comandos_ni_aprobacion() {
             .count(),
         1
     );
+}
+
+#[test]
+fn pasos_manuales_omiten_sincronizados_y_destinos_mixtos_de_cuenta() {
+    let mut r = Recetario::nuevo();
+    r.perfiles = vec![
+        perfil("laburo", "~/.claude"),
+        perfil("personal", "~/.claude-personal"),
+    ];
+    let mut i = Item::nuevo("plugin:mixto@m", Tipo::Plugin);
+    i.perfiles = vec!["laburo".into(), "personal".into()];
+    i.sincronizado_en = vec!["laburo".into()];
+    i.estado = Estado::Aprobada;
+    for (cmd, por_perfil) in [("/setup", false), ("echo ajuste", true)] {
+        i.pasos = vec![Paso {
+            cmd: cmd.into(),
+            por_perfil,
+            modo: Modo::Manual,
+            cita: None,
+            nota: None,
+        }];
+        r.items = vec![i.clone()];
+        let filas = checklist::a_mano(&r);
+        assert_eq!(filas.len(), 1);
+        assert_eq!(filas[0].1.len(), 1);
+        assert!(filas[0].1[0].contains("personal"), "{filas:?}");
+        assert!(!filas[0].1[0].contains("laburo"), "{filas:?}");
+    }
+    r.items[0].sincronizado_en.push("personal".into());
+    assert!(checklist::a_mano(&r).is_empty());
 }

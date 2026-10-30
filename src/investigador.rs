@@ -375,8 +375,7 @@ fn argumentos_con(prompt: &str, modelo: &str, esquema: &str) -> Vec<String> {
 
 pub fn trabajo_para(r: &Recetario, item: &Item, home: &Path) -> Trabajo {
     let perfiles: Vec<String> = item
-        .perfiles
-        .iter()
+        .perfiles_propios()
         .map(|n| match r.perfiles.iter().find(|p| &p.nombre == n) {
             Some(p) => format!("{n} ({})", p.dir),
             None => n.clone(),

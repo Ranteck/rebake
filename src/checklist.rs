@@ -149,7 +149,7 @@ pub fn tiene_pasos_a_mano(i: &Item) -> bool {
 pub fn a_mano(r: &Recetario) -> Vec<(String, Vec<String>)> {
     r.items
         .iter()
-        .filter(|i| i.estado == Estado::Aprobada && tiene_pasos_a_mano(i))
+        .filter(|i| !i.es_sincronizado() && i.estado == Estado::Aprobada && tiene_pasos_a_mano(i))
         .map(|i| {
             let nombre = i.id.split_once(':').map_or(i.id.as_str(), |(_, n)| n);
             let mcp = i.tipo == Tipo::Mcp;
@@ -182,8 +182,7 @@ fn lineas_de(r: &Recetario, i: &Item, p: &Paso) -> Vec<String> {
     // `/x` existe solo dentro de Claude: pegarlo en la terminal no hace nada.
     if p.cmd.starts_with('/') {
         let perfiles: Vec<&Perfil> = i
-            .perfiles
-            .iter()
+            .perfiles_propios()
             .filter_map(|n| r.perfiles.iter().find(|q| &q.nombre == n))
             .collect();
         if perfiles.is_empty() {
@@ -197,7 +196,9 @@ fn lineas_de(r: &Recetario, i: &Item, p: &Paso) -> Vec<String> {
     if !p.por_perfil || i.perfiles.is_empty() {
         return vec![p.cmd.clone()];
     }
-    i.perfiles.iter().map(|n| en_perfil(r, n, &p.cmd)).collect()
+    i.perfiles_propios()
+        .map(|n| en_perfil(r, n, &p.cmd))
+        .collect()
 }
 
 /// El perfil por defecto va sin la variable: con ella Claude Code leería `~/.claude/.claude.json`

@@ -11,6 +11,7 @@ use std::path::Path;
 
 pub struct ResumenEscaneo {
     pub nuevos: usize,
+    pub sincronizados: usize,
     pub avisos: Vec<String>,
     pub hooks_vinculados: usize,
     pub externos: usize,
@@ -81,7 +82,12 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     avisos.extend(escaner::comandos::vincular(r, entorno));
     let mut vistos = HashSet::new();
     avisos.retain(|aviso| vistos.insert(aviso.clone()));
-    let nuevos = r.items.iter().filter(|i| !antes.contains(&i.id)).count();
+    let nuevos = r
+        .items
+        .iter()
+        .filter(|i| !i.es_sincronizado() && !antes.contains(&i.id))
+        .count();
+    let sincronizados = r.items.iter().filter(|i| i.es_sincronizado()).count();
     let hooks_vinculados = r
         .items
         .iter()
@@ -90,6 +96,7 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     let externos = checklist::hooks_externos(r).len();
     Ok(ResumenEscaneo {
         nuevos,
+        sincronizados,
         avisos,
         hooks_vinculados,
         externos,
@@ -106,7 +113,10 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
             .items
             .iter()
             .filter(|i| {
-                i.instalado_por.is_none() && i.estado == Estado::Pendiente && i.fuente.is_some()
+                !i.es_sincronizado()
+                    && i.instalado_por.is_none()
+                    && i.estado == Estado::Pendiente
+                    && i.fuente.is_some()
             })
             .map(|i| trabajo_para(r, i, home))
             .collect());
@@ -114,6 +124,7 @@ pub fn trabajos(r: &Recetario, ids: &[String], home: &Path) -> Result<Vec<Trabaj
     ids.iter()
         .map(|id| match r.item(id) {
             None => bail!("no existe el ítem {id}"),
+            Some(i) if i.es_sincronizado() => Err(ErrorSincronizado.into()),
             Some(i) if i.instalado_por.is_some() => bail!("el hook lo instala su herramienta"),
             Some(i) if i.estado == Estado::Excluida => bail!("{id} está excluido"),
             Some(i) => Ok(trabajo_para(r, i, home)),
@@ -126,7 +137,10 @@ pub fn sin_origen(r: &Recetario) -> Vec<String> {
     r.items
         .iter()
         .filter(|i| {
-            i.instalado_por.is_none() && i.estado == Estado::Pendiente && i.fuente.is_none()
+            !i.es_sincronizado()
+                && i.instalado_por.is_none()
+                && i.estado == Estado::Pendiente
+                && i.fuente.is_none()
         })
         .map(|i| i.id.clone())
         .collect()
@@ -239,3 +253,12 @@ pub fn novedades(antes: &Recetario, despues: &Recetario) -> HashMap<String, Nove
 pub fn cantidad(n: usize, singular: &str, plural: &str) -> String {
     format!("{n} {}", if n == 1 { singular } else { plural })
 }
+
+#[derive(Debug)]
+pub struct ErrorSincronizado;
+impl std::fmt::Display for ErrorSincronizado {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Claude sincroniza este ítem desde tu cuenta; no requiere receta. Volvé a escanear si cambiaste su origen")
+    }
+}
+impl std::error::Error for ErrorSincronizado {}
