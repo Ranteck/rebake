@@ -402,3 +402,36 @@ fn directa_pendiente_existente_se_arma_gratis_y_sin_origen_queda_intacta() {
     let otra = servicio::escanear(&mut r, &entorno(&h, &PacmanFalso(vec![]))).unwrap();
     assert_eq!(otra.directas, 0);
 }
+
+#[test]
+fn directa_con_origen_no_borra_el_bloqueo_por_perder_el_ultimo_perfil() {
+    if !comun::aislado("directa_con_origen_no_borra_el_bloqueo_por_perder_el_ultimo_perfil") {
+        return;
+    }
+    let h = HomeFalso::nuevo();
+    h.escribir("datos/settings.json", "{}");
+    let mut r = Recetario::nuevo();
+    r.perfiles.push(perfil("datos", "~/datos"));
+    let mut item = Item::nuevo("skill:sola", Tipo::Skill);
+    item.estado = Estado::Aprobada;
+    item.perfiles.push("datos".into());
+    item.fuente = Some(Fuente {
+        repo: "https://github.com/a/b".into(),
+        via: Via::Metadatos,
+        doc: None,
+    });
+    r.items.push(item);
+    for _ in 0..2 {
+        let resumen = servicio::escanear(&mut r, &entorno(&h, &PacmanFalso(vec![]))).unwrap();
+        assert_eq!(resumen.directas, 0);
+        let item = r.item("skill:sola").unwrap();
+        assert_eq!(item.estado, Estado::Pendiente);
+        assert!(item.perfiles.is_empty());
+        assert!(
+            item.error
+                .as_deref()
+                .unwrap()
+                .contains("sin perfiles válidos")
+        );
+    }
+}

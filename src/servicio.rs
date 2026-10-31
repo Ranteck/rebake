@@ -89,6 +89,8 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
         .items
         .iter()
         .filter(|i| !i.es_sincronizado() && i.estado == Estado::Pendiente)
+        // Armar sin destinos válidos borraría el bloqueo y habilitaría pasos globales.
+        .filter(|i| !i.perfiles.is_empty() || i.error.is_none())
         .filter(|i| investigador::receta_directa(r, i).is_some())
         .map(|i| i.id.clone())
         .collect();
