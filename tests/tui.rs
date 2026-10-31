@@ -141,7 +141,7 @@ fn con_fuente(id: &str) -> Item {
 }
 
 #[test]
-fn investigar_todo_investiga_las_con_fuente_y_busca_el_origen_de_las_otras() {
+fn t_arma_las_directas_con_fuente_sin_buscar_las_otras() {
     let mut r = recetario();
     let mut por_revisar = con_fuente("plugin:revisar@x");
     por_revisar.estado = Estado::PorRevisar;
@@ -152,16 +152,10 @@ fn investigar_todo_investiga_las_con_fuente_y_busca_el_origen_de_las_otras() {
         tecla(&mut app, KeyCode::Char('I')),
         Efecto::Investigar(vec!["plugin:pendiente@x".into()])
     );
-    // cuidar-cuota: la directa sigue inmediata; la búsqueda exige confirmar la tanda.
     assert!(app.buscando.is_empty());
-    assert_eq!(
-        tecla(&mut app, KeyCode::Char('s')),
-        Efecto::Buscar(vec!["statusline:statusline.sh".into()])
-    );
+    assert!(app.claude_en_curso.is_empty());
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert!(app.investigando.contains("plugin:pendiente@x"));
-    assert!(app.buscando.contains("statusline:statusline.sh"));
-    let mensaje = app.mensaje.as_deref().unwrap();
-    assert!(mensaje.contains("buscando de dónde vienen 1"), "{mensaje}");
 }
 
 #[test]
@@ -201,8 +195,10 @@ fn sin_pendientes_sin_origen_la_cabecera_no_las_nombra() {
 fn i_sobre_una_receta_sin_origen_busca_y_despues_pide_el_link() {
     let mut app = App::nueva(recetario());
     app.filtro = "statusline".into();
+    assert_eq!(tecla(&mut app, KeyCode::Char('i')), Efecto::Nada);
+    assert!(app.claude_en_curso.is_empty());
     assert_eq!(
-        tecla(&mut app, KeyCode::Char('i')),
+        tecla(&mut app, KeyCode::Char('s')),
         Efecto::Buscar(vec!["statusline:statusline.sh".into()])
     );
     assert!(app.investigando.is_empty());
@@ -235,8 +231,10 @@ fn enter_vacio_en_el_pedido_del_link_vuelve_a_buscar_el_origen() {
     let mut app = App::nueva(r);
     app.filtro = "statusline".into();
     tecla(&mut app, KeyCode::Char('r'));
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    assert!(app.claude_en_curso.is_empty());
     assert_eq!(
-        tecla(&mut app, KeyCode::Enter),
+        tecla(&mut app, KeyCode::Char('s')),
         Efecto::Buscar(vec!["statusline:statusline.sh".into()])
     );
 }
@@ -589,11 +587,11 @@ fn el_detalle_dice_que_falta_en_cada_estado() {
             con_fuente("plugin:a@x"),
             "todavía no hay receta: `i` la arma",
         ),
+        (sin_origen, "no sé de qué repo viene: Enter abre Resolver"),
         (
-            sin_origen,
-            "no sé de qué repo viene: `i` lo busca en la web",
+            por_revisar,
+            "revisá qué va a ejecutar; Enter aprueba y avanza",
         ),
-        (por_revisar, "revisá qué va a ejecutar y `a` la aprueba"),
         (aprobada, "en una PC nueva se instala con esto"),
         (excluida, "No se instala"),
     ] {
@@ -623,7 +621,7 @@ fn el_siguiente_paso_sigue_al_camino() {
     r.items[1].estado = Estado::PorRevisar;
     let pie = pie(&App::nueva(r));
     assert!(
-        pie[1].contains("Siguiente: 2 recetas por revisar: elegí una y `a` la aprueba"),
+        pie[1].contains("Siguiente: 2 recetas por revisar: Enter aprueba y avanza"),
         "{pie:?}"
     );
 }
@@ -666,17 +664,20 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
     let mut excluida = con_fuente("plugin:d@x");
     excluida.estado = Estado::Excluida;
     for (item, esperado) in [
-        (con_fuente("plugin:a@x"), " i  armar receta   x  excluir"),
-        (sin_origen, " i  buscar origen   x  excluir"),
+        (
+            con_fuente("plugin:a@x"),
+            " Enter  armar gratis   x  excluir",
+        ),
+        (sin_origen, " Enter  resolver   l  pegar link   x  excluir"),
         (
             por_revisar,
-            " espacio/a  aprobar   e  editar   r  reinvestigar   x  excluir",
+            " Enter  aprobar   e  editar   r  rearmar   x  excluir",
         ),
         (
             aprobada,
-            " espacio/a  desaprobar   e  editar   r  reinvestigar   x  excluir",
+            " Enter  2 Instalar   a  desaprobar   e  editar   r  rearmar",
         ),
-        (excluida, " x  volver a incluir   e  editar"),
+        (excluida, " x  reincluir   e  editar"),
     ] {
         let mut app = con_un_item(item);
         tecla(&mut app, KeyCode::Char('o'));
@@ -705,15 +706,14 @@ fn el_pie_conserva_el_paso_tras_el_mensaje_de_escaneo_y_cuenta_lo_disponible() {
     app.filtro = "serena".into();
     app.mensaje = Some("Escaneo terminado".into());
     let pie = pie(&app);
-    assert!(pie[0].contains(" t  armar 2 + 1 Claude "), "{pie:?}");
+    assert!(pie[0].contains(" t  armar 2 "), "{pie:?}");
     assert!(pie[1].contains("Escaneo terminado"), "{pie:?}");
     assert!(
-        pie[0].find(" ?  ayuda ").unwrap() < pie[0].find(" t  armar 2 + 1 Claude ").unwrap(),
+        pie[0].find(" ?  ayuda ").unwrap() < pie[0].find(" t  armar 2 ").unwrap(),
         "{pie:?}"
     );
     assert!(
-        pie[0].find(" t  armar 2 + 1 Claude ").unwrap()
-            < pie[0].find(" Enter  aceptar origen ").unwrap(),
+        pie[0].find(" t  armar 2 ").unwrap() < pie[0].find(" Enter  aceptar (1 corrida) ").unwrap(),
         "{pie:?}"
     );
 }
@@ -740,7 +740,7 @@ fn el_pie_con_solo_por_revisar_no_ofrece_otra_tecla_del_paso() {
     for tecla in [" t  ", " s  ", " 2  "] {
         assert!(!pie[0].contains(tecla), "{pie:?}");
     }
-    assert!(pie[0].contains(" espacio/a  aprobar "), "{pie:?}");
+    assert!(pie[0].contains(" Enter  aprobar "), "{pie:?}");
 }
 
 #[test]
@@ -756,24 +756,20 @@ fn el_pie_conserva_ayuda_y_armar_todas_a_80_columnas_con_receta_elegida() {
     assert!(app.seleccionado().is_some());
     let p = pantalla_en(&app, 80, 24);
     let primera = p.lines().nth(22).unwrap();
-    assert!(primera.contains("?  ayuda"), "{p}");
-    assert!(primera.contains(" t  armar 1 "), "{p}");
+    assert!(primera.contains("q salir") && primera.contains("?"), "{p}");
+    assert!(primera.contains("t armar"), "{p}");
 }
 
 #[test]
-fn el_pie_ofrece_buscar_sin_origen_aunque_haya_recetas_por_revisar_o_aprobadas() {
+fn el_pie_orienta_a_resolver_sin_incluir_busquedas_en_t() {
     for estado in [Estado::PorRevisar, Estado::Aprobada] {
         let mut app = con_un_item(Item::nuevo("mcp:sin-buscar", Tipo::Mcp));
         let mut item = con_fuente("plugin:a@x");
         item.estado = estado;
         app.recetario.items.push(item);
         let pie = pie(&app);
-        let esperado = match estado {
-            Estado::PorRevisar => " t  1 Claude ",
-            Estado::Aprobada => " t  armar 1 Claude ",
-            _ => unreachable!(),
-        };
-        assert!(pie[0].contains(esperado), "{pie:?}");
+        assert!(pie[1].contains("Resolver"), "{pie:?}");
+        assert!(!pie[0].contains(" t  "), "{pie:?}");
         assert!(!pie[0].contains(" 3  ir a instalar "), "{pie:?}");
     }
 }
@@ -1013,14 +1009,14 @@ fn la_ayuda_se_abre_con_signo_y_vuelve_a_la_misma_seleccion() {
     assert_eq!(tecla(&mut app, KeyCode::Char('?')), Efecto::Nada);
     let p = pantalla(&app);
     assert!(
-        p.contains("Ayuda") && p.contains("armar recetas (i, t)"),
+        p.contains("Ayuda") && p.contains("Enter arma o abre Resolver"),
         "{p}"
     );
     tecla(&mut app, KeyCode::Char('j'));
     tecla(&mut app, KeyCode::Esc);
     assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert_eq!(app.seleccion, 2);
-    assert!(!pantalla(&app).contains("armar recetas (i, t)"));
+    assert!(!pantalla(&app).contains("Enter arma o abre Resolver"));
 }
 
 #[test]
@@ -1322,7 +1318,9 @@ fn el_panel_muestra_el_posible_origen_con_su_motivo_y_sus_teclas() {
     assert!(p.contains("posible origen│"), "{p}");
     let pie = pie(&app);
     assert!(
-        pie[0].contains(" Enter  aceptar origen   n  descartar   i  pegar otro link   x  excluir"),
+        pie[0].contains(
+            " Enter  aceptar (1 corrida)   n  descartar   i  pegar otro link   x  excluir"
+        ),
         "{pie:?}"
     );
 }
@@ -1330,8 +1328,11 @@ fn el_panel_muestra_el_posible_origen_con_su_motivo_y_sus_teclas() {
 #[test]
 fn enter_acepta_el_posible_e_investiga_desde_ese_repo() {
     let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    assert!(app.recetario.items[0].fuente.is_none());
+    assert!(app.claude_en_curso.is_empty());
     assert_eq!(
-        tecla(&mut app, KeyCode::Enter),
+        tecla(&mut app, KeyCode::Char('s')),
         Efecto::Investigar(vec!["mcp:serena".into()])
     );
     let x = app.recetario.item("mcp:serena").unwrap();
@@ -1368,7 +1369,7 @@ fn un_posible_sin_aceptar_no_se_aprueba_ni_se_instala() {
 }
 
 #[test]
-fn t_busca_una_sola_vez_por_item() {
+fn t_no_busca_ningun_origen_ni_toca_posibles() {
     let mut r = Recetario::nuevo();
     let nunca = Item::nuevo("mcp:nunca", Tipo::Mcp);
     let mut esperando = Item::nuevo("mcp:esperando", Tipo::Mcp);
@@ -1391,21 +1392,21 @@ fn t_busca_una_sola_vez_por_item() {
     });
     r.items = vec![nunca, esperando, no_encontrado, descartado];
     let mut app = App::nueva(r);
-    // cuidar-cuota: se conserva el único elegible, pero ahora se confirma antes de buscar.
+    let antes = app.recetario.clone();
     assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert!(app.buscando.is_empty());
-    assert_eq!(
-        tecla(&mut app, KeyCode::Char('s')),
-        Efecto::Buscar(vec!["mcp:nunca".into()])
-    );
-    // Mientras busca, otro `t` no la vuelve a lanzar.
-    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(app.investigando.is_empty());
+    assert!(app.mensaje.as_deref().unwrap().contains("Resolver"));
+    assert_eq!(app.recetario, antes);
 }
 
 #[test]
 fn mientras_busca_un_spinner_se_mueve_en_la_fila_y_el_panel() {
     let mut app = con_un_item(Item::nuevo("mcp:serena", Tipo::Mcp));
     tecla(&mut app, KeyCode::Char('i'));
+    assert!(app.buscando.is_empty());
+    tecla(&mut app, KeyCode::Char('s'));
     assert!(app.buscando.contains("mcp:serena"));
     let antes = pantalla(&app);
     assert!(
@@ -1642,7 +1643,7 @@ fn siguiente_con_solo_sin_origen_dice_si_falta_buscarlos() {
     let sin_buscar = Item::nuevo("mcp:serena", Tipo::Mcp);
     let p = pie(&con_un_item(sin_buscar.clone()));
     assert!(
-        p[1].contains("Siguiente: `t` pregunta por hasta 1 de 1 corridas de Claude"),
+        p[1].contains("Enter en un ítem sin origen abre Resolver"),
         "{p:?}"
     );
     let mut buscado = sin_buscar;
@@ -1652,7 +1653,7 @@ fn siguiente_con_solo_sin_origen_dice_si_falta_buscarlos() {
         descartado: false,
     });
     let p = pie(&con_un_item(buscado));
-    assert!(p[1].contains("`i` te deja pegar el link"), "{p:?}");
+    assert!(p[1].contains("Enter abre Resolver"), "{p:?}");
 }
 
 #[test]
@@ -1731,7 +1732,7 @@ fn terminar_directas(app: &mut App, ids: &[String]) {
 
 #[test]
 fn t_arma_25_gratis_y_pregunta_por_cinco_sin_lanzar_claude() {
-    let mut app = con_cuota(25, 0, 41);
+    let mut app = con_cuota(25, 41, 0);
     let Efecto::Investigar(ids) = tecla(&mut app, KeyCode::Char('t')) else {
         panic!("t debe despachar solamente las directas");
     };
@@ -1756,13 +1757,14 @@ fn pregunta_por_el_minimo_entre_cinco_y_lo_pendiente() {
         (5, Some(5)),
         (6, Some(5)),
     ] {
-        let mut app = con_cuota(0, 0, pagas);
+        let mut app = con_cuota(0, pagas, 0);
         assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
         assert!(app.buscando.is_empty());
         match pregunta {
             Some(n) => {
-                assert!(pie(&app)[1].contains(&format!("¿Gastar {n} corridas de Claude?")));
-                let Efecto::Buscar(ids) = tecla(&mut app, KeyCode::Char('s')) else {
+                let unidad = if n == 1 { "corrida" } else { "corridas" };
+                assert!(pie(&app)[1].contains(&format!("¿Gastar {n} {unidad} de Claude?")));
+                let Efecto::Investigar(ids) = tecla(&mut app, KeyCode::Char('s')) else {
                     panic!()
                 };
                 assert_eq!(ids.len(), n);
@@ -1773,23 +1775,20 @@ fn pregunta_por_el_minimo_entre_cinco_y_lo_pendiente() {
 }
 
 #[test]
-fn confirma_primero_tres_investigaciones_y_despues_dos_busquedas() {
+fn t_confirma_tres_investigaciones_y_no_rellena_con_busquedas() {
     let mut app = con_cuota(0, 3, 38);
     app.recetario.items.reverse();
     tecla(&mut app, KeyCode::Char('t'));
     assert_eq!(
         tecla(&mut app, KeyCode::Char('s')),
-        Efecto::Lote(
-            vec![
-                "mcp:inv-000".into(),
-                "mcp:inv-001".into(),
-                "mcp:inv-002".into()
-            ],
-            vec!["mcp:bus-000".into(), "mcp:bus-001".into()],
-        )
+        Efecto::Investigar(vec![
+            "mcp:inv-000".into(),
+            "mcp:inv-001".into(),
+            "mcp:inv-002".into()
+        ])
     );
     assert_eq!(app.investigando.len(), 3);
-    assert_eq!(app.buscando.len(), 2);
+    assert!(app.buscando.is_empty());
 }
 
 #[test]
@@ -1802,13 +1801,11 @@ fn confirmar_no_rellena_huecos_ni_agrega_items_nuevos() {
     app.buscando.insert("mcp:bus-000".into());
     app.recetario
         .items
-        .push(Item::nuevo("mcp:aaa-nuevo", Tipo::Mcp));
-    assert_eq!(
-        tecla(&mut app, KeyCode::Char('s')),
-        Efecto::Buscar(vec!["mcp:bus-001".into()])
-    );
+        .push(con_cuota(0, 1, 0).recetario.items.remove(0));
+    app.recetario.items.last_mut().unwrap().id = "mcp:aaa-nuevo".into();
+    assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Nada);
     assert_eq!(app.investigando.len(), 0);
-    assert_eq!(app.buscando.len(), 2);
+    assert_eq!(app.buscando.len(), 1);
 }
 
 #[test]
@@ -1835,7 +1832,7 @@ fn cualquier_otra_tecla_cancela_sin_hacer_su_accion_y_conserva_gratis() {
         KeyCode::Char('3'),
         KeyCode::Char('?'),
     ] {
-        let mut app = con_cuota(1, 0, 6);
+        let mut app = con_cuota(1, 6, 0);
         let Efecto::Investigar(ids) = tecla(&mut app, KeyCode::Char('t')) else {
             panic!()
         };
@@ -1861,7 +1858,9 @@ fn t_espera_a_claude_individual_pero_arma_lo_gratis() {
             con_cuota(1, 0, 2)
         };
         app.filtro = if con_origen { "inv-000" } else { "bus-000" }.into();
-        let efecto = tecla(&mut app, KeyCode::Char('i'));
+        assert_eq!(tecla(&mut app, KeyCode::Char('i')), Efecto::Nada);
+        assert!(app.claude_en_curso.is_empty());
+        let efecto = tecla(&mut app, KeyCode::Char('s'));
         assert!(matches!(efecto, Efecto::Investigar(_) | Efecto::Buscar(_)));
         app.filtro.clear();
         assert_eq!(
@@ -1876,7 +1875,7 @@ fn t_espera_a_claude_individual_pero_arma_lo_gratis() {
 
 #[test]
 fn una_directa_en_hilos_no_bloquea_la_pregunta_de_claude() {
-    let mut app = con_cuota(2, 0, 1);
+    let mut app = con_cuota(2, 1, 0);
     app.filtro = "gratis-000".into();
     assert_eq!(
         tecla(&mut app, KeyCode::Char('i')),
@@ -1886,72 +1885,55 @@ fn una_directa_en_hilos_no_bloquea_la_pregunta_de_claude() {
         tecla(&mut app, KeyCode::Char('t')),
         Efecto::Investigar(vec!["plugin:gratis-001@x".into()])
     );
-    assert!(pie(&app)[1].contains("¿Gastar 1 corridas de Claude?"));
+    assert!(pie(&app)[1].contains("¿Gastar 1 corrida de Claude?"));
 }
 
 #[test]
 fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
-    use rebake::investigador::Receta;
     use rebake::tui::app::Corrida;
     use std::collections::HashSet;
-    let mut app = con_cuota(0, 3, 4);
+    let mut app = con_cuota(0, 6, 1);
     tecla(&mut app, KeyCode::Char('t'));
-    let Efecto::Lote(inv, bus) = tecla(&mut app, KeyCode::Char('s')) else {
+    let Efecto::Investigar(inv) = tecla(&mut app, KeyCode::Char('s')) else {
         panic!()
     };
-    app.filtro = "bus-003".into();
+    app.filtro = "bus-000".into();
+    assert_eq!(tecla(&mut app, KeyCode::Char('i')), Efecto::Nada);
     assert_eq!(
-        tecla(&mut app, KeyCode::Char('i')),
-        Efecto::Buscar(vec!["mcp:bus-003".into()])
+        tecla(&mut app, KeyCode::Char('s')),
+        Efecto::Buscar(vec!["mcp:bus-000".into()])
     );
     assert_eq!(
-        Efecto::Lote(inv.clone(), bus.clone()),
-        Efecto::Lote(
-            vec![
-                "mcp:inv-000".into(),
-                "mcp:inv-001".into(),
-                "mcp:inv-002".into()
-            ],
-            vec!["mcp:bus-000".into(), "mcp:bus-001".into()],
-        )
+        inv,
+        vec![
+            "mcp:inv-000",
+            "mcp:inv-001",
+            "mcp:inv-002",
+            "mcp:inv-003",
+            "mcp:inv-004"
+        ]
     );
     assert_eq!(app.claude_en_curso.len(), 6);
-    app.registrar_investigacion(
-        &inv[0],
-        Ok(Receta {
-            registro_hooks: None,
-            repo: "https://github.com/a/b".into(),
-            doc: "https://github.com/a/b#install".into(),
-            pasos: vec![],
-            requiere: vec![],
-            verificar: None,
-        }),
-        "2026-10-22",
-    );
+    app.registrar_investigacion(&inv[0], Ok(receta_fase3()), "2026-10-22");
     for id in &inv[1..] {
         app.registrar_investigacion(id, Err(anyhow::anyhow!("sin cuota")), "2026-10-22");
     }
-    app.registrar_busqueda(&bus[0], Err(anyhow::anyhow!("sin cuota")));
     assert_eq!(
         app.claude_en_curso,
-        HashSet::from([
-            Corrida::Buscar("mcp:bus-001".into()),
-            Corrida::Buscar("mcp:bus-003".into()),
-        ])
+        HashSet::from([Corrida::Buscar("mcp:bus-000".into())])
     );
-    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
-    assert!(pie(&app)[1].contains("esperá"));
-    app.registrar_busqueda(&bus[1], Err(anyhow::anyhow!("sin cuota")));
-    assert_eq!(
-        app.claude_en_curso,
-        HashSet::from([Corrida::Buscar("mcp:bus-003".into())])
+    assert!(
+        app.mensaje
+            .as_deref()
+            .unwrap()
+            .contains("1 por revisar, 4 errores")
     );
     assert_eq!(app.buscando.len(), 1);
     assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
     assert!(pie(&app)[1].contains("esperá"));
     app.registrar_busqueda(
-        "mcp:bus-003",
+        "mcp:bus-000",
         Ok(Posible {
             repo: None,
             motivo: "no encontrado".into(),
@@ -1959,20 +1941,20 @@ fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
         }),
     );
     assert!(app.claude_en_curso.is_empty());
-    assert!(app.buscando.is_empty());
     assert!(app.investigando.is_empty());
+    assert!(app.buscando.is_empty());
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
     assert!(pie(&app)[1].contains("¿Gastar 5 corridas de Claude?"));
     assert_eq!(
         tecla(&mut app, KeyCode::Char('s')),
-        Efecto::Lote(
-            vec!["mcp:inv-001".into(), "mcp:inv-002".into()],
-            vec![
-                "mcp:bus-000".into(),
-                "mcp:bus-001".into(),
-                "mcp:bus-002".into()
-            ],
-        )
+        Efecto::Investigar(vec![
+            "mcp:inv-001".into(),
+            "mcp:inv-002".into(),
+            "mcp:inv-003".into(),
+            "mcp:inv-004".into(),
+            "mcp:inv-005".into()
+        ])
     );
 }
 
@@ -1985,8 +1967,8 @@ fn el_pie_mide_80_columnas_con_cuentas_de_tres_cifras_incluso_con_filtro() {
         (999, 0, " t  armar 999 ", 61),
         (0, 999, " t  armar 999 Claude ", 68),
     ] {
-        let mut app = con_cuota(g, 0, c);
-        app.filtro = "bus-000".into();
+        let mut app = con_cuota(g, c, 0);
+        app.filtro = "inv-000".into();
         app.mensaje = Some("Escaneo terminado".into());
         let grande = pantalla_en(&app, 200, 24);
         let linea = grande.lines().nth(22).unwrap();
@@ -1998,7 +1980,7 @@ fn el_pie_mide_80_columnas_con_cuentas_de_tres_cifras_incluso_con_filtro() {
         assert_eq!(UnicodeWidthStr::width(&linea[..fin]), ancho, "{linea}");
         let chica = pantalla_en(&app, 80, 24);
         let pie = chica.lines().nth(22).unwrap();
-        for esperado in ["1 Armar", "2 Instalar", "3 Checklist", " ?  ayuda ", texto] {
+        for esperado in ["1 Armar", "2 Inst", "3 Check", "q salir", "t armar"] {
             assert!(pie.contains(esperado), "falta {esperado:?}: {pie}");
         }
         assert!(chica.lines().nth(23).unwrap().contains("Escaneo terminado"));
@@ -2046,10 +2028,18 @@ fn el_panel_anticipa_el_costo_real_de_aceptar_sin_mutar_el_origen() {
         };
         assert!(p.contains(costo), "{id}: {p}");
         assert_eq!(app.recetario, antes);
-        assert_eq!(
-            tecla(&mut app, KeyCode::Enter),
-            Efecto::Investigar(vec![id.into()])
-        );
+        let efecto = tecla(&mut app, KeyCode::Enter);
+        if !gratis {
+            assert_eq!(efecto, Efecto::Nada);
+            assert_eq!(app.recetario, antes);
+            assert!(app.claude_en_curso.is_empty());
+            assert_eq!(
+                tecla(&mut app, KeyCode::Char('s')),
+                Efecto::Investigar(vec![id.into()])
+            );
+        } else {
+            assert_eq!(efecto, Efecto::Investigar(vec![id.into()]));
+        }
         assert_eq!(app.claude_en_curso.len(), usize::from(!gratis));
         assert_eq!(
             app.recetario.item(id).unwrap().fuente.as_ref().unwrap().via,
@@ -2088,15 +2078,13 @@ fn una_tanda_con_seis_investigaciones_no_gasta_la_sexta_ni_busca() {
 fn terminar_una_investigacion_no_cierra_la_busqueda_del_mismo_item() {
     let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
     tecla(&mut app, KeyCode::Char('i'));
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
     assert_eq!(
-        tecla(&mut app, KeyCode::Enter),
+        tecla(&mut app, KeyCode::Char('s')),
         Efecto::Buscar(vec!["mcp:serena".into()])
     );
-    assert_eq!(
-        tecla(&mut app, KeyCode::Enter),
-        Efecto::Investigar(vec!["mcp:serena".into()])
-    );
-    assert_eq!(app.claude_en_curso.len(), 2);
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    assert_eq!(app.claude_en_curso.len(), 1);
     app.registrar_investigacion(
         "mcp:serena",
         Err(anyhow::anyhow!("sin cuota")),
@@ -2108,7 +2096,7 @@ fn terminar_una_investigacion_no_cierra_la_busqueda_del_mismo_item() {
     app.registrar_busqueda("mcp:serena", Err(anyhow::anyhow!("sin cuota")));
     assert!(app.claude_en_curso.is_empty());
     tecla(&mut app, KeyCode::Char('t'));
-    assert!(pie(&app)[1].contains("¿Gastar 1 corridas de Claude?"));
+    assert!(pie(&app)[1].contains("Resolver"));
 }
 
 #[test]
@@ -2216,12 +2204,12 @@ fn v_sin_recetas_por_revisar_avisa_y_no_pregunta() {
 }
 
 #[test]
-fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
+fn tanda_de_armado_informa_balance_y_sugerencias_con_y_sin_pendientes() {
     use rebake::investigador::Receta;
-    // Caso 1: tanda mixta con pendientes restantes (sugiere v y t)
+    // Caso 1: quedan errores con origen (sugiere v y t).
     let mut app = con_cuota(0, 3, 4);
     tecla(&mut app, KeyCode::Char('t'));
-    let Efecto::Lote(inv, bus) = tecla(&mut app, KeyCode::Char('s')) else {
+    let Efecto::Investigar(inv) = tecla(&mut app, KeyCode::Char('s')) else {
         panic!()
     };
     // 2 inv exitosas, 1 inv error
@@ -2250,21 +2238,12 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
         "2026-10-22",
     );
     app.registrar_investigacion(&inv[2], Err(anyhow::anyhow!("fallo")), "2026-10-22");
-    // 1 bus con posible origen, 1 bus fallida
-    app.registrar_busqueda(
-        &bus[0],
-        Ok(Posible {
-            repo: Some("https://github.com/a/b".into()),
-            motivo: "m".into(),
-            descartado: false,
-        }),
-    );
-    app.registrar_busqueda(&bus[1], Err(anyhow::anyhow!("fallo")));
+    assert!(app.buscando.is_empty());
 
     let msg = app.mensaje.as_deref().unwrap();
     assert!(msg.contains("2 por revisar"), "{msg}");
-    assert!(msg.contains("1 posible origen"), "{msg}");
-    assert!(msg.contains("2 errores"), "{msg}");
+    assert!(!msg.contains("posible origen"), "{msg}");
+    assert!(msg.contains("1 error"), "{msg}");
     assert!(msg.contains("`v`"), "{msg}");
     assert!(msg.contains("`t`"), "{msg}");
 
@@ -2308,7 +2287,7 @@ fn tanda_mixta_informa_balance_y_sugerencias_con_y_sin_pendientes() {
 fn el_pie_en_80_columnas_con_pendientes_y_por_revisar_mide_78_columnas_hasta_v() {
     use unicode_width::UnicodeWidthStr;
     // 999 gratis, 999 con Claude, y 999 por revisar
-    let mut app = con_cuota(999, 0, 999);
+    let mut app = con_cuota(999, 999, 0);
     for i in 0..999 {
         let mut item = con_fuente(&format!("plugin:rev-{i}@x"));
         item.estado = Estado::PorRevisar;
@@ -2333,9 +2312,10 @@ fn el_pie_en_80_columnas_con_pendientes_y_por_revisar_mide_78_columnas_hasta_v()
         "1 Armar",
         "2 Inst",
         "3 Check",
-        " ?  ayuda ",
-        " t  999 + 999 Claude ",
-        " v  aprobar 999 ",
+        "q salir",
+        "t armar",
+        "v aprobar",
+        "Enter armar gratis",
     ] {
         assert!(pie.contains(esperado), "falta {esperado:?} en {pie}");
     }
@@ -3025,4 +3005,129 @@ fn fase3_pie_resolver_y_confirmacion_caben_en_80_sin_color_y_sin_perder_salida()
             "{p}"
         );
     }
+}
+
+#[test]
+fn fase3_paste_es_texto_sin_controles_y_no_ejecuta_teclas() {
+    use rebake::tui::app::{Entrada, Modo as ModoTui};
+    let mut app = con_cuota(0, 0, 1);
+    let antes = app.recetario.clone();
+    app.pegar("q\ns\n");
+    assert_eq!(app.modo, ModoTui::Normal);
+    tecla(&mut app, KeyCode::Enter);
+    let resolver = app.modo.clone();
+    app.pegar("q\ns\n");
+    assert_eq!(app.modo, resolver);
+    tecla(&mut app, KeyCode::Enter);
+    app.pegar("https://github.com/\na/\rbq\t\u{7f}\u{2028}\u{2029}");
+    assert_eq!(
+        app.modo,
+        ModoTui::Escribiendo {
+            para: Entrada::Link {
+                id: "mcp:bus-000".into()
+            },
+            texto: "https://github.com/a/bq".into(),
+        }
+    );
+    assert_eq!(app.recetario, antes);
+    assert!(app.claude_en_curso.is_empty());
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert!(app.claude_en_curso.is_empty());
+    tecla(&mut app, KeyCode::Enter);
+    let confirmacion = app.modo.clone();
+    app.pegar("s\nq\n");
+    assert_eq!(app.modo, confirmacion);
+    assert!(app.claude_en_curso.is_empty());
+}
+
+#[test]
+fn fase3_filtro_y_resultado_de_busqueda_conservan_el_id_y_scroll_valido() {
+    let mut app = con_cuota(0, 0, 40);
+    app.restaurar_seleccion(Some("mcp:bus-039"));
+    tecla(&mut app, KeyCode::Char('/'));
+    for c in "bus-0".chars() {
+        tecla(&mut app, KeyCode::Char(c));
+    }
+    tecla(&mut app, KeyCode::Enter);
+    assert_eq!(app.seleccionado().unwrap().id, "mcp:bus-039");
+    app.registrar_busqueda(
+        "mcp:bus-000",
+        Ok(Posible {
+            repo: Some("https://github.com/a/b".into()),
+            motivo: "un posible".into(),
+            descartado: false,
+        }),
+    );
+    assert_eq!(app.seleccionado().unwrap().id, "mcp:bus-039");
+    assert!(pantalla_en(&app, 80, 24).contains("▶? bus-039"));
+    tecla(&mut app, KeyCode::Char('x'));
+    assert!(app.seleccion < app.visibles().len());
+    tecla(&mut app, KeyCode::Char('/'));
+    for c in "nada".chars() {
+        tecla(&mut app, KeyCode::Char(c));
+    }
+    tecla(&mut app, KeyCode::Enter);
+    assert_eq!(app.seleccion, 0);
+    assert!(app.visibles().is_empty());
+    assert!(pantalla_en(&app, 80, 24).contains("sin ítems"));
+}
+
+#[test]
+fn fase3_pie_prioriza_enter_y_salida_a_80_columnas() {
+    for (mut app, esperado) in [
+        (con_cuota(0, 1, 0), "Enter armar (1 corrida)"),
+        (con_cuota(1, 0, 0), "Enter armar gratis"),
+        (con_cuota(0, 0, 1), "Enter resolver"),
+    ] {
+        app.color = false;
+        let p = pantalla_en(&app, 80, 24);
+        for texto in [esperado, "?", "q salir"] {
+            assert!(p.lines().nth(22).unwrap().contains(texto), "{p}");
+        }
+    }
+}
+
+#[test]
+fn fase3_ayuda_80x24_conserva_resolver_confirmacion_y_ultimos_atajos() {
+    let mut app = con_cuota(0, 1, 1);
+    tecla(&mut app, KeyCode::Char('?'));
+    let p = pantalla_en(&app, 80, 24);
+    for texto in [
+        "Resolver:",
+        "1 corrida",
+        "s confirma",
+        "otra tecla cancela",
+        "n descarta",
+        "l pega link",
+        "u actualiza",
+        "q salir",
+        "solo para esa instalación",
+    ] {
+        assert!(p.contains(texto), "falta {texto}: {p}");
+    }
+}
+
+#[test]
+fn fase3_link_directo_se_arma_gratis_y_hook_excluido_indica_reincluir() {
+    let mut app = con_un_item(Item::nuevo("plugin:a@x", Tipo::Plugin));
+    tecla(&mut app, KeyCode::Char('l'));
+    app.pegar("https://github.com/a/b");
+    assert_eq!(
+        tecla(&mut app, KeyCode::Enter),
+        Efecto::Investigar(vec!["plugin:a@x".into()])
+    );
+    assert!(app.claude_en_curso.is_empty());
+    assert_eq!(
+        app.recetario.items[0].fuente.as_ref().unwrap().via,
+        Via::Manual
+    );
+    let mut hook = Item::nuevo("hook:tool", Tipo::Hook);
+    hook.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+    hook.estado = Estado::Excluida;
+    let mut app = con_un_item(hook);
+    app.mostrar_excluidas = true;
+    assert!(pantalla_en(&app, 80, 24).contains("x reincluir"));
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    assert!(app.mensaje.as_deref().unwrap().contains("x reincluir"));
+    assert_eq!(app.recetario.items[0].estado, Estado::Excluida);
 }
