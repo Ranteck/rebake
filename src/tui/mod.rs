@@ -50,6 +50,7 @@ pub fn ejecutar(ruta: &Path, home: &Path, arranque: Arranque) -> Result<()> {
     if !std::io::stdout().is_terminal() {
         bail!("no pude abrir la pantalla: la salida no es una terminal");
     }
+    escanear_al_abrir(&mut app, ruta);
     let mut terminal = ratatui::init();
     let resultado = con_pegado(&mut std::io::stdout(), || {
         bucle(&mut terminal, &mut app, ruta, home, arranque.revision)
@@ -191,7 +192,7 @@ fn bucle(
             Efecto::Nada => {}
             Efecto::Salir => return Ok(()),
             Efecto::Guardar => guardar(app, ruta),
-            Efecto::Escanear => escanear(app, ruta),
+            Efecto::Escanear => escanear(app, ruta, "tecla"),
             Efecto::Investigar(ids) => investigar(app, ruta, home, ids, &tx_inv),
             Efecto::Buscar(ids) => buscar(app, home, ids, &tx_bus),
             Efecto::Editar(id) => editar(terminal, app, ruta, home, &id)?,
@@ -364,13 +365,20 @@ fn registrar_listo(app: &App, anterior: &mut bool) {
     *anterior = listo;
 }
 
-fn escanear(app: &mut App, ruta: &Path) {
+fn escanear_al_abrir(app: &mut App, ruta: &Path) {
+    if app.pestana != Pestana::Instalacion {
+        escanear(app, ruta, "abrir");
+    }
+}
+
+fn escanear(app: &mut App, ruta: &Path, disparador: &str) {
     let pacman = PacmanReal;
     let elegido = app.seleccionado().map(|i| i.id.clone());
     match Entorno::real(&pacman).and_then(|e| servicio::escanear(&mut app.recetario, &e)) {
         Ok(res) => {
             tracing::info!(
                 accion = "escanear",
+                disparador,
                 resultado = "ok",
                 nuevos = res.nuevos,
                 con_descripcion = app
@@ -395,11 +403,17 @@ fn escanear(app: &mut App, ruta: &Path) {
                 format!(" · aviso: {}", res.avisos.join(" · "))
             };
             app.mensaje = Some(format!("escaneo: {} nuevos{avisos}", res.nuevos));
+            app.reordenar_recetas();
             app.restaurar_seleccion(elegido.as_deref());
             guardar(app, ruta);
         }
         Err(e) => {
-            tracing::error!(accion = "escanear", resultado = "fallo", causa = "lectura");
+            tracing::error!(
+                accion = "escanear",
+                disparador,
+                resultado = "fallo",
+                causa = "lectura"
+            );
             app.mensaje = Some(format!("no pude escanear: {e:#}"));
         }
     }
@@ -926,10 +940,10 @@ mod tests {
         let subscriber = capturar_logs(salida.clone());
         tracing::subscriber::with_default(subscriber, || {
             let mut app = App::nueva(Recetario::nuevo());
-            escanear(&mut app, &home.join("cookbook.toml"));
+            escanear(&mut app, &home.join("cookbook.toml"), "tecla");
             std::fs::remove_dir_all(&home).unwrap();
             std::fs::write(&home, "no es directorio").unwrap();
-            escanear(&mut app, &home.join("cookbook.toml"));
+            escanear(&mut app, &home.join("cookbook.toml"), "tecla");
             std::fs::remove_file(&home).unwrap();
             std::fs::create_dir(&home).unwrap();
         });
@@ -1155,5 +1169,86 @@ mod fase4_tests {
             "{log}"
         );
         assert!(!log.contains(dir.path().to_str().unwrap()), "{log}");
+    }
+}
+
+#[cfg(test)]
+mod fase5_tests {
+    use super::apoyo_pruebas::{aislado, capturar_logs};
+    use super::*;
+    use crate::modelo::{Estado, Fuente, Item, Recetario, SeccionRecetas, Tipo, Via};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn abrir_escanea_una_vez_tecla_reordena_y_instalar_no_toca_cookbook() {
+        if !aislado(
+            "tui::fase5_tests::abrir_escanea_una_vez_tecla_reordena_y_instalar_no_toca_cookbook",
+        ) {
+            return;
+        }
+        let home = rutas::home().unwrap();
+        let ruta = home.join("cookbook.toml");
+        let mut r = Recetario::nuevo();
+        let mut directa = Item::nuevo("plugin:a@x", Tipo::Plugin);
+        directa.fuente = Some(Fuente {
+            repo: "https://github.com/a/b".into(),
+            via: Via::Metadatos,
+            doc: None,
+        });
+        let sin_origen = Item::nuevo("plugin:b@x", Tipo::Plugin);
+        r.items = vec![directa, sin_origen];
+        archivo::guardar(&ruta, &r).unwrap();
+        let original = std::fs::read(&ruta).unwrap();
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        tracing::subscriber::with_default(capturar_logs(salida.clone()), || {
+            let mut instalar = App::nueva(r.clone()).con_arranque(true, HashMap::new());
+            escanear_al_abrir(&mut instalar, &ruta);
+            assert_eq!(instalar.pestana, Pestana::Instalacion);
+            assert_eq!(instalar.recetario, r);
+            assert_eq!(std::fs::read(&ruta).unwrap(), original);
+            assert!(salida.lock().unwrap().is_empty());
+
+            let mut app = App::nueva(r);
+            escanear_al_abrir(&mut app, &ruta);
+            assert_eq!(
+                app.recetario.item("plugin:a@x").unwrap().estado,
+                Estado::PorRevisar
+            );
+            assert!(app.mensaje.as_deref().unwrap().starts_with("escaneo:"));
+            assert!(app.claude_en_curso.is_empty());
+            assert_eq!(archivo::leer(&ruta).unwrap(), app.recetario);
+            assert_eq!(
+                tecla_registrada(&mut app, KeyEvent::from(KeyCode::Char(' '))),
+                Efecto::Guardar
+            );
+            assert_eq!(
+                app.seccion_en_lista(app.seleccionado().unwrap()),
+                SeccionRecetas::PorResolver
+            );
+            assert_eq!(
+                tecla_registrada(&mut app, KeyEvent::from(KeyCode::Char('s'))),
+                Efecto::Escanear
+            );
+            escanear(&mut app, &ruta, "tecla");
+            assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
+            assert_eq!(app.seleccion, 1);
+            assert_eq!(
+                app.seccion_en_lista(app.seleccionado().unwrap()),
+                SeccionRecetas::Listas
+            );
+        });
+        let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        let escaneos: Vec<_> = log
+            .lines()
+            .filter(|l| l.contains("accion=\"escanear\""))
+            .collect();
+        assert_eq!(escaneos.len(), 2, "{log}");
+        assert!(escaneos[0].contains("disparador=\"abrir\""), "{log}");
+        assert!(escaneos[1].contains("disparador=\"tecla\""), "{log}");
+        assert!(escaneos[0].contains("directas=1"), "{log}");
+        assert!(escaneos[1].contains("directas=0"), "{log}");
+        for privado in ["plugin:", "https://", home.to_str().unwrap()] {
+            assert!(!log.contains(privado), "{log}");
+        }
     }
 }
