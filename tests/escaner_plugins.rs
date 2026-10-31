@@ -157,3 +157,50 @@ fn plugin_sincronizado_se_recuerda_sin_ocultar_el_homonimo_propio() {
         ["personal"]
     );
 }
+
+#[test]
+fn plugins_y_marketplaces_usan_descripcion_del_autor_y_fallback() {
+    let h = HomeFalso::nuevo();
+    perfil_con_plugins(
+        &h,
+        ".claude",
+        r#"{"enabledPlugins":{"codex@openai-codex":true,"superpowers@openai-codex":true}}"#,
+    );
+    h.escribir(".claude/plugins/installed_plugins.json", r#"{"plugins":{"codex@openai-codex":[{"installPath":"~/cache/codex"}],"superpowers@openai-codex":[{"installPath":"~/cache/superpowers"}]}}"#);
+    h.escribir(
+        "cache/codex/.claude-plugin/plugin.json",
+        r#"{"description":"Plugin author's text."}"#,
+    );
+    h.escribir("cache/superpowers/.claude-plugin/plugin.json", "{}");
+    h.escribir(".claude/plugins/marketplaces/openai-codex/.claude-plugin/marketplace.json", r#"{"plugins":[{"name":"codex","source":"./plugins/codex","description":"Do not override the manifest."},{"name":"superpowers","description":"Catalog author's text."}]}"#);
+    let pacman = PacmanFalso(vec![]);
+    let mut entorno = entorno(&h, &pacman);
+    entorno.path.clear();
+    for manifiesto in [
+        r#"{"description":"Marketplace author's text."}"#,
+        r#"{"metadata":{"description":"Marketplace author's text."}}"#,
+    ] {
+        h.escribir("x/.claude-plugin/marketplace.json", manifiesto);
+        h.escribir(
+            ".claude/plugins/known_marketplaces.json",
+            &CONOCIDOS.replace("\"x\"", &format!("\"{}\"", h.ruta().join("x").display())),
+        );
+        let e = escanear(&entorno, &[perfil("laburo", "~/.claude")]);
+        for (id, texto) in [
+            ("plugin:codex@openai-codex", "Plugin author's text."),
+            ("plugin:superpowers@openai-codex", "Catalog author's text."),
+            ("marketplace:openai-codex", "Marketplace author's text."),
+        ] {
+            assert_eq!(
+                e.hallazgos
+                    .iter()
+                    .find(|h| h.id == id)
+                    .unwrap()
+                    .descripcion
+                    .as_deref(),
+                Some(texto)
+            );
+        }
+        assert!(e.avisos.is_empty(), "{:?}", e.avisos);
+    }
+}
