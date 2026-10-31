@@ -234,3 +234,42 @@ fn carpeta_ausente_no_olvida_sincronizacion_ni_habilita_destino_global() {
     r.items[0].perfiles.clear();
     assert!(r.items[0].es_sincronizado());
 }
+
+#[test]
+fn descripcion_se_actualiza_se_borra_y_se_conserva_si_ausente() {
+    let mut r = base();
+    for (id, estado) in [
+        ("skill:actualizada", Estado::Aprobada),
+        ("skill:borrada", Estado::Pendiente),
+        ("skill:excluida", Estado::Excluida),
+        ("skill:ausente", Estado::Aprobada),
+    ] {
+        let mut i = Item::nuevo(id, Tipo::Skill);
+        i.estado = estado;
+        i.descripcion = Some("anterior".into());
+        r.items.push(i);
+    }
+    let hallazgos = [
+        "skill:actualizada",
+        "skill:borrada",
+        "skill:excluida",
+        "skill:nueva",
+    ]
+    .into_iter()
+    .map(|id| {
+        let mut h = hallazgo(id, Tipo::Skill, &["laburo"]);
+        h.descripcion = (id != "skill:borrada").then(|| "nueva".into());
+        h
+    })
+    .collect();
+    fusionar(&mut r, escaneo(hallazgos), &nunca);
+    for id in ["skill:actualizada", "skill:excluida", "skill:nueva"] {
+        assert_eq!(r.item(id).unwrap().descripcion.as_deref(), Some("nueva"));
+    }
+    assert_eq!(r.item("skill:borrada").unwrap().descripcion, None);
+    assert_eq!(
+        r.item("skill:ausente").unwrap().descripcion.as_deref(),
+        Some("anterior")
+    );
+    assert_eq!(r.item("skill:excluida").unwrap().estado, Estado::Excluida);
+}

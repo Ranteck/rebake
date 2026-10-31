@@ -108,6 +108,8 @@ pub struct Item {
     pub fuente: Option<Fuente>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pista: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descripcion: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requiere: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -268,6 +270,7 @@ impl Item {
             instalado_por: None,
             fuente: None,
             pista: None,
+            descripcion: None,
             requiere: vec![],
             verificar: None,
             investigado: None,

@@ -58,6 +58,7 @@ pub struct Hallazgo {
     pub sincronizacion: std::collections::BTreeMap<String, bool>,
     pub fuente: Option<Fuente>,
     pub pista: Option<String>,
+    pub descripcion: Option<String>,
     pub requiere: Vec<String>,
 }
 
@@ -70,6 +71,7 @@ impl Hallazgo {
             sincronizacion: Default::default(),
             fuente: None,
             pista: None,
+            descripcion: None,
             requiere: vec![],
         }
     }
@@ -120,6 +122,9 @@ fn agrupar(hallazgos: Vec<Hallazgo>) -> Vec<Hallazgo> {
                 }
                 if u.fuente.is_none() {
                     u.fuente = h.fuente;
+                }
+                if u.descripcion.is_none() {
+                    u.descripcion = h.descripcion;
                 }
                 if u.pista.is_none() {
                     u.pista = h.pista;

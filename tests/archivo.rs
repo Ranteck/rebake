@@ -225,3 +225,23 @@ sincronizado_en = ["cuenta"]
     );
     assert!(rebake::instalador::planificar(&leido).unwrap().is_empty());
 }
+
+#[test]
+fn descripcion_se_conserva_y_cookbook_anterior_sigue_leyendose() {
+    let anterior =
+        "version = 1\n[[item]]\nid = 'skill:demo'\ntipo = 'skill'\nestado = 'pendiente'\n";
+    let sin = archivo::parsear(anterior, "anterior").unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let ruta = dir.path().join("cookbook.toml");
+    archivo::guardar(&ruta, &sin).unwrap();
+    assert!(!fs::read_to_string(&ruta).unwrap().contains("descripcion"));
+    let texto = format!("{anterior}descripcion = 'Author text: no translation.'\n");
+    let con = archivo::parsear(&texto, "nuevo").unwrap();
+    archivo::guardar(&ruta, &con).unwrap();
+    assert_eq!(archivo::leer(&ruta).unwrap(), con);
+    assert!(
+        fs::read_to_string(ruta)
+            .unwrap()
+            .contains("Author text: no translation.")
+    );
+}

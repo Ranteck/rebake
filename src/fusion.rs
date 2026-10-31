@@ -38,6 +38,7 @@ pub fn fusionar(r: &mut Recetario, escaneo: Escaneo, existe_herramienta: &dyn Fn
                 }
                 item.ausente = false;
                 item.pista = h.pista;
+                item.descripcion = h.descripcion;
                 for req in h.requiere {
                     if !item.requiere.contains(&req) {
                         item.requiere.push(req);
@@ -53,6 +54,7 @@ pub fn fusionar(r: &mut Recetario, escaneo: Escaneo, existe_herramienta: &dyn Fn
                 item.perfiles = h.perfiles;
                 item.fuente = h.fuente;
                 item.pista = h.pista;
+                item.descripcion = h.descripcion;
                 item.requiere = h.requiere;
                 r.items.push(item);
             }
