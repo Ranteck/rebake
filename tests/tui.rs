@@ -3623,3 +3623,32 @@ fn fase5_un_requisito_agregado_al_armar_tambien_se_marca_sin_saltar() {
         orden
     );
 }
+
+#[test]
+fn fase5_reincluir_una_excluida_al_abrir_y_aprobar_no_mueve_la_fila() {
+    let mut r = Recetario::nuevo();
+    let mut excluida = con_fuente("plugin:a@x");
+    excluida.estado = Estado::Excluida;
+    excluida.pasos = vec![Paso {
+        cmd: "true".into(),
+        modo: Modo::Auto,
+        por_perfil: false,
+        cita: None,
+        nota: None,
+    }];
+    r.items = vec![excluida, con_fuente("plugin:b@x")];
+    let mut app = App::nueva(r);
+    tecla(&mut app, KeyCode::Char('o'));
+    app.restaurar_seleccion(Some("plugin:a@x"));
+    assert_eq!(tecla(&mut app, KeyCode::Char('x')), Efecto::Guardar);
+    let seleccion = app.seleccion;
+    assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Guardar);
+    assert_eq!(app.seleccion, seleccion);
+    assert_eq!(
+        app.visibles()
+            .iter()
+            .map(|i| i.id.as_str())
+            .collect::<Vec<_>>(),
+        ["plugin:a@x", "plugin:b@x"]
+    );
+}

@@ -309,7 +309,7 @@ impl App {
             .get(&item.id)
             .copied()
             .filter(|s| *s != SeccionRecetas::Excluidas)
-            .unwrap_or_else(|| item.seccion())
+            .unwrap_or(SeccionRecetas::PorResolver)
     }
 
     pub fn por_resolver(&self) -> Vec<&Item> {
@@ -1336,11 +1336,6 @@ impl App {
             .is_some_and(|t| t.miembros.remove(id));
         let elegido = self.id_seleccionado();
         aplicar(&mut self.recetario, id, resultado, hoy);
-        for item in &self.recetario.items {
-            self.secciones
-                .entry(item.id.clone())
-                .or_insert_with(|| item.seccion());
-        }
         self.restaurar_seleccion(elegido.as_deref());
         if esta_en_tanda && let Some(t) = &mut self.tanda_activa {
             if let Some(item) = self.recetario.item(id) {
