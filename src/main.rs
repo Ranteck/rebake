@@ -314,6 +314,7 @@ fn ejecutar_comando(
                 comando = "escanear",
                 items = r.items.len(),
                 nuevos = resumen.nuevos,
+                con_descripcion = r.items.iter().filter(|i| i.descripcion.is_some()).count(),
                 sincronizados = resumen.sincronizados,
                 directas = resumen.directas,
                 avisos = resumen.avisos.len(),

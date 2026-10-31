@@ -310,7 +310,7 @@ fn recetas(f: &mut Frame, app: &App, area: Rect) {
     let (titulo, detalle) = match app.seleccionado() {
         Some(item) => (
             cortar(&item.id, der.width.saturating_sub(2) as usize),
-            lineas_detalle(app, item),
+            lineas_detalle(app, item, der.width.saturating_sub(2)),
         ),
         None => (
             "Detalle".into(),
@@ -448,10 +448,19 @@ fn que_falta(app: &App, item: &Item) -> &'static str {
     }
 }
 
-fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
+fn lineas_detalle(app: &App, item: &Item, ancho: u16) -> Vec<Line<'static>> {
+    let mut descripcion = envolver(
+        item.descripcion.as_deref().unwrap_or("sin descripción"),
+        ancho,
+    );
+    if descripcion.len() > 4 {
+        descripcion.truncate(4);
+        descripcion[3] = cortar(&format!("{}…", descripcion[3]), ancho as usize);
+    }
     if let Some(r) = &item.instalado_por {
-        return vec![
-            Line::from(format!("lo instala {}", r.nombre())),
+        let mut l = vec![Line::from(format!("lo instala {}", r.nombre()))];
+        l.extend(descripcion.into_iter().map(Line::from));
+        l.extend([
             Line::from(format!(
                 "Perfiles: {}",
                 item.perfiles_propios()
@@ -461,7 +470,8 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
             )),
             Line::from("Comprobar revisa si el hook está en la configuración de cada perfil."),
             Line::from("No necesita receta ni aprobación independiente."),
-        ];
+        ]);
+        return l;
     }
     let mut primera = vec![Span::styled(
         que_falta(app, item),
@@ -471,6 +481,7 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
         primera.insert(0, Span::raw(format!("{} ", spinner(app))));
     }
     let mut l = vec![Line::from(primera)];
+    l.extend(descripcion.into_iter().map(Line::from));
     // La primera línea ya dice el estado; los perfiles importan solo si no son todos.
     let propios = item.perfiles_propios().count();
     if propios > 0 && propios < app.recetario.perfiles.len() {
@@ -740,7 +751,10 @@ fn plan_instalacion(f: &mut Frame, app: &App, area: Rect) {
         .get(app.seleccion_plan)
         .and_then(|id| app.recetario.item(id))
     {
-        Some(item) => (item.id.clone(), lineas_detalle(app, item)),
+        Some(item) => (
+            item.id.clone(),
+            lineas_detalle(app, item, der.width.saturating_sub(2)),
+        ),
         None => ("Detalle".into(), vec![]),
     };
     f.render_widget(

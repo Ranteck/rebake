@@ -3383,3 +3383,109 @@ fn fase4_fin_de_busqueda_e_instalacion_tardios_no_pisan_la_accion() {
             .contains("Instalación terminada")
     );
 }
+
+#[test]
+fn armar_muestra_descripcion_del_autor_bajo_estado_incluso_excluida() {
+    for estado in [
+        Estado::Pendiente,
+        Estado::PorRevisar,
+        Estado::Aprobada,
+        Estado::Excluida,
+    ] {
+        let mut r = Recetario::nuevo();
+        let mut i = Item::nuevo("skill:demo", Tipo::Skill);
+        i.estado = estado;
+        i.descripcion = Some("Author's text, unchanged.".into());
+        r.items.push(i);
+        let mut app = App::nueva(r);
+        if estado == Estado::Excluida {
+            tecla(&mut app, KeyCode::Char('o'));
+        }
+        let p = pantalla_en(&app, 80, 24);
+        let detalle: Vec<_> = p
+            .lines()
+            .filter(|l| l.chars().nth(32) == Some('│'))
+            .collect();
+        let posicion = detalle
+            .iter()
+            .position(|l| l.contains("Author's text, unchanged."))
+            .unwrap_or_else(|| panic!("{p}"));
+        assert!(posicion > 0, "{p}");
+        assert!(detalle[posicion + 1].contains("Viene de:"), "{p}");
+    }
+}
+
+#[test]
+fn instalar_muestra_descripcion_guardada_de_item_ausente() {
+    let mut app = con_plan();
+    app.recetario.item_mut(CODEX).unwrap().descripcion = Some("Saved author's text.".into());
+    app.recetario.item_mut(CODEX).unwrap().ausente = true;
+    resaltar(&mut app, CODEX);
+    let p = pantalla_en(&app, 80, 24);
+    assert!(p.contains("Saved author's text."), "{p}");
+}
+
+#[test]
+fn sin_descripcion_es_explicito_en_mcp_herramienta_hook_y_skill() {
+    for tipo in [Tipo::Mcp, Tipo::Herramienta, Tipo::Hook, Tipo::Skill] {
+        let mut r = Recetario::nuevo();
+        let mut i = Item::nuevo("demo", tipo);
+        i.pista = Some("Pista is not a description".into());
+        if tipo == Tipo::Hook {
+            i.instalado_por = Some(InstaladorHook::Externo("tool".into()));
+            i.estado = Estado::Excluida;
+        }
+        r.items.push(i);
+        let mut app = App::nueva(r);
+        if tipo == Tipo::Hook {
+            tecla(&mut app, KeyCode::Char('o'));
+        }
+        let p = pantalla_en(&app, 80, 24);
+        let detalle: Vec<_> = p
+            .lines()
+            .filter(|l| l.chars().nth(32) == Some('│'))
+            .collect();
+        let posicion = detalle
+            .iter()
+            .position(|l| l.contains("sin descripción"))
+            .unwrap_or_else(|| panic!("{p}"));
+        assert!(posicion > 0, "{p}");
+        assert!(!detalle[posicion].contains("Pista"), "{p}");
+    }
+}
+
+#[test]
+fn descripcion_larga_ocupa_cuatro_lineas_con_elipsis_y_deja_ver_origen() {
+    for texto in ["D".repeat(1000), "界".repeat(1000)] {
+        let mut r = Recetario::nuevo();
+        let mut i = Item::nuevo("skill:demo", Tipo::Skill);
+        i.descripcion = Some(texto.clone());
+        r.items.push(i);
+        let app = App::nueva(r);
+        let p = pantalla_en(&app, 80, 24);
+        let detalle: Vec<_> = p
+            .lines()
+            .filter(|l| l.chars().nth(32) == Some('│'))
+            .map(|l| l.chars().skip(33).take(46).collect::<String>())
+            .collect();
+        let marca = texto.chars().next().unwrap();
+        assert_eq!(
+            detalle.iter().filter(|l| l.contains(marca)).count(),
+            4,
+            "{p}"
+        );
+        let ultima = detalle.iter().rposition(|l| l.contains(marca)).unwrap();
+        assert!(detalle[ultima].trim_end().ends_with('…'), "{p}");
+        assert!(detalle[ultima + 1].starts_with("Viene de:"), "{p}");
+    }
+}
+
+#[test]
+fn s_escanea_descripciones_sin_confirmar_ni_iniciar_claude() {
+    let mut app = App::nueva(recetario());
+    let antes = app.modo.clone();
+    assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Escanear);
+    assert_eq!(app.modo, antes);
+    assert!(app.claude_en_curso.is_empty());
+    assert!(app.investigando.is_empty());
+}

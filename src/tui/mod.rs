@@ -373,6 +373,12 @@ fn escanear(app: &mut App, ruta: &Path) {
                 accion = "escanear",
                 resultado = "ok",
                 nuevos = res.nuevos,
+                con_descripcion = app
+                    .recetario
+                    .items
+                    .iter()
+                    .filter(|i| i.descripcion.is_some())
+                    .count(),
                 sincronizados = res.sincronizados,
                 directas = res.directas,
                 hooks_vinculados = res.hooks_vinculados,
@@ -902,7 +908,10 @@ mod tests {
             (".claude/settings.json", "{}"),
             (".claude/.claude.json", "{}"),
             (".agents/skills/synced/cuenta/pdf/SKILL.md", "sync"),
-            (".claude/skills/propia/SKILL.md", "propia"),
+            (
+                ".claude/skills/propia/SKILL.md",
+                "---\ndescription: Local author text.\n---",
+            ),
         ] {
             let p = home.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -926,6 +935,7 @@ mod tests {
         });
         let texto = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
         assert!(texto.contains("sincronizados=1"), "{texto}");
+        assert!(texto.contains("con_descripcion=1"), "{texto}");
         assert!(
             texto.contains("resultado=\"ok\"") && texto.contains("resultado=\"fallo\""),
             "{texto}"
