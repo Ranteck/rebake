@@ -10,9 +10,12 @@ use crate::{acciones, actualizar, archivo, rutas};
 use anyhow::{Context, Result, bail};
 use app::{App, Efecto, Modo, Pestana};
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::crossterm::event::{
+    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
+};
+use ratatui::crossterm::execute;
 use std::collections::HashMap;
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc::{self, TryRecvError};
@@ -40,9 +43,46 @@ pub fn ejecutar(ruta: &Path, home: &Path, arranque: Arranque) -> Result<()> {
         bail!("no pude abrir la pantalla: la salida no es una terminal");
     }
     let mut terminal = ratatui::init();
-    let resultado = bucle(&mut terminal, &mut app, ruta, home, arranque.revision);
+    let resultado = con_pegado(&mut std::io::stdout(), || {
+        bucle(&mut terminal, &mut app, ruta, home, arranque.revision)
+    });
     ratatui::restore();
     resultado
+}
+
+struct Pegado<'a, W: Write> {
+    salida: &'a mut W,
+    activo: bool,
+}
+
+impl<W: Write> Drop for Pegado<'_, W> {
+    fn drop(&mut self) {
+        if self.activo && execute!(self.salida, DisableBracketedPaste).is_err() {
+            tracing::error!(
+                accion = "restaurar_pegado",
+                resultado = "fallo",
+                causa = "terminal"
+            );
+        }
+    }
+}
+
+fn con_pegado(salida: &mut impl Write, trabajo: impl FnOnce() -> Result<()>) -> Result<()> {
+    let mut pegado = Pegado {
+        salida,
+        activo: true,
+    };
+    let resultado = execute!(pegado.salida, EnableBracketedPaste)
+        .context("no pude activar el pegado de la terminal")
+        .and_then(|()| trabajo());
+    pegado.activo = false;
+    let restauracion = execute!(pegado.salida, DisableBracketedPaste)
+        .context("no pude restaurar el pegado de la terminal");
+    match (resultado, restauracion) {
+        (Err(error), Err(restauracion)) => Err(error.context(format!("{restauracion:#}"))),
+        (resultado, Ok(())) => resultado,
+        (Ok(()), restauracion) => restauracion,
+    }
 }
 
 fn bucle(
@@ -137,36 +177,50 @@ fn bucle(
         if !event::poll(Duration::from_millis(100))? {
             continue;
         }
-        let Event::Key(tecla) = event::read()? else {
-            continue;
-        };
-        if tecla.kind != KeyEventKind::Press {
-            continue;
-        }
-        match tecla_registrada(app, tecla) {
+        match evento_registrado(app, event::read()?) {
             Efecto::Nada => {}
             Efecto::Salir => return Ok(()),
             Efecto::Guardar => guardar(app, ruta),
             Efecto::Escanear => escanear(app, ruta),
             Efecto::Investigar(ids) => investigar(app, ruta, home, ids, &tx_inv),
             Efecto::Buscar(ids) => buscar(app, home, ids, &tx_bus),
-            Efecto::Lote(inv, bus) => {
-                investigar(app, ruta, home, inv, &tx_inv);
-                buscar(app, home, bus, &tx_bus);
-            }
             Efecto::Editar(id) => editar(terminal, app, ruta, home, &id)?,
-            Efecto::Actualizar(version) => actualizar(terminal, app, &version),
+            Efecto::Actualizar(version) => actualizar(terminal, app, &version)?,
             Efecto::Comprobar => rx_comp = Some(comprobar(app, home)),
             Efecto::Instalar => rx_inst = instalar(app, home).or(rx_inst.take()),
         }
     }
 }
 
+fn evento_registrado(app: &mut App, evento: Event) -> Efecto {
+    match evento {
+        Event::Key(tecla) if tecla.kind == KeyEventKind::Press => tecla_registrada(app, tecla),
+        Event::Paste(texto) => {
+            app.pegar(&texto);
+            Efecto::Nada
+        }
+        _ => Efecto::Nada,
+    }
+}
+
 fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
     let confirmando = matches!(app.modo, Modo::ConfirmarTanda { .. });
-    let armando = app.modo == Modo::Normal
-        && app.pestana == Pestana::Armar
-        && matches!(tecla.code, KeyCode::Char('t' | 'I'));
+    let accion_guiada = match &app.modo {
+        Modo::ConfirmarTanda { .. } => Some("confirmacion"),
+        Modo::Resolver { .. } => Some("resolver"),
+        Modo::Escribiendo {
+            para: app::Entrada::Link { .. },
+            ..
+        } if tecla.code == KeyCode::Enter => Some("pegar_link"),
+        Modo::Normal if app.pestana == Pestana::Armar => match tecla.code {
+            KeyCode::Enter => Some("enter"),
+            KeyCode::Char('i' | 'r') => Some("armar"),
+            KeyCode::Char('t' | 'I') => Some("armar_todas"),
+            _ => None,
+        },
+        _ => None,
+    };
+    let corridas_antes = app.claude_en_curso.len();
     let confirmando_aprobacion = match &app.modo {
         Modo::ConfirmarAprobacion { ids } => Some(ids.len()),
         _ => None,
@@ -221,37 +275,43 @@ fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
         };
         tracing::info!(accion = "aprobar_todas", decision, cantidad,);
     }
-    if armando || confirmando {
-        let (inv, bus) = match &efecto {
-            Efecto::Investigar(ids) => (ids.len(), 0),
-            Efecto::Buscar(ids) => (0, ids.len()),
-            Efecto::Lote(inv, bus) => (inv.len(), bus.len()),
-            _ => (0, 0),
-        };
-        let decision = if confirmando {
-            if tecla.code == KeyCode::Char('s') {
-                "confirmar"
-            } else {
-                "cancelar"
-            }
-        } else if matches!(app.modo, Modo::ConfirmarTanda { .. }) {
-            "preguntar"
-        } else if !app.claude_en_curso.is_empty() {
-            "esperar"
+    if let Some(accion) = accion_guiada {
+        let iniciadas = app.claude_en_curso.len().saturating_sub(corridas_antes);
+        let (decision, corridas) = if confirmando {
+            (
+                if tecla.code == KeyCode::Char('s') {
+                    "confirmar"
+                } else {
+                    "cancelar"
+                },
+                iniciadas,
+            )
+        } else if let Modo::ConfirmarTanda { accion, .. } = &app.modo {
+            ("preguntar", accion.corridas())
+        } else if accion == "armar_todas" && !app.claude_en_curso.is_empty() {
+            ("esperar", 0)
         } else {
-            "sin_claude"
+            ("gratis", 0)
         };
-        let corridas = match &app.modo {
-            Modo::ConfirmarTanda { investigar, buscar } => investigar.len() + buscar.len(),
-            _ if confirmando => inv + bus,
+        let gratis = match &efecto {
+            Efecto::Investigar(ids) => ids.len().saturating_sub(iniciadas),
             _ => 0,
         };
+        let resultado = match (&efecto, &app.modo) {
+            _ if decision == "cancelar" => "cancelado",
+            (_, Modo::ConfirmarTanda { .. }) => "pendiente",
+            (Efecto::Investigar(_) | Efecto::Buscar(_), _) => "iniciado",
+            (Efecto::Guardar, _) => "ok",
+            (_, Modo::Resolver { .. } | Modo::Escribiendo { .. }) => "abierto",
+            _ => "sin_accion",
+        };
         tracing::info!(
-            accion = "armar_todas",
+            accion,
             decision,
-            gratis = if confirmando { 0 } else { inv },
             corridas,
-            en_curso = app.claude_en_curso.len(),
+            gratis,
+            resultado,
+            en_curso = app.claude_en_curso.len()
         );
     }
     efecto
@@ -449,16 +509,17 @@ fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
 }
 
 /// Como `editar`, suelta la terminal mientras corre el instalador; con éxito no vuelve.
-fn actualizar(terminal: &mut DefaultTerminal, app: &mut App, version: &str) {
+fn actualizar(terminal: &mut DefaultTerminal, app: &mut App, version: &str) -> Result<()> {
     let exe = match std::env::current_exe() {
         Ok(e) => e,
         Err(e) => {
             app.mensaje = Some(format!(
                 "no se actualizó: no pude ver el binario en uso: {e}"
             ));
-            return;
+            return Ok(());
         }
     };
+    execute!(std::io::stdout(), DisableBracketedPaste)?;
     ratatui::restore();
     eprintln!("actualizando a rebake {version}…");
     let error = match actualizar::instalar(version, &actualizar::base(), &exe) {
@@ -470,7 +531,9 @@ fn actualizar(terminal: &mut DefaultTerminal, app: &mut App, version: &str) {
     };
     tracing::warn!(version, error = %format!("{error:#}"), "no se actualizó");
     *terminal = ratatui::init();
+    execute!(std::io::stdout(), EnableBracketedPaste)?;
     app.mensaje = Some(format!("no se actualizó: {error:#}"));
+    Ok(())
 }
 
 fn editar(
@@ -493,6 +556,7 @@ fn editar(
         .unwrap_or_default();
     let temporal = dir.join(format!("editar-{}-{nanos}.toml", std::process::id()));
     archivo::crear_privado(&temporal, &acciones::item_como_toml(item)?)?;
+    execute!(std::io::stdout(), DisableBracketedPaste)?;
     ratatui::restore();
     let editor = std::env::var("VISUAL")
         .or_else(|_| std::env::var("EDITOR"))
@@ -505,11 +569,14 @@ fn editar(
         .arg(&temporal)
         .status();
     *terminal = ratatui::init();
+    execute!(std::io::stdout(), EnableBracketedPaste)?;
+    let elegido = app.seleccionado().map(|i| i.id.clone());
     app.mensaje = Some(match estado {
         Ok(s) if s.success() => {
             let texto = std::fs::read_to_string(&temporal)?;
             match acciones::reemplazar_desde_toml(&mut app.recetario, id, &texto) {
                 Ok(()) => {
+                    app.restaurar_seleccion(elegido.as_deref());
                     guardar(app, ruta);
                     format!("{id} editado; queda por revisar")
                 }
@@ -608,8 +675,8 @@ mod tests {
         assert_eq!(
             app.modo,
             Modo::ConfirmarTanda {
-                investigar: vec!["mcp:privado".into()],
-                buscar: vec![],
+                accion: app::AccionClaude::Armar(pendiente().recetario.items),
+                tanda: true,
             }
         );
         assert_eq!(
@@ -905,5 +972,62 @@ mod tests {
         for privado in ["privado", "https://", "/home/", "API_TOKEN"] {
             assert!(!log.contains(privado), "{log}");
         }
+    }
+    #[test]
+    fn fase3_eventos_de_pegado_no_son_teclas_y_repetir_enter_no_confirma() {
+        let mut app = pendiente();
+        app.modo = Modo::Escribiendo {
+            para: app::Entrada::Link {
+                id: "mcp:privado".into(),
+            },
+            texto: String::new(),
+        };
+        assert_eq!(
+            evento_registrado(&mut app, Event::Paste("q\ns\r\t".into())),
+            Efecto::Nada
+        );
+        assert!(matches!(&app.modo, Modo::Escribiendo { texto, .. } if texto == "qs"));
+        app.modo = Modo::Normal;
+        evento_registrado(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+        );
+        for kind in [KeyEventKind::Repeat, KeyEventKind::Release] {
+            let mut tecla = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
+            tecla.kind = kind;
+            assert_eq!(evento_registrado(&mut app, Event::Key(tecla)), Efecto::Nada);
+            assert!(matches!(app.modo, Modo::ConfirmarTanda { .. }));
+        }
+        assert_eq!(
+            evento_registrado(&mut app, Event::Paste("s\nq".into())),
+            Efecto::Nada
+        );
+        assert!(app.claude_en_curso.is_empty());
+    }
+    #[test]
+    fn fase3_restaura_pegado_tambien_si_el_bucle_falla() {
+        for falla in [false, true] {
+            let mut salida = Vec::new();
+            let resultado = con_pegado(&mut salida, || {
+                if falla {
+                    bail!("fallo del bucle de prueba");
+                }
+                Ok(())
+            });
+            assert_eq!(resultado.is_err(), falla);
+            assert_eq!(salida, b"\x1b[?2004h\x1b[?2004l");
+            if falla {
+                assert!(format!("{:#}", resultado.unwrap_err()).contains("fallo del bucle"));
+            }
+        }
+    }
+    #[test]
+    fn fase3_restaura_pegado_tambien_al_desapilar_un_panic() {
+        let mut salida = Vec::new();
+        let resultado = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            con_pegado(&mut salida, || panic!("fallo de dibujo de prueba")).unwrap();
+        }));
+        assert!(resultado.is_err());
+        assert_eq!(salida, b"\x1b[?2004h\x1b[?2004l");
     }
 }

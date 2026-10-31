@@ -2,7 +2,7 @@ use crate::acciones;
 use crate::checklist;
 use crate::instalador::{self, Evento, Presencia, Resultado};
 use crate::investigador::{Receta, aplicar, aplicar_posible, receta_directa};
-use crate::modelo::{Ajuste, Estado, Item, Posible, Recetario};
+use crate::modelo::{Ajuste, Estado, Fuente, Item, Posible, Recetario, Via};
 use crate::servicio::Novedad;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use std::collections::{HashMap, HashSet};
@@ -27,20 +27,30 @@ pub enum Entrada {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modo {
     Normal,
-    Escribiendo {
-        para: Entrada,
-        texto: String,
-    },
+    Escribiendo { para: Entrada, texto: String },
     ConfirmarInstalacion,
-    ConfirmarAprobacion {
-        ids: Vec<String>,
-    },
-    ConfirmarTanda {
-        investigar: Vec<String>,
-        buscar: Vec<String>,
-    },
+    ConfirmarAprobacion { ids: Vec<String> },
+    Resolver { id: String, opcion: usize },
+    ConfirmarTanda { accion: AccionClaude, tanda: bool },
     ConfirmarSalida,
     Ayuda,
+}
+
+/// La confirmación conserva la decisión y su estado: un resultado tardío la invalida.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AccionClaude {
+    Armar(Vec<Item>),
+    Buscar(Box<Item>),
+    AceptarPosible(Box<Item>),
+}
+
+impl AccionClaude {
+    pub fn corridas(&self) -> usize {
+        match self {
+            Self::Armar(items) => items.len(),
+            Self::Buscar(_) | Self::AceptarPosible(_) => 1,
+        }
+    }
 }
 
 /// Una fila de Checklist: el texto corto de la lista y el completo para el panel de detalle.
@@ -85,8 +95,6 @@ pub enum Efecto {
     Investigar(Vec<String>),
     /// Buscar en la web el posible origen de los que no lo tienen.
     Buscar(Vec<String>),
-    /// `t`: investigar los que tienen origen y buscar el de los que no.
-    Lote(Vec<String>, Vec<String>),
     Editar(String),
     Instalar,
     Comprobar,
@@ -291,7 +299,10 @@ impl App {
         items.sort_by(|a, b| (a.tipo, &a.id).cmp(&(b.tipo, &b.id)));
         let (mut gratis, mut investigar, mut buscar) = (vec![], vec![], vec![]);
         for item in items {
-            if receta_directa(&self.recetario, item).is_some() {
+            if item.posible.is_some() {
+                continue;
+            }
+            if item.fuente.is_some() && receta_directa(&self.recetario, item).is_some() {
                 gratis.push(item.id.clone());
             } else if item.fuente.is_some() {
                 investigar.push(item.id.clone());
@@ -316,35 +327,56 @@ impl App {
     pub fn tecla(&mut self, k: KeyEvent) -> Efecto {
         match self.modo.clone() {
             Modo::Escribiendo { para, texto } => self.escribiendo(k.code, para, texto),
-            Modo::ConfirmarTanda { investigar, buscar } => {
+            Modo::Resolver { id, opcion } => self.resolver(k.code, id, opcion),
+            Modo::ConfirmarTanda { accion, tanda } => {
                 self.modo = Modo::Normal;
                 if k.code != KeyCode::Char('s') {
-                    self.avisar("tanda cancelada; no se gastó nada");
+                    self.avisar("acción cancelada; no se gastó nada");
                     return Efecto::Nada;
                 }
-                let (_, pendientes_inv, pendientes_bus) = self.por_armar();
-                let inv: Vec<String> = investigar
-                    .into_iter()
-                    .filter(|id| pendientes_inv.contains(id))
-                    .collect();
-                let bus: Vec<String> = buscar
-                    .into_iter()
-                    .filter(|id| pendientes_bus.contains(id))
-                    .collect();
-                let miembros: HashSet<String> = inv.iter().chain(&bus).cloned().collect();
-                if !miembros.is_empty() {
+                let (ids, buscar) = match accion {
+                    AccionClaude::Armar(items) => (
+                        items
+                            .into_iter()
+                            .filter(|i| self.vigente(i) && i.fuente.is_some())
+                            .map(|i| i.id)
+                            .collect::<Vec<_>>(),
+                        false,
+                    ),
+                    AccionClaude::Buscar(item) => (
+                        if self.vigente(&item) && item.fuente.is_none() {
+                            vec![item.id]
+                        } else {
+                            vec![]
+                        },
+                        true,
+                    ),
+                    AccionClaude::AceptarPosible(item) => {
+                        if !self.vigente(&item) || !self.posible_pendiente(&item.id) {
+                            self.avisar("el ítem cambió; volvé a elegir la acción");
+                            return Efecto::Nada;
+                        }
+                        if let Err(e) = acciones::aceptar_posible(&mut self.recetario, &item.id) {
+                            self.avisar(&format!("{e:#}"));
+                            return Efecto::Nada;
+                        }
+                        (vec![item.id], false)
+                    }
+                };
+                if ids.is_empty() {
+                    self.avisar("el ítem cambió; no se gastó nada");
+                    return Efecto::Nada;
+                }
+                if tanda {
                     self.tanda_activa = Some(TandaActiva {
-                        miembros,
-                        por_revisar: 0,
-                        posibles: 0,
-                        errores: 0,
-                        ultimo_error: None,
+                        miembros: ids.iter().cloned().collect(),
+                        ..TandaActiva::default()
                     });
                 }
-                match (self.investigar(inv), self.buscar(bus)) {
-                    (Efecto::Investigar(a), Efecto::Buscar(b)) => Efecto::Lote(a, b),
-                    (Efecto::Nada, b) => b,
-                    (a, _) => a,
+                if buscar {
+                    self.buscar(ids)
+                } else {
+                    self.investigar(ids)
                 }
             }
             Modo::ConfirmarInstalacion => {
@@ -557,7 +589,10 @@ impl App {
         let total = self.visibles().len();
         self.seleccion = self.seleccion.min(total.saturating_sub(1));
         let id = self.id_seleccionado();
-        if let Some(responsable) = self.seleccionado().and_then(|i| i.instalado_por.as_ref())
+        if let Some(responsable) = self
+            .seleccionado()
+            .filter(|i| i.estado != Estado::Excluida || codigo != KeyCode::Enter)
+            .and_then(|i| i.instalado_por.as_ref())
             && matches!(
                 codigo,
                 KeyCode::Char('a' | ' ' | 'i' | 'r' | 'l' | 'n') | KeyCode::Enter
@@ -595,9 +630,8 @@ impl App {
                 return self.guardar_cambio(&id, resultado);
             }
             (KeyCode::Char('l'), Some(id)) => {
-                self.modo = Modo::Escribiendo {
-                    para: Entrada::Link { id },
-                    texto: String::new(),
+                if self.recetario.item(&id).is_some_and(|i| self.disponible(i)) {
+                    self.pedir_link(id);
                 }
             }
             (KeyCode::Char('e'), Some(id)) => return Efecto::Editar(id),
@@ -607,28 +641,20 @@ impl App {
                 return self.guardar_cambio(&id, resultado);
             }
             (KeyCode::Char('i' | 'r'), Some(id)) => {
-                let item = self.recetario.item(&id);
-                if item.is_some_and(|i| i.fuente.is_some()) {
-                    return self.investigar(vec![id]);
-                }
-                // La primera vez busca; después de una búsqueda, pide el link.
-                if item.is_some_and(|i| i.posible.is_none()) {
-                    return self.buscar(vec![id]);
-                }
-                self.modo = Modo::Escribiendo {
-                    para: Entrada::Link { id },
-                    texto: String::new(),
+                let Some(item) = self.recetario.item(&id).cloned() else {
+                    return Efecto::Nada;
                 };
+                if !self.disponible(&item) {
+                    self.avisar("el ítem no está disponible para armar o buscar");
+                } else if item.fuente.is_some() {
+                    return self.armar_item(item);
+                } else if item.posible.is_none() {
+                    self.preguntar(AccionClaude::Buscar(Box::new(item)), false);
+                } else {
+                    self.pedir_link(id);
+                }
             }
-            (KeyCode::Enter, Some(id)) if self.posible_pendiente(&id) => {
-                return match acciones::aceptar_posible(&mut self.recetario, &id) {
-                    Ok(()) => self.investigar(vec![id]),
-                    Err(e) => {
-                        self.avisar(&format!("{e:#}"));
-                        Efecto::Nada
-                    }
-                };
-            }
+            (KeyCode::Enter, Some(id)) => return self.siguiente_accion(&id),
             (KeyCode::Char('n'), Some(id)) if self.posible_pendiente(&id) => {
                 return match acciones::descartar_posible(&mut self.recetario, &id) {
                     Ok(()) => {
@@ -661,20 +687,182 @@ impl App {
                 return Efecto::Nada;
             }
             (KeyCode::Char('t' | 'I'), _) => {
-                let (gratis, mut investigar, mut buscar) = self.por_armar();
+                let (gratis, mut investigar, _) = self.por_armar();
+                let hay_gratis = !gratis.is_empty();
                 let efecto = self.investigar(gratis);
                 if !self.claude_en_curso.is_empty() {
                     self.avisar("esperá que terminen las corridas de Claude");
-                } else if !investigar.is_empty() || !buscar.is_empty() {
+                } else if !investigar.is_empty() {
                     investigar.truncate(5);
-                    buscar.truncate(5 - investigar.len());
-                    self.modo = Modo::ConfirmarTanda { investigar, buscar };
+                    let items = investigar
+                        .iter()
+                        .filter_map(|id| self.recetario.item(id).cloned())
+                        .collect();
+                    self.preguntar(AccionClaude::Armar(items), true);
+                } else if !hay_gratis {
+                    self.avisar(
+                        "sin pendientes con origen; Enter en un ítem sin origen abre Resolver",
+                    );
                 }
                 return efecto;
             }
             _ => {}
         }
         Efecto::Nada
+    }
+
+    fn disponible(&self, item: &Item) -> bool {
+        !item.es_sincronizado()
+            && item.instalado_por.is_none()
+            && item.estado != Estado::Excluida
+            && !self.investigando.contains(&item.id)
+            && !self.buscando.contains(&item.id)
+    }
+
+    fn vigente(&self, item: &Item) -> bool {
+        self.recetario.item(&item.id) == Some(item) && self.disponible(item)
+    }
+
+    fn preguntar(&mut self, accion: AccionClaude, tanda: bool) {
+        self.modo = Modo::ConfirmarTanda { accion, tanda };
+    }
+
+    fn pedir_link(&mut self, id: String) {
+        self.modo = Modo::Escribiendo {
+            para: Entrada::Link { id },
+            texto: String::new(),
+        };
+    }
+
+    fn armar_item(&mut self, item: Item) -> Efecto {
+        if receta_directa(&self.recetario, &item).is_some() {
+            self.investigar(vec![item.id])
+        } else {
+            self.preguntar(AccionClaude::Armar(vec![item]), false);
+            Efecto::Nada
+        }
+    }
+
+    pub fn posible_gratis(&self, item: &Item) -> bool {
+        let Some(repo) = item.posible.as_ref().and_then(|p| p.pendiente()) else {
+            return false;
+        };
+        let mut aceptado = item.clone();
+        aceptado.fuente = Some(Fuente {
+            repo: repo.into(),
+            via: Via::Busqueda,
+            doc: None,
+        });
+        receta_directa(&self.recetario, &aceptado).is_some()
+    }
+
+    fn siguiente_accion(&mut self, id: &str) -> Efecto {
+        let Some(item) = self.recetario.item(id).cloned() else {
+            return Efecto::Nada;
+        };
+        if self.investigando.contains(id) {
+            self.avisar("ya se está armando la receta");
+            return Efecto::Nada;
+        }
+        if self.buscando.contains(id) {
+            self.avisar("ya se está buscando el origen");
+            return Efecto::Nada;
+        }
+        match item.estado {
+            Estado::Excluida => self.avisar("x reincluir"),
+            Estado::Aprobada => self.avisar("siguiente paso: 2 Instalar"),
+            Estado::PorRevisar => {
+                let pendientes: Vec<String> = self
+                    .visibles()
+                    .into_iter()
+                    .filter(|i| i.seccion() == crate::modelo::SeccionRecetas::PorResolver)
+                    .map(|i| i.id.clone())
+                    .collect();
+                let pos = pendientes.iter().position(|i| i == id).unwrap_or(0);
+                let siguiente = pendientes
+                    .iter()
+                    .skip(pos + 1)
+                    .chain(pendientes.iter().take(pos))
+                    .next()
+                    .cloned()
+                    .unwrap_or_else(|| id.into());
+                let resultado =
+                    acciones::aprobar(&mut self.recetario, id).map(|()| Estado::Aprobada);
+                let efecto = self.guardar_cambio(id, resultado);
+                self.restaurar_seleccion(Some(&siguiente));
+                return efecto;
+            }
+            Estado::Pendiente if item.fuente.is_some() => return self.armar_item(item),
+            Estado::Pendiente if self.posible_pendiente(id) => {
+                if self.posible_gratis(&item) {
+                    return match acciones::aceptar_posible(&mut self.recetario, id) {
+                        Ok(()) => self.investigar(vec![id.into()]),
+                        Err(e) => {
+                            self.avisar(&format!("{e:#}"));
+                            Efecto::Nada
+                        }
+                    };
+                }
+                self.preguntar(AccionClaude::AceptarPosible(Box::new(item)), false);
+            }
+            Estado::Pendiente => {
+                self.modo = Modo::Resolver {
+                    id: id.into(),
+                    opcion: 0,
+                }
+            }
+        }
+        Efecto::Nada
+    }
+
+    fn resolver(&mut self, codigo: KeyCode, id: String, opcion: usize) -> Efecto {
+        if codigo == KeyCode::Esc {
+            self.modo = Modo::Normal;
+            self.restaurar_seleccion(Some(&id));
+            return Efecto::Nada;
+        }
+        if codigo != KeyCode::Enter {
+            let opcion = match codigo {
+                KeyCode::Up | KeyCode::Left | KeyCode::Char('k') => opcion.saturating_sub(1),
+                KeyCode::Down | KeyCode::Right | KeyCode::Char('j') => (opcion + 1).min(2),
+                _ => opcion,
+            };
+            self.modo = Modo::Resolver { id, opcion };
+            return Efecto::Nada;
+        }
+        let Some(item) = self.recetario.item(&id).cloned().filter(|i| {
+            self.disponible(i)
+                && i.estado == Estado::Pendiente
+                && i.fuente.is_none()
+                && !self.posible_pendiente(&id)
+        }) else {
+            self.modo = Modo::Normal;
+            self.restaurar_seleccion(Some(&id));
+            self.avisar("el ítem cambió; volvé a elegir la acción");
+            return Efecto::Nada;
+        };
+        self.modo = Modo::Normal;
+        self.restaurar_seleccion(Some(&id));
+        match opcion {
+            0 => self.pedir_link(id),
+            1 => self.preguntar(AccionClaude::Buscar(Box::new(item)), false),
+            _ => {
+                let resultado =
+                    acciones::excluir(&mut self.recetario, &id, "").map(|()| Estado::Excluida);
+                return self.guardar_cambio(&id, resultado);
+            }
+        }
+        Efecto::Nada
+    }
+
+    pub fn pegar(&mut self, texto: &str) {
+        if let Modo::Escribiendo { texto: entrada, .. } = &mut self.modo {
+            entrada.extend(
+                texto
+                    .chars()
+                    .filter(|c| !c.is_control() && !matches!(c, '\u{2028}' | '\u{2029}')),
+            );
+        }
     }
 
     fn guardar_cambio(&mut self, id: &str, resultado: anyhow::Result<Estado>) -> Efecto {
@@ -737,8 +925,8 @@ impl App {
             partes.join(", ")
         };
 
-        let (gratis, investigar, buscar) = self.por_armar();
-        let quedan_pendientes = gratis.len() + investigar.len() + buscar.len() > 0;
+        let (gratis, investigar, _) = self.por_armar();
+        let quedan_pendientes = !gratis.is_empty() || !investigar.is_empty();
         let hay_por_revisar = tanda.por_revisar > 0
             || self
                 .recetario
@@ -812,7 +1000,9 @@ impl App {
                 tanda_fin = self.tanda_activa.take();
             }
         }
+        let elegido = self.id_seleccionado();
         aplicar_posible(&mut self.recetario, id, resultado);
+        self.restaurar_seleccion(elegido.as_deref());
         if let Some(tanda) = tanda_fin {
             self.fin_tanda(tanda);
         } else {
@@ -858,17 +1048,21 @@ impl App {
     fn escribiendo(&mut self, codigo: KeyCode, para: Entrada, mut texto: String) -> Efecto {
         match codigo {
             KeyCode::Esc => {
+                let elegido = self.id_seleccionado();
                 self.modo = Modo::Normal;
-                if para == Entrada::Filtro {
-                    self.filtro.clear();
-                    self.seleccion = 0;
+                match para {
+                    Entrada::Filtro => {
+                        self.filtro.clear();
+                        self.restaurar_seleccion(elegido.as_deref());
+                    }
+                    Entrada::Link { id } => self.restaurar_seleccion(Some(&id)),
                 }
             }
             KeyCode::Backspace => {
                 texto.pop();
                 self.modo = Modo::Escribiendo { para, texto };
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if !c.is_control() => {
                 texto.push(c);
                 self.modo = Modo::Escribiendo { para, texto };
             }
@@ -876,19 +1070,47 @@ impl App {
                 self.modo = Modo::Normal;
                 // El filtro se aplica aunque hoy no haya ningún ítem seleccionado.
                 if para == Entrada::Filtro {
+                    let elegido = self.id_seleccionado();
                     self.filtro = texto;
-                    self.seleccion = 0;
+                    self.restaurar_seleccion(elegido.as_deref());
                     return Efecto::Nada;
                 }
                 let Entrada::Link { id } = &para else {
                     return Efecto::Nada;
                 };
                 let id = id.clone();
+                self.restaurar_seleccion(Some(&id));
+                let Some(item) = self
+                    .recetario
+                    .item(&id)
+                    .cloned()
+                    .filter(|i| self.disponible(i))
+                else {
+                    self.avisar("el ítem cambió; volvé a elegir la acción");
+                    return Efecto::Nada;
+                };
                 if texto.trim().is_empty() {
-                    return self.buscar(vec![id]);
+                    if item.fuente.is_none() {
+                        self.preguntar(AccionClaude::Buscar(Box::new(item)), false);
+                    } else {
+                        self.avisar("el ítem ya tiene origen; Enter arma la receta");
+                    }
+                    return Efecto::Nada;
                 }
                 return match acciones::pegar_link(&mut self.recetario, &id, &texto) {
-                    Ok(()) => self.investigar(vec![id]),
+                    Ok(()) => {
+                        self.restaurar_seleccion(Some(&id));
+                        if self
+                            .recetario
+                            .item(&id)
+                            .is_some_and(|i| receta_directa(&self.recetario, i).is_some())
+                        {
+                            self.investigar(vec![id])
+                        } else {
+                            self.avisar("origen guardado; Enter arma la receta (1 corrida)");
+                            Efecto::Guardar
+                        }
+                    }
                     Err(e) => {
                         self.avisar(&format!("{e:#}"));
                         Efecto::Nada

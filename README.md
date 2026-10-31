@@ -225,10 +225,15 @@ mismas de la lista. El pie muestra las teclas de lo que tenés elegido y, debajo
 actual, qué significa cada marca, para qué es cada pestaña y todas las teclas. Ninguna tecla
 depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
 
-En Armar, el pie separa las cuentas: `t armar 25 + 41 Claude` son 25 recetas gratis y
-41 corridas pendientes; cuenta corridas, no tokens ni porcentaje de cuota. Mientras haya
-corridas de Claude en curso, `t` sigue armando gratis y pide esperar. `i` sigue de a una y
-no consume lugares de la tanda.
+En Armar, Enter hace el siguiente paso de la elegida: aprueba y avanza, arma o abre Resolver.
+Nunca desaprueba. Resolver ofrece pegar link gratis, buscar en la web por una corrida o excluir;
+flechas o `j`/`k` mueven el foco, Enter elige y Esc cancela.
+
+Toda acción que use Claude muestra cuántas corridas necesita: `s` confirma y cualquier otra
+tecla cancela sin gastar. `t` solo arma pendientes con origen confirmado: lo directo es gratis,
+lo demás va en una tanda de hasta cinco, sin búsquedas ni encadenamiento. Mientras haya
+corridas de Claude en curso, `t` sigue armando gratis y pide esperar. `i`/`r` siguen de a una.
+En 80 columnas el pie prioriza la acción de Enter, ayuda y salida; las alternativas están en `?`.
 
 | Tecla | En todas las pestañas |
 |---|---|
@@ -243,15 +248,17 @@ no consume lugares de la tanda.
 
 | Tecla | Acción |
 |---|---|
-| `i` / `t` | armar la elegida / las gratis y preguntar por hasta 5 corridas de Claude |
-| Enter / `n` | aceptar o descartar el posible origen; el panel avisa si aceptar sale gratis o gasta otra corrida |
-| `l` | pegar el link del repo |
+| Enter | aprobar y avanzar; armar; aceptar un posible y armar; sin origen, abrir Resolver. En LISTAS indica `2 Instalar`; en excluidas, `x reincluir` |
+| `n` | descartar un posible origen, gratis |
+| `i` | armar la elegida; sin origen, buscar con `s` o pedir el link si ya se buscó |
+| `t` | armar solo pendientes con origen, gratis o hasta 5 corridas con `s`; no toca posibles ni busca orígenes |
+| `l` | pegar el link: Enter guarda el origen, sin Claude ni aprobación; una directa puede armarse gratis. Enter vacío pide confirmar una búsqueda |
 | `a` o espacio | aprobar o desaprobar una receta armada |
 | `v` | aprobar todas las recetas por revisar (pregunta en el pie y confirma con `s`) |
 | `x` | excluir sin pedir motivo; sobre una excluida, la vuelve a incluir conservando la receta |
 | `o` | mostrar u ocultar los excluidos (ocultos al arrancar) |
 | `e` | editar la receta en `$VISUAL` o `$EDITOR`; queda por revisar |
-| `r` | volver a investigar |
+| `r` | volver a investigar, con `s` si usa Claude; sin origen, igual que `i` |
 | `/` | filtrar |
 
 **Instalar** (pestaña 2), en la PC nueva:
@@ -278,11 +285,12 @@ ajustes.
 3. **Investigación:** para el resto, `claude -p --restricted` lee la documentación de
    instalación de ese repo y devuelve los pasos con la **cita** literal de la que sale cada
    comando. Corre con Sonnet, sin poder ejecutar comandos ni escribir archivos.
-4. **Sin origen:** `i` o una tanda confirmada de `t` buscan en la web de qué repo viene y el
-   panel te lo propone con el motivo. Enter lo acepta (la receta dice "origen buscado en la
-   web"), `n` lo descarta e `i` te deja pegar el link. `t` saltea los posibles pendientes,
-   descartados o no encontrados; si una corrida falla, vuelve a contar para la próxima tanda.
-   Para volver a buscar un origen ya buscado, `i` y Enter vacío.
+4. **Sin origen:** Enter abre Resolver. Buscar requiere `s`, hace una búsqueda y propone un
+   posible con su motivo, sin armar una receta. Enter acepta ese posible y arma: gratis si es
+   directa o tras confirmar una corrida con `s`. Cancelar conserva el posible sin aceptar;
+   `n` lo descarta gratis. Pegar un link solo guarda el origen; si requiere Claude, otro Enter
+   pide confirmar el armado. Para volver a buscar un origen ya buscado, `i`, Enter vacío y `s`.
+   El pegado agrega texto sin saltos de línea ni controles: nunca confirma, sale ni ejecuta teclas.
 5. **Aprobación:** vos revisás la cita y la URL y aprobás. Nada se ejecuta sin tu aprobación.
 
 ## Lo que queda a mano

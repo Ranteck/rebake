@@ -756,7 +756,10 @@ fn el_pie_conserva_ayuda_y_armar_todas_a_80_columnas_con_receta_elegida() {
     assert!(app.seleccionado().is_some());
     let p = pantalla_en(&app, 80, 24);
     let primera = p.lines().nth(22).unwrap();
-    assert!(primera.contains("q salir") && primera.contains("?"), "{p}");
+    assert!(
+        primera.contains("q salir") && primera.contains("?  ayuda"),
+        "{p}"
+    );
     assert!(primera.contains("t armar"), "{p}");
 }
 

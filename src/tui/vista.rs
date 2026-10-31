@@ -1,7 +1,7 @@
 use super::app::{App, ClaseFila, Entrada, Modo, Pestana};
 use crate::instalador::{self, Presencia, Resultado};
 use crate::investigador::{PISTA_REQUISITO, receta_directa};
-use crate::modelo::{Estado, Fuente, Item, Modo as ModoPaso, Tipo, Via};
+use crate::modelo::{Estado, Item, Modo as ModoPaso, Tipo, Via};
 use crate::servicio::{self, Novedad};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -45,7 +45,7 @@ pub fn dibujar(f: &mut Frame, app: &App) {
     if app.modo == Modo::Ayuda {
         ayuda(f, app, cuerpo);
     }
-    f.render_widget(Paragraph::new(lineas_pie(app)), pie);
+    f.render_widget(Paragraph::new(lineas_pie(app, pie.width)), pie);
 }
 
 fn estilo_estado(app: &App, e: Estado) -> Style {
@@ -401,10 +401,10 @@ fn que_falta(app: &App, item: &Item) -> &'static str {
             }
             Some(p) if p.descartado => "Descartaste el posible origen: `i` te pide el link.",
             Some(_) => "No encontré de qué repo viene: `i` te pide el link.",
-            None => "Esta PC lo tiene, pero no sé de qué repo viene: `i` lo busca en la web.",
+            None => "Esta PC lo tiene, pero no sé de qué repo viene: Enter abre Resolver.",
         },
         Estado::Pendiente => "Esta PC lo tiene, pero todavía no hay receta: `i` la arma.",
-        Estado::PorRevisar => "Hay receta: revisá qué va a ejecutar y `a` la aprueba.",
+        Estado::PorRevisar => "Hay receta: revisá qué va a ejecutar; Enter aprueba y avanza.",
         Estado::Aprobada => "Lista: en una PC nueva se instala con esto (pestaña 2).",
         Estado::Excluida => "No se instala.",
     }
@@ -486,20 +486,12 @@ fn lineas_detalle(app: &App, item: &Item) -> Vec<Line<'static>> {
         if !p.motivo.is_empty() {
             l.push(Line::from(format!("Por qué: {}", p.motivo)));
         }
-        if let Some(repo) = p.pendiente() {
-            let mut aceptado = item.clone();
-            aceptado.fuente = Some(Fuente {
-                repo: repo.into(),
-                via: Via::Busqueda,
-                doc: None,
-            });
-            l.push(Line::from(
-                if receta_directa(&app.recetario, &aceptado).is_some() {
-                    "Aceptar: gratis, sin Claude"
-                } else {
-                    "Aceptar: 1 corrida de Claude"
-                },
-            ));
+        if p.pendiente().is_some() {
+            l.push(Line::from(if app.posible_gratis(item) {
+                "Aceptar: gratis, sin Claude"
+            } else {
+                "Aceptar: 1 corrida de Claude"
+            }));
             l.push(Line::from(teclas(&[
                 ("Enter", "aceptar"),
                 ("n", "descartar"),
@@ -767,36 +759,57 @@ fn instalacion(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-fn teclas_de_receta(item: &Item) -> Vec<(&'static str, &'static str)> {
-    if item.instalado_por.is_some() {
+fn teclas_de_receta(app: &App, item: &Item) -> Vec<(&'static str, &'static str)> {
+    if item.instalado_por.is_some() && item.estado != Estado::Excluida {
         return vec![("x", "excluir")];
+    }
+    if app.investigando.contains(&item.id) {
+        return vec![("Enter", "armando")];
+    }
+    if app.buscando.contains(&item.id) {
+        return vec![("Enter", "buscando")];
     }
     match item.estado {
         Estado::Pendiente if item.fuente.is_none() => match &item.posible {
             Some(p) if p.pendiente().is_some() => vec![
-                ("Enter", "aceptar origen"),
+                (
+                    "Enter",
+                    if app.posible_gratis(item) {
+                        "aceptar gratis"
+                    } else {
+                        "aceptar (1 corrida)"
+                    },
+                ),
                 ("n", "descartar"),
                 ("i", "pegar otro link"),
                 ("x", "excluir"),
             ],
-            Some(_) => vec![("i", "pegar el link"), ("x", "excluir")],
-            None => vec![("i", "buscar origen"), ("x", "excluir")],
+            _ => vec![("Enter", "resolver"), ("l", "pegar link"), ("x", "excluir")],
         },
-        Estado::Pendiente => vec![("i", "armar receta"), ("x", "excluir")],
+        Estado::Pendiente => vec![
+            (
+                "Enter",
+                if receta_directa(&app.recetario, item).is_some() {
+                    "armar gratis"
+                } else {
+                    "armar (1 corrida)"
+                },
+            ),
+            ("x", "excluir"),
+        ],
         Estado::PorRevisar => vec![
-            ("espacio/a", "aprobar"),
+            ("Enter", "aprobar"),
             ("e", "editar"),
-            ("r", "reinvestigar"),
+            ("r", "rearmar"),
             ("x", "excluir"),
         ],
         Estado::Aprobada => vec![
-            ("espacio/a", "desaprobar"),
+            ("Enter", "2 Instalar"),
+            ("a", "desaprobar"),
             ("e", "editar"),
-            ("r", "reinvestigar"),
-            ("x", "excluir"),
+            ("r", "rearmar"),
         ],
-        // Excluida no se investiga: se vuelve a incluir o se edita.
-        Estado::Excluida => vec![("x", "volver a incluir"), ("e", "editar")],
+        Estado::Excluida => vec![("x", "reincluir"), ("e", "editar")],
     }
 }
 
@@ -829,11 +842,22 @@ fn siguiente_paso(app: &App) -> String {
             "COOKBOOK LISTO · no hay recetas aprobadas para instalar".into()
         };
     }
-    let (gratis, investigar, buscar) = app.por_armar();
-    let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
+    if let Some(item) = app.seleccionado().filter(|i| app.posible_pendiente(&i.id)) {
+        return format!(
+            "Siguiente: Enter acepta y arma ({})",
+            if app.posible_gratis(item) {
+                "gratis"
+            } else {
+                "1 corrida; pide s"
+            }
+        );
+    }
+    let (gratis, investigar, _) = app.por_armar();
+    let (gratis, claude) = (gratis.len(), investigar.len());
     match paso_actual(app) {
         0 => "Siguiente: `s` escanea esta PC".into(),
         1 => match (gratis, claude) {
+            (0, 0) => "Enter en un ítem sin origen abre Resolver".into(),
             (n, 0) => format!("Siguiente: `t` arma {n} recetas gratis"),
             (0, n) => format!(
                 "Siguiente: `t` pregunta por hasta {} de {n} corridas de Claude",
@@ -845,7 +869,7 @@ fn siguiente_paso(app: &App) -> String {
             ),
         },
         2 => format!(
-            "Siguiente: {} recetas por revisar: elegí una y `a` la aprueba",
+            "Siguiente: {} recetas por revisar: Enter aprueba y avanza",
             contar(&|i| i.estado == Estado::PorRevisar)
         ),
         _ => match (
@@ -853,7 +877,7 @@ fn siguiente_paso(app: &App) -> String {
             servicio::sin_origen(r).len(),
         ) {
             (0, 0) => String::new(),
-            (0, n) => format!("Siguiente: {n} sin origen: elegí una; `i` te deja pegar el link"),
+            (0, n) => format!("Siguiente: {n} sin origen: Enter abre Resolver"),
             (n, _) => format!("Siguiente: en una PC nueva, `2` y `p` instalan las {n} aprobadas"),
         },
     }
@@ -867,39 +891,24 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         ))
     };
     let lineas = vec![
-        Line::from(
-            "rebake guarda en un cookbook cómo se instala cada cosa de tu Claude Code, para rehacerlo en una PC nueva.",
-        ),
-        Line::from(""),
+        Line::from("rebake: recetas de tu setup para rehacerlo en una PC nueva."),
         linea_camino(app),
-        Line::from("1. escanear (s): busca lo que tiene esta PC."),
-        Line::from("2. armar recetas (i, t): el pie separa gratis + corridas de Claude."),
-        Line::from(
-            "t arma gratis y pregunta antes de cada tanda de hasta 5 corridas; s confirma, otra tecla cancela. i sigue de a una.",
-        ),
-        Line::from(
-            "3. aprobar (espacio o a): aprueba y desaprueba, y queda guardado en el cookbook; v aprueba todas; x excluye sin pedir motivo; o muestra/oculta excluidas, x las reincluye; e edita.",
-        ),
-        Line::from(
-            "4. instalar (2, p): en una PC nueva instala lo aprobado; después, 3 Checklist.",
-        ),
-        Line::from(""),
+        Line::from("Enter arma o abre Resolver; posible: Enter acepta, n descarta."),
+        Line::from("Resolver: ↑↓/j k mueven, Enter elige, Esc cancela; link gratis."),
+        Line::from("Buscar cuesta 1 corrida, sin armar. Pegar texto nunca ejecuta."),
+        Line::from("t armar todas con origen: gratis o hasta 5 corridas; nunca busca."),
+        Line::from("Claude (Enter, i/r, t, buscar): s confirma; otra tecla cancela."),
+        Line::from("Enter aprueba y avanza, nunca desaprueba; a/espacio alternan."),
+        Line::from("Aprobar queda guardado en el cookbook; v aprueba todas; e edita."),
+        Line::from("x excluye sin motivo; o muestra/oculta excluidas; x reincluye."),
+        Line::from("l pega link: Enter guarda; vacío busca con s. / filtra; u actualiza."),
+        Line::from("1 Armar. En esta PC: decidí cómo se instala cada cosa."),
+        Line::from("2 Instalar. En una PC nueva: instalá las recetas aprobadas."),
+        Line::from("c comprueba; espacio marca solo para esa instalación; p instalar."),
+        Line::from("3 Checklist. Después de instalar: lo que rebake no hace por vos."),
+        Line::from("espacio tilda; Enter despliega ajustes; s escanea; q salir."),
         titulo("Marcas"),
         Line::from(leyenda(app)),
-        Line::from(""),
-        titulo("Pestañas"),
-        Line::from("1 Armar. En esta PC: decidí cómo se instala cada cosa."),
-        Line::from(
-            "2 Instalar. En una PC nueva: instalá las recetas aprobadas. c comprueba, espacio marca (solo para esa instalación) y p instala.",
-        ),
-        Line::from(
-            "3 Checklist. Después de instalar: lo que rebake no hace por vos (logins y ajustes).",
-        ),
-        Line::from(""),
-        titulo("Otras teclas"),
-        Line::from(
-            "↑↓ o j k mover  t armar todas  v aprobar todas  s escanear  o excluidas  / filtrar  p instalar  l pegar el link  r reinvestigar  u actualizar rebake  q salir",
-        ),
     ];
     f.render_widget(Clear, area);
     f.render_widget(
@@ -912,9 +921,9 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-fn lineas_pie(app: &App) -> Vec<Line<'static>> {
-    let (gratis, investigar, buscar) = app.por_armar();
-    let (gratis, claude) = (gratis.len(), investigar.len() + buscar.len());
+fn lineas_pie(app: &App, ancho: u16) -> Vec<Line<'static>> {
+    let (gratis, investigar, _) = app.por_armar();
+    let (gratis, claude) = (gratis.len(), investigar.len());
     let por_revisar = app
         .recetario
         .items
@@ -983,11 +992,8 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             let accion_v = format!("aprobar {por_revisar}");
             spans.extend(teclas(&[("v", &accion_v)]));
         }
-        if let Some(item) = app.seleccionado()
-            && !app.investigando.contains(&item.id)
-            && !app.buscando.contains(&item.id)
-        {
-            spans.extend(teclas(&teclas_de_receta(item)));
+        if let Some(item) = app.seleccionado() {
+            spans.extend(teclas(&teclas_de_receta(app, item)));
         }
     } else if app.pestana == Pestana::Checklist {
         spans.push(Span::raw(format!("  {TECLAS_CHECKLIST}")));
@@ -1003,22 +1009,66 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
         };
         spans.push(Span::raw(format!("  {texto}")));
     }
+    if app.pestana == Pestana::Armar && ancho <= 100 {
+        let mut acciones = Vec::new();
+        if let Some(item) = app.seleccionado() {
+            let lista = teclas_de_receta(app, item);
+            if let Some((tecla, accion)) = lista.first() {
+                acciones.push(format!("{tecla} {accion}"));
+            }
+        } else if app.recetario.items.is_empty() {
+            acciones.push("s escanear".into());
+        }
+        if gratis + claude > 0 {
+            acciones.push("t armar".into());
+        }
+        if por_revisar > 0 {
+            acciones.push("v aprobar".into());
+        }
+        let acciones = acciones.join("  ");
+        let completa = format!("1 Armar  2 Instalar  3 Checklist  {acciones}  ?  ayuda q salir");
+        let texto = if completa.width() <= ancho as usize {
+            completa
+        } else {
+            format!("1 Armar 2 Inst 3 Check  {acciones}  ? q salir")
+        };
+        spans = vec![Span::raw(texto)];
+    }
     let segunda = match &app.modo {
         Modo::ConfirmarAprobacion { ids } => format!(
             " ¿Aprobar {} recetas? s confirma; otra tecla cancela",
             ids.len()
         ),
-        Modo::ConfirmarTanda { investigar, buscar } => format!(
-            " ¿Gastar {} corridas de Claude? s confirma; otra tecla cancela",
-            investigar.len() + buscar.len()
-        ),
+        Modo::ConfirmarTanda { accion, .. } => {
+            let n = accion.corridas();
+            format!(
+                " ¿Gastar {n} {} de Claude? s confirma; otra tecla cancela",
+                if n == 1 { "corrida" } else { "corridas" }
+            )
+        }
+        Modo::Resolver { opcion, .. } => {
+            let opciones = [
+                "pegar link (gratis)",
+                "buscar en la web (1 corrida)",
+                "excluir",
+            ];
+            format!(
+                " Resolver: {}",
+                opciones
+                    .iter()
+                    .enumerate()
+                    .map(|(n, texto)| format!("{}{texto}", if n == *opcion { ">" } else { " " }))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        }
         Modo::Escribiendo { para, texto } => {
             let etiqueta = match para {
                 Entrada::Link { .. } => "Link del repo",
                 Entrada::Filtro => "Filtro",
             };
             let ayuda = match para {
-                Entrada::Link { .. } => "Enter vacío lo busca en la web, Esc cancela",
+                Entrada::Link { .. } => "Enter guarda; vacío busca con s; Esc cancela",
                 _ => "Enter confirma, Esc cancela",
             };
             format!(" {etiqueta}: {texto}_   ({ayuda})")
@@ -1028,5 +1078,14 @@ fn lineas_pie(app: &App) -> Vec<Line<'static>> {
             app.mensaje.clone().unwrap_or_else(|| siguiente_paso(app))
         ),
     };
+    if matches!(app.modo, Modo::Resolver { .. }) {
+        spans = vec![Span::raw(
+            " ↑↓/j k mover · Enter elige · Esc cancela; luego q salir",
+        )];
+    } else if matches!(app.modo, Modo::Escribiendo { .. }) {
+        spans = vec![Span::raw(" Enter confirma · Esc cancela; luego q salir")];
+    } else if matches!(app.modo, Modo::ConfirmarTanda { .. }) {
+        spans = vec![Span::raw(" s confirma · otra tecla cancela; luego q salir")];
+    }
     vec![Line::from(spans), Line::from(segunda)]
 }
