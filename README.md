@@ -78,10 +78,11 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    rebake
    ```
 
-   Arranca en la pestaña **Armar** (pestaña 1). Con un cookbook vacío, el pie dice
-   `` Siguiente: `s` escanea esta PC ``.
+   Arranca en la pestaña **Armar** (pestaña 1) y escanea esta PC automáticamente,
+   gratis y sin Claude. El resultado queda en el pie. Al abrir con una URL arranca
+   en **Instalar** y no escanea.
 
-2. Apretá `s` para escanear. Aparece cada cosa instalada en tus perfiles, dividida en **POR RESOLVER** (decisiones de receta pendientes, errores o posibles orígenes) y **LISTAS** (las aprobadas), agrupada por tipo.
+2. Aparece cada cosa instalada en tus perfiles, dividida en **POR RESOLVER** (decisiones de receta pendientes, errores o posibles orígenes) y **LISTAS** (las aprobadas), agrupada por tipo. `s escanear` queda visible para repetir el escaneo.
    El cookbook se crea en `~/Documentos/rebake/cookbook.toml` (`~/Documents/…` en un sistema
    en inglés).
 
@@ -93,7 +94,7 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    Los hooks vinculados a una herramienta se ven dentro de ella en el panel de detalle;
    los propios siguen en la lista y los externos, en la pestaña Checklist.
 
-3. Lo directo (marketplaces, plugins oficiales y skills de skills.sh) llega ya armado al escanear, gratis, listo para revisar. Apretá `t` para armar el resto de las recetas pendientes con origen. Van por tandas de hasta 5 corridas de Claude: el pie
+3. Lo directo (marketplaces, plugins oficiales y skills de skills.sh) llega ya armado al escanear, gratis, listo para revisar, incluso si ya estaba pendiente en el cookbook. Apretá `t` para armar el resto de las recetas pendientes con origen. Van por tandas de hasta 5 corridas de Claude: el pie
    pregunta antes de cada tanda, `s` confirma y cualquier otra tecla cancela. Las tandas no
    se encadenan. Cada búsqueda de origen también cuenta como una corrida
    (ver [Cómo arma cada receta](#cómo-arma-cada-receta)).
@@ -101,7 +102,10 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
 4. Revisá cada receta. Elegila con `↑` `↓` y leé en el panel derecho qué va a ejecutar y de
    qué parte de la documentación sale cada comando.
 
-5. Apretá `a` (o espacio) para aprobarla. Lo que no querés instalar, excluilo con `x`.
+5. Enter aprueba y pasa a la siguiente; sobre una aprobada, la desaprueba sin avanzar.
+   `a` o espacio alternan la aprobación sin mover la selección. La fila queda en su lugar
+   hasta escanear o reabrir; los contadores se actualizan al marcar.
+   Lo que no querés instalar, excluilo con `x`.
    Se oculta sin pedir motivo. `o` muestra u oculta los excluidos; sobre uno de ellos,
    `x` lo vuelve a incluir conservando su receta. El motivo es opcional y se puede editar con `e`.
 
@@ -241,14 +245,15 @@ actual, qué significa cada marca, para qué es cada pestaña y todas las teclas
 depende de Shift, y con `NO_COLOR` la pantalla no usa colores.
 
 En Armar, Enter hace el siguiente paso de la elegida: aprueba y avanza, arma o abre Resolver.
-Nunca desaprueba. Resolver ofrece pegar link gratis, buscar en la web por una corrida o excluir;
+Sobre una aprobada, Enter desaprueba sin mover la selección. Espacio sin receta indica
+«sin receta: Enter la arma». Resolver ofrece pegar link gratis, buscar en la web por una corrida o excluir;
 flechas o `j`/`k` mueven el foco, Enter elige y Esc cancela.
 
 Toda acción que use Claude muestra cuántas corridas necesita: `s` confirma y cualquier otra
 tecla cancela sin gastar. `t` solo arma pendientes con origen confirmado: lo directo es gratis,
 lo demás va en una tanda de hasta cinco, sin búsquedas ni encadenamiento. Mientras haya
 corridas de Claude en curso, `t` sigue armando gratis y pide esperar. `i`/`r` siguen de a una.
-En 80 columnas el pie prioriza la acción de Enter, ayuda y salida; las alternativas están en `?`.
+En 80 columnas el pie prioriza la acción de Enter, `s escanear`, ayuda y salida; las alternativas están en `?`.
 
 | Tecla | En todas las pestañas |
 |---|---|
@@ -263,12 +268,12 @@ En 80 columnas el pie prioriza la acción de Enter, ayuda y salida; las alternat
 
 | Tecla | Acción |
 |---|---|
-| Enter | aprobar y avanzar; armar; aceptar un posible y armar; sin origen, abrir Resolver. En LISTAS indica `2 Instalar`; en excluidas, `x reincluir` |
+| Enter | aprobar y avanzar; sobre una aprobada, desaprobar sin avanzar; armar; aceptar un posible y armar; sin origen, abrir Resolver; en excluidas, `x reincluir` |
 | `n` | descartar un posible origen, gratis |
 | `i` | armar la elegida; sin origen, buscar con `s` o pedir el link si ya se buscó |
 | `t` | armar solo pendientes con origen, gratis o hasta 5 corridas con `s`; no toca posibles ni busca orígenes |
 | `l` | pegar el link: Enter guarda el origen, sin Claude ni aprobación; una directa puede armarse gratis. Enter vacío pide confirmar una búsqueda |
-| `a` o espacio | aprobar o desaprobar una receta armada |
+| `a` o espacio | aprobar o desaprobar una receta armada sin mover fila ni selección |
 | `v` | aprobar todas las recetas por revisar (pregunta en el pie y confirma con `s`) |
 | `x` | excluir sin pedir motivo; sobre una excluida, la vuelve a incluir conservando la receta |
 | `o` | mostrar u ocultar los excluidos (ocultos al arrancar) |
