@@ -26,9 +26,31 @@ const LEYENDA: [(&str, &str, Estado); 5] = [
 ];
 
 pub fn dibujar(f: &mut Frame, app: &App) {
+    let mut estado = Vec::new();
+    if let Some(error) = &app.error_guardado {
+        estado.extend(envolver(error, f.area().width));
+    }
+    if let Some(aviso) = &app.aviso {
+        estado.push(cortar(&format!("Aviso: {aviso}"), f.area().width as usize));
+    }
+    if app.esta_listo() {
+        let texto = match &app.repo {
+            Some(url) => format!(
+                "COOKBOOK LISTO · se sube al repo al salir · otra PC: rebake {}",
+                crate::secretos::sin_credenciales_url(url)
+            ),
+            None if app.sincroniza => "COOKBOOK LISTO · se sube al repo al salir · otra PC: rebake <url del repo>; revisá origin con git remote -v".into(),
+            None => format!(
+                "COOKBOOK LISTO · solo en esta PC: {} · otra PC: llevá el archivo y usá rebake --archivo <ruta> (o rebake clonar <repo>)",
+                app.archivo
+            ),
+        };
+        estado.extend(envolver(&texto, f.area().width));
+    }
     // Lo que no cambia de una sesión a otra (camino, leyenda, para qué es cada pestaña) vive en `?`.
-    let [cabecera, cuerpo, pie] = Layout::vertical([
+    let [cabecera, avisos, cuerpo, pie] = Layout::vertical([
         Constraint::Length(1),
+        Constraint::Length(estado.len().min(8) as u16),
         Constraint::Min(3),
         Constraint::Length(2),
     ])
@@ -37,6 +59,7 @@ pub fn dibujar(f: &mut Frame, app: &App) {
         Paragraph::new(texto_cabecera(app, cabecera.width)),
         cabecera,
     );
+    f.render_widget(Paragraph::new(estado.join("\n")), avisos);
     match app.pestana {
         Pestana::Armar => recetas(f, app, cuerpo),
         Pestana::Instalacion => instalacion(f, app, cuerpo),
@@ -46,6 +69,21 @@ pub fn dibujar(f: &mut Frame, app: &App) {
         ayuda(f, app, cuerpo);
     }
     f.render_widget(Paragraph::new(lineas_pie(app, pie.width)), pie);
+}
+
+fn envolver(texto: &str, ancho: u16) -> Vec<String> {
+    let mut lineas = vec![String::new()];
+    let mut usadas = 0;
+    for c in texto.chars().filter(|c| !c.is_control()) {
+        let ancho_c = c.width().unwrap_or(0);
+        if usadas + ancho_c > ancho as usize {
+            lineas.push(String::new());
+            usadas = 0;
+        }
+        lineas.last_mut().unwrap().push(c);
+        usadas += ancho_c;
+    }
+    lineas
 }
 
 fn estilo_estado(app: &App, e: Estado) -> Style {
@@ -399,11 +437,11 @@ fn que_falta(app: &App, item: &Item) -> &'static str {
             Some(p) if p.pendiente().is_some() => {
                 "Encontré de dónde podría venir: Enter lo acepta, `n` lo descarta."
             }
-            Some(p) if p.descartado => "Descartaste el posible origen: `i` te pide el link.",
-            Some(_) => "No encontré de qué repo viene: `i` te pide el link.",
+            Some(p) if p.descartado => "Descartaste el posible origen: Enter abre Resolver.",
+            Some(_) => "No encontré de qué repo viene: Enter abre Resolver.",
             None => "Esta PC lo tiene, pero no sé de qué repo viene: Enter abre Resolver.",
         },
-        Estado::Pendiente => "Esta PC lo tiene, pero todavía no hay receta: `i` la arma.",
+        Estado::Pendiente => "Esta PC lo tiene, pero todavía no hay receta: Enter la arma.",
         Estado::PorRevisar => "Hay receta: revisá qué va a ejecutar; Enter aprueba y avanza.",
         Estado::Aprobada => "Lista: en una PC nueva se instala con esto (pestaña 2).",
         Estado::Excluida => "No se instala.",
@@ -837,9 +875,9 @@ fn siguiente_paso(app: &App) -> String {
     if app.esta_listo() {
         let n = contar(&|i| i.estado == Estado::Aprobada);
         return if n > 0 {
-            format!("COOKBOOK LISTO · en una PC nueva, `2` y `p` instalan las {n} aprobadas")
+            format!("Siguiente: `2` y `p` instalan las {n} aprobadas")
         } else {
-            "COOKBOOK LISTO · no hay recetas aprobadas para instalar".into()
+            "no hay recetas aprobadas para instalar".into()
         };
     }
     if let Some(item) = app.seleccionado().filter(|i| app.posible_pendiente(&i.id)) {
@@ -1078,14 +1116,59 @@ fn lineas_pie(app: &App, ancho: u16) -> Vec<Line<'static>> {
             app.mensaje.clone().unwrap_or_else(|| siguiente_paso(app))
         ),
     };
-    if matches!(app.modo, Modo::Resolver { .. }) {
-        spans = vec![Span::raw(
-            " ↑↓/j k mover · Enter elige · Esc cancela; luego q salir",
-        )];
-    } else if matches!(app.modo, Modo::Escribiendo { .. }) {
-        spans = vec![Span::raw(" Enter confirma · Esc cancela; luego q salir")];
-    } else if matches!(app.modo, Modo::ConfirmarTanda { .. }) {
-        spans = vec![Span::raw(" s confirma · otra tecla cancela; luego q salir")];
+    let repo = if app.sincroniza || app.repo.is_some() {
+        " (sube al repo)"
+    } else {
+        ""
+    };
+    if app.modo != Modo::Normal {
+        let accion = match app.modo {
+            Modo::Resolver { .. } => "↑↓/j k mover · Enter elige · ",
+            Modo::Escribiendo { .. } => "Enter confirma · ",
+            Modo::ConfirmarSalida => "s confirma salida · ",
+            Modo::ConfirmarTanda { .. }
+            | Modo::ConfirmarAprobacion { .. }
+            | Modo::ConfirmarInstalacion => "s confirma · ",
+            _ => "",
+        };
+        spans = vec![Span::raw(format!(
+            "{accion}Esc vuelve; luego q salir{repo}"
+        ))];
+    } else if ancho <= 100 {
+        let salida = format!(
+            "q salir{}{}",
+            if app.instalando { " (s confirma)" } else { "" },
+            repo
+        );
+        let texto = if app.pestana == Pestana::Armar {
+            let texto: String = spans.iter().map(|s| s.content.as_ref()).collect();
+            texto.trim_end_matches("q salir").to_string()
+        } else {
+            match app.pestana {
+                Pestana::Instalacion if app.plan().is_empty() => {
+                    "1 volver a Armar  2 Instalar  3 Checklist  ? ayuda  ".into()
+                }
+                Pestana::Instalacion => {
+                    "1 Armar  2 Instalar  3 Checklist  ↑↓ mover  ? ayuda  ".into()
+                }
+                _ => format!("1 Armar  2 Instalar  3 Checklist   {TECLAS_CHECKLIST} "),
+            }
+        };
+        let mut texto = texto;
+        if texto.width() + salida.width() > ancho as usize {
+            texto = texto
+                .replace("2 Instalar", "2 Inst")
+                .replace("3 Checklist", "3 Check")
+                .replace("?  ayuda", "?")
+                .replace("? ayuda", "?");
+        }
+        spans = vec![Span::raw(format!(
+            "{}{}",
+            cortar(&texto, (ancho as usize).saturating_sub(salida.width())),
+            salida
+        ))];
+    } else {
+        spans.push(Span::raw(format!("  q salir{repo}")));
     }
     vec![Line::from(spans), Line::from(segunda)]
 }

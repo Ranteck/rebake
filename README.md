@@ -105,7 +105,15 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    Se oculta sin pedir motivo. `o` muestra u oculta los excluidos; sobre uno de ellos,
    `x` lo vuelve a incluir conservando su receta. El motivo es opcional y se puede editar con `e`.
 
-6. Salí con `q`. Todo queda guardado en el cookbook.
+6. **COOKBOOK LISTO** aparece cuando no hay decisiones pendientes ni trabajos en curso y el
+   último guardado salió bien. Un error al guardar queda visible con su causa hasta que se
+   guarde correctamente. La pantalla indica dónde quedó el cookbook y cómo usarlo en la otra PC.
+   Salí con `q`; si estás escribiendo, en Resolver, ayuda o una confirmación, `Esc` vuelve y
+   después `q` sale. Con una instalación en curso, `s` confirma la salida.
+
+El pie conserva el resultado de tu última acción aunque te muevas por la lista. Los avisos
+de fondo aparecen arriba; los errores de armado o búsqueda siguen en el detalle del ítem y
+en POR RESOLVER hasta resolverse.
 
 Lo mismo sin pantalla, para scripts:
 
@@ -138,6 +146,13 @@ al terminar hace un commit solo de ese archivo y lo pushea; verás `cookbook pub
 repo`. Usa tu `git` y tus credenciales: para un repo privado en GitHub, `gh auth login` y
 `gh auth setup-git`, o una clave ssh. Los conflictos entre dos PCs los resolvés con git en esa
 carpeta.
+
+La salida indica si se publicó o no había nada que subir. Si falla git, avisa por stderr
+con la causa: el cookbook queda guardado en disco y se vuelve a subir en la próxima corrida;
+ese aviso conserva el código del comando. Sin repo, la pantalla y la salida indican la ruta
+local: llevá ese archivo a la otra PC y usá `rebake --archivo <ruta>`, o armá un repo y usá
+`rebake clonar <url>`. Los datos de la CLI van a stdout; avisos y errores, a stderr. Una
+operación fallida, incluso parcialmente, devuelve un código distinto de cero.
 
 En el repo, el cookbook tiene que ser un archivo común: si es un enlace, rebake se niega a
 usarlo para no escribir fuera del clon.

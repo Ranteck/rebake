@@ -125,6 +125,15 @@ pub struct App {
     pub mostrar_excluidas: bool,
     pub modo: Modo,
     pub mensaje: Option<String>,
+    pub aviso: Option<String>,
+    pub error_guardado: Option<String>,
+    pub archivo: String,
+    pub repo: Option<String>,
+    pub sincroniza: bool,
+    /// Una corrida tardía solo ocupa el pie si todavía es la última acción.
+    accion: u64,
+    acciones_corridas: HashMap<Corrida, u64>,
+    accion_instalacion: Option<u64>,
     pub investigando: HashSet<String>,
     pub buscando: HashSet<String>,
     /// `investigando` incluye recetas directas en hilos; estas no gastan Claude.
@@ -163,6 +172,14 @@ impl App {
             mostrar_excluidas: false,
             modo: Modo::Normal,
             mensaje: None,
+            aviso: None,
+            error_guardado: None,
+            archivo: "cookbook.toml".into(),
+            repo: None,
+            sincroniza: false,
+            accion: 0,
+            acciones_corridas: HashMap::new(),
+            accion_instalacion: None,
             investigando: HashSet::new(),
             buscando: HashSet::new(),
             claude_en_curso: HashSet::new(),
@@ -224,6 +241,15 @@ impl App {
 
     pub fn terminar_comprobacion(&mut self) {
         self.comprobando = false;
+        let instaladas = self
+            .presencia
+            .values()
+            .filter(|p| **p == Presencia::Instalada)
+            .count();
+        self.aviso = Some(format!(
+            "comprobación: {instaladas} instaladas de {} comprobadas",
+            self.presencia.len()
+        ));
     }
 
     /// Hay plan a la vista: ni instalación en curso ni resultados de una anterior.
@@ -269,8 +295,10 @@ impl App {
         self.por_resolver().is_empty()
             && self.investigando.is_empty()
             && self.buscando.is_empty()
+            && self.claude_en_curso.is_empty()
             && !self.instalando
             && !self.comprobando
+            && self.error_guardado.is_none()
             && self
                 .recetario
                 .items
@@ -325,6 +353,20 @@ impl App {
     }
 
     pub fn tecla(&mut self, k: KeyEvent) -> Efecto {
+        let navegando = !matches!(
+            self.modo,
+            Modo::Escribiendo { .. }
+                | Modo::ConfirmarTanda { .. }
+                | Modo::ConfirmarAprobacion { .. }
+                | Modo::ConfirmarInstalacion
+                | Modo::ConfirmarSalida
+        ) && matches!(
+            k.code,
+            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Char('j' | 'k')
+        );
+        if !navegando {
+            self.accion = self.accion.wrapping_add(1);
+        }
         match self.modo.clone() {
             Modo::Escribiendo { para, texto } => self.escribiendo(k.code, para, texto),
             Modo::Resolver { id, opcion } => self.resolver(k.code, id, opcion),
@@ -497,6 +539,10 @@ impl App {
                     .filter(|id| !self.instalada(id))
                 {
                     self.alternar(id, &plan);
+                    self.avisar(&format!(
+                        "{} recetas marcadas para instalar",
+                        self.a_instalar().len()
+                    ));
                 }
             }
             KeyCode::Char('t') => {
@@ -505,9 +551,14 @@ impl App {
                 } else {
                     self.desmarcadas.extend(plan);
                 }
+                self.avisar(&format!(
+                    "{} recetas marcadas para instalar",
+                    self.a_instalar().len()
+                ));
             }
             KeyCode::Char('c') if !self.comprobando => {
                 self.comprobando = true;
+                self.avisar("comprobando las recetas aprobadas…");
                 return Efecto::Comprobar;
             }
             _ => {}
@@ -566,6 +617,10 @@ impl App {
                 {
                     self.hechos.insert(f.detalle.clone());
                 }
+                self.avisar(&format!(
+                    "{} pendientes tildados en Checklist",
+                    self.hechos.len()
+                ));
             }
             // Lo de antes del bloque no cambia: la selección queda sobre él.
             KeyCode::Enter
@@ -611,6 +666,11 @@ impl App {
             (KeyCode::Char('o'), elegido) => {
                 self.mostrar_excluidas = !self.mostrar_excluidas;
                 self.restaurar_seleccion(elegido.as_deref());
+                self.avisar(if self.mostrar_excluidas {
+                    "excluidas visibles"
+                } else {
+                    "excluidas ocultas"
+                });
             }
             (KeyCode::Char('/'), _) => {
                 self.modo = Modo::Escribiendo {
@@ -658,7 +718,7 @@ impl App {
             (KeyCode::Char('n'), Some(id)) if self.posible_pendiente(&id) => {
                 return match acciones::descartar_posible(&mut self.recetario, &id) {
                     Ok(()) => {
-                        self.avisar(&format!("{id}: descartado; `i` para pegar el link"));
+                        self.avisar(&format!("{id}: descartado; Enter abre Resolver"));
                         Efecto::Guardar
                     }
                     Err(e) => {
@@ -819,6 +879,7 @@ impl App {
         if codigo == KeyCode::Esc {
             self.modo = Modo::Normal;
             self.restaurar_seleccion(Some(&id));
+            self.avisar("Resolver cancelado; no se cambió nada");
             return Efecto::Nada;
         }
         if codigo != KeyCode::Enter {
@@ -891,7 +952,7 @@ impl App {
         }
     }
 
-    fn fin_tanda(&mut self, tanda: TandaActiva) {
+    fn fin_tanda(&mut self, tanda: TandaActiva, accion: Option<u64>) {
         tracing::info!(
             accion = "tanda_terminada",
             por_revisar = tanda.por_revisar,
@@ -941,7 +1002,7 @@ impl App {
             (false, false) => "",
         };
 
-        self.avisar(&format!("tanda lista: {balance}{sugerencia}"));
+        self.completar(format!("tanda lista: {balance}{sugerencia}"), accion);
     }
 
     pub fn posible_pendiente(&self, id: &str) -> bool {
@@ -968,6 +1029,11 @@ impl App {
             return Efecto::Nada;
         }
         self.buscando.extend(ids.iter().cloned());
+        self.acciones_corridas.extend(
+            ids.iter()
+                .cloned()
+                .map(|id| (Corrida::Buscar(id), self.accion)),
+        );
         self.claude_en_curso
             .extend(ids.iter().cloned().map(Corrida::Buscar));
         self.avisar(&format!("buscando de dónde vienen {} ítems…", ids.len()));
@@ -975,13 +1041,14 @@ impl App {
     }
 
     pub fn registrar_busqueda(&mut self, id: &str, resultado: anyhow::Result<Posible>) {
+        let accion = self.acciones_corridas.remove(&Corrida::Buscar(id.into()));
         self.buscando.remove(id);
         self.claude_en_curso.remove(&Corrida::Buscar(id.into()));
         let texto = match &resultado {
             Ok(p) if p.repo.is_some() => {
                 format!("{id}: posible origen, mirá el panel de la derecha")
             }
-            Ok(_) => format!("{id}: no encontré de dónde viene; `i` para pegar el link"),
+            Ok(_) => format!("{id}: no encontré de dónde viene; Enter abre Resolver"),
             Err(e) => format!("{id} → error: {e:#}"),
         };
         let mut tanda_fin = None;
@@ -1004,9 +1071,9 @@ impl App {
         aplicar_posible(&mut self.recetario, id, resultado);
         self.restaurar_seleccion(elegido.as_deref());
         if let Some(tanda) = tanda_fin {
-            self.fin_tanda(tanda);
+            self.fin_tanda(tanda, accion);
         } else {
-            self.avisar(&texto);
+            self.completar(texto, accion);
         }
     }
 
@@ -1031,6 +1098,11 @@ impl App {
             return Efecto::Nada;
         }
         self.investigando.extend(ids.iter().cloned());
+        self.acciones_corridas.extend(
+            ids.iter()
+                .cloned()
+                .map(|id| (Corrida::Investigar(id), self.accion)),
+        );
         self.claude_en_curso.extend(
             ids.iter()
                 .filter(|id| {
@@ -1057,6 +1129,7 @@ impl App {
                     }
                     Entrada::Link { id } => self.restaurar_seleccion(Some(&id)),
                 }
+                self.avisar("entrada cancelada; no se cambió el origen");
             }
             KeyCode::Backspace => {
                 texto.pop();
@@ -1073,6 +1146,10 @@ impl App {
                     let elegido = self.id_seleccionado();
                     self.filtro = texto;
                     self.restaurar_seleccion(elegido.as_deref());
+                    self.avisar(&format!(
+                        "filtro aplicado: {} ítems visibles",
+                        self.visibles().len()
+                    ));
                     return Efecto::Nada;
                 }
                 let Entrada::Link { id } = &para else {
@@ -1124,6 +1201,19 @@ impl App {
 
     fn avisar(&mut self, texto: &str) {
         self.mensaje = Some(texto.to_string());
+    }
+
+    fn completar(&mut self, texto: String, accion: Option<u64>) {
+        if accion.is_none_or(|a| a == self.accion) {
+            self.mensaje = Some(texto);
+        } else {
+            self.aviso = Some(texto);
+        }
+    }
+
+    pub fn iniciar_instalacion(&mut self) {
+        self.accion_instalacion = Some(self.accion);
+        self.avisar(&format!("instalando {} recetas…", self.instalacion.len()));
     }
 
     pub fn filas_checklist(&self) -> Vec<Fila> {
@@ -1189,6 +1279,9 @@ impl App {
         resultado: anyhow::Result<Receta>,
         hoy: &str,
     ) {
+        let accion = self
+            .acciones_corridas
+            .remove(&Corrida::Investigar(id.into()));
         self.investigando.remove(id);
         self.claude_en_curso.remove(&Corrida::Investigar(id.into()));
         let estado = crate::investigador::resultado_receta(&self.recetario, id, &resultado);
@@ -1226,9 +1319,9 @@ impl App {
             }
         }
         if let Some(tanda) = tanda_fin {
-            self.fin_tanda(tanda);
+            self.fin_tanda(tanda, accion);
         } else {
-            self.avisar(&texto);
+            self.completar(texto, accion);
         }
     }
 
@@ -1290,12 +1383,17 @@ impl App {
             0 => String::new(),
             n => format!(" · {n} con pasos a mano: mirá Checklist"),
         };
-        self.avisar(&format!(
-            "Instalación terminada: {ok} instaladas, {salteadas} salteadas, {error} con error, \
+        self.completar(
+            format!(
+                "Instalación terminada: {ok} instaladas, {salteadas} salteadas, {error} con error, \
              {bloqueadas} bloqueadas{a_mano} · detalle en la pestaña 2 y en \
              ~/.local/state/rebake/ultima-instalacion.log"
-        ));
-        self.pestana = Pestana::Checklist;
+            ),
+            self.accion_instalacion,
+        );
+        if self.accion_instalacion.is_none_or(|a| a == self.accion) {
+            self.pestana = Pestana::Checklist;
+        }
     }
 }
 

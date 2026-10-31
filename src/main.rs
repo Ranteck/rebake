@@ -212,10 +212,14 @@ fn correr(cli: Cli, home: &Path, revision: &mut Option<Receiver<Option<String>>>
         novedades,
         cli.url.is_some(),
         revision,
+        sincroniza,
     );
     // También si el comando falló: lo que llegó a guardar no se pierde.
     if let Some(antes) = &antes {
         publicar(&ruta, nombre, antes);
+    } else if nombre.is_none() && resultado.is_ok() {
+        tracing::info!(accion = "publicar", resultado = "local", causa = "sin_repo");
+        eprintln!("cookbook guardado solo en esta PC: {}", ruta.display());
     }
     resultado
 }
@@ -232,23 +236,36 @@ fn publicar(ruta: &Path, comando: Option<&str>, antes: &rebake::modelo::Recetari
     let despues = match archivo::leer(ruta) {
         Ok(r) => r,
         Err(e) => {
-            avisar(&e.context("no pude leer el cookbook para publicarlo"));
+            tracing::warn!(accion = "publicar", resultado = "fallo", causa = "lectura");
+            eprintln!(
+                "aviso: no pude leer el cookbook para publicarlo: {e:#}; revisá el archivo en {}",
+                ruta.display()
+            );
             return;
         }
     };
     match sincro::publicar(ruta, &servicio::mensaje_commit(comando, antes, &despues)) {
         Ok(true) => {
-            tracing::info!(accion = "publicar", "cookbook publicado en el repo");
+            tracing::info!(accion = "publicar", resultado = "publicado");
             eprintln!("cookbook publicado en el repo");
         }
-        Ok(false) => {}
-        Err(e) => avisar(&e),
+        Ok(false) => {
+            tracing::info!(accion = "publicar", resultado = "al_dia");
+            eprintln!("nada que subir: el repo ya estaba al día");
+        }
+        Err(e) => {
+            tracing::warn!(accion = "publicar", resultado = "fallo", causa = "git");
+            eprintln!(
+                "aviso: el cookbook quedó guardado en disco ({}) y se sube en la próxima corrida: {e:#}",
+                ruta.display()
+            );
+        }
     }
 }
 
 /// Un fallo de git no frena el comando: el cookbook ya quedó en disco.
 fn avisar(e: &anyhow::Error) {
-    tracing::warn!(error = %format!("{e:#}"), "sincronización con el repo");
+    tracing::warn!(accion = "sincronizar", resultado = "aviso", causa = "git");
     eprintln!("aviso: {e:#}");
 }
 
@@ -259,9 +276,22 @@ fn ejecutar_comando(
     novedades: HashMap<String, Novedad>,
     hubo_url: bool,
     revision: &mut Option<Receiver<Option<String>>>,
+    sincroniza: bool,
 ) -> Result<bool> {
     let Some(comando) = comando else {
         let arranque = rebake::tui::Arranque {
+            sincroniza,
+            repo: if sincroniza {
+                match sincro::origen(ruta) {
+                    Ok(url) => Some(sin_credenciales_url(&url)),
+                    Err(e) => {
+                        avisar(&e.context("no pude leer origin; revisá `git remote -v` en la carpeta del cookbook"));
+                        None
+                    }
+                }
+            } else {
+                None
+            },
             instalacion: hubo_url,
             novedades,
             revision: revision.take(),
@@ -360,7 +390,10 @@ fn investigar(
             }
             Err(e) => {
                 fallidos += 1;
-                eprintln!("[{}/{total}] {id} → error: {e:#}", n + 1);
+                eprintln!(
+                    "[{}/{total}] {id} → error: {e:#}; revisá el origen y reintentá con `rebake investigar {id}`",
+                    n + 1
+                );
             }
         }
         let hooks_vinculados = r.hooks_de(&id).count();
@@ -491,7 +524,11 @@ fn instalar(
                 hooks_vinculados
             );
         }
-        println!("{id}: {texto}");
+        if matches!(res, Resultado::Fallo(_) | Resultado::Bloqueado(_)) {
+            eprintln!("{id}: {texto}; revisá la receta en `rebake` y volvé a instalar");
+        } else {
+            println!("{id}: {texto}");
+        }
     }
     if !dry_run {
         print!("{}", servicio::texto_checklist(r));
@@ -532,5 +569,83 @@ mod tests {
             "{texto}"
         );
         assert!(!texto.contains("ERROR"), "{texto}");
+    }
+
+    #[test]
+    fn fase4_publicar_registra_exito_al_dia_y_fallo_sin_rutas() {
+        use super::apoyo_pruebas::{HomeFalso, aislado, capturar_logs};
+        use std::process::Command;
+        use std::sync::{Arc, Mutex};
+        if !aislado("tests::fase4_publicar_registra_exito_al_dia_y_fallo_sin_rutas") {
+            return;
+        }
+        let h = HomeFalso::nuevo();
+        let git = |args: &[&str]| {
+            let o = Command::new("/usr/bin/git")
+                .arg("-C")
+                .arg(h.ruta())
+                .args([
+                    "-c",
+                    "user.name=Prueba",
+                    "-c",
+                    "user.email=prueba@example.com",
+                ])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        };
+        git(&["init", "--bare", "remoto.git"]);
+        git(&["clone", "remoto.git", "clon"]);
+        let ruta = h.ruta().join("clon/cookbook.toml");
+        let r = rebake::modelo::Recetario::nuevo();
+        rebake::archivo::guardar(&ruta, &r).unwrap();
+        git(&["-C", "clon", "config", "user.name", "Prueba"]);
+        git(&["-C", "clon", "config", "user.email", "prueba@example.com"]);
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        tracing::subscriber::with_default(capturar_logs(salida.clone()), || {
+            super::publicar(&ruta, None, &r);
+            super::publicar(&ruta, None, &r);
+            h.binario("remoto.git/hooks/pre-receive", b"#!/bin/sh\nexit 1\n");
+            std::fs::write(&ruta, "version = 1\n# cambio\n").unwrap();
+            super::publicar(&ruta, None, &r);
+        });
+        let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        let eventos: Vec<_> = log
+            .lines()
+            .filter(|l| l.contains("accion=\"publicar\""))
+            .collect();
+        assert_eq!(eventos.len(), 3, "{log}");
+        for (evento, resultado) in eventos.iter().zip(["publicado", "al_dia", "fallo"]) {
+            assert!(
+                evento.contains(&format!("resultado=\"{resultado}\"")),
+                "{log}"
+            );
+        }
+        assert!(!log.contains(h.ruta().to_str().unwrap()), "{log}");
+    }
+
+    #[test]
+    fn fase4_un_origin_roto_no_impide_intentar_abrir_la_pantalla() {
+        if !super::apoyo_pruebas::aislado(
+            "tests::fase4_un_origin_roto_no_impide_intentar_abrir_la_pantalla",
+        ) {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let error = super::ejecutar_comando(
+            None,
+            &dir.path().join("cookbook.toml"),
+            dir.path(),
+            Default::default(),
+            false,
+            &mut None,
+            true,
+        )
+        .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("la salida no es una terminal"),
+            "{error:#}"
+        );
     }
 }

@@ -684,7 +684,7 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
         let pie = pie(&app);
         // Las teclas de todas las recetas viven en `?`: el pie solo suma la de la ayuda.
         assert!(
-            pie[0].contains(" ?  ayuda ") && pie[0].ends_with(esperado),
+            pie[0].contains(" ?  ayuda ") && pie[0].ends_with(&format!("{esperado}   q salir")),
             "{pie:?}"
         );
         assert!(!pie.join("").contains("investigar todas"), "{pie:?}");
@@ -721,7 +721,7 @@ fn el_pie_conserva_el_paso_tras_el_mensaje_de_escaneo_y_cuenta_lo_disponible() {
 #[test]
 fn el_pie_del_cookbook_vacio_ofrece_escanear() {
     let pie = pie(&App::nueva(Recetario::nuevo()));
-    assert!(pie[0].ends_with(" s  escanear"), "{pie:?}");
+    assert!(pie[0].ends_with(" s  escanear   q salir"), "{pie:?}");
 }
 
 #[test]
@@ -1927,11 +1927,12 @@ fn la_tanda_termina_con_errores_sin_encadenar_y_no_absorbe_i() {
         HashSet::from([Corrida::Buscar("mcp:bus-000".into())])
     );
     assert!(
-        app.mensaje
+        app.aviso
             .as_deref()
             .unwrap()
             .contains("1 por revisar, 4 errores")
     );
+    assert!(app.mensaje.as_deref().unwrap().contains("buscando"));
     assert_eq!(app.buscando.len(), 1);
     assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
     assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
@@ -3212,42 +3213,173 @@ fn fase4_salida_visible_en_tres_pestanas_y_todos_los_focos() {
     use rebake::tui::app::{AccionClaude, Entrada, Modo};
     for pestana in [Pestana::Armar, Pestana::Instalacion, Pestana::Checklist] {
         for color in [false, true] {
-            for modo in [
-                Modo::Normal,
-                Modo::Ayuda,
-                Modo::Resolver {
-                    id: "ñ界".into(),
-                    opcion: 0,
-                },
-                Modo::Escribiendo {
-                    para: Entrada::Filtro,
-                    texto: "ñ界".repeat(99),
-                },
-                Modo::ConfirmarAprobacion {
-                    ids: vec!["a".into(); 999],
-                },
-                Modo::ConfirmarTanda {
-                    accion: AccionClaude::Armar(vec![con_fuente("a"); 999]),
-                    tanda: true,
-                },
-                Modo::ConfirmarInstalacion,
-                Modo::ConfirmarSalida,
-            ] {
-                let mut app = con_cuota(107, 141, 0);
-                app.pestana = pestana;
-                app.color = color;
-                app.modo = modo.clone();
-                let p = pantalla_en(&app, 80, 24);
-                let pie = p.lines().nth(22).unwrap();
-                assert_eq!(p.lines().count(), 24);
-                assert!(pie.contains("q salir"), "{pestana:?} {modo:?}: {p}");
-                if modo != Modo::Normal && modo != Modo::ConfirmarSalida {
-                    assert!(pie.contains("Esc"), "{modo:?}: {pie}");
-                }
-                if modo == Modo::ConfirmarSalida {
-                    assert!(pie.contains("s confirma"), "{pie}");
+            for repo in [None, Some("https://example.com/cookbook.git")] {
+                for modo in [
+                    Modo::Normal,
+                    Modo::Ayuda,
+                    Modo::Resolver {
+                        id: "ñ界".into(),
+                        opcion: 0,
+                    },
+                    Modo::Escribiendo {
+                        para: Entrada::Filtro,
+                        texto: "ñ界".repeat(99),
+                    },
+                    Modo::ConfirmarAprobacion {
+                        ids: vec!["a".into(); 999],
+                    },
+                    Modo::ConfirmarTanda {
+                        accion: AccionClaude::Armar(vec![con_fuente("a"); 999]),
+                        tanda: true,
+                    },
+                    Modo::ConfirmarInstalacion,
+                    Modo::ConfirmarSalida,
+                ] {
+                    let mut app = con_cuota(107, 141, 0);
+                    app.pestana = pestana;
+                    app.color = color;
+                    app.repo = repo.map(str::to_string);
+                    app.sincroniza = repo.is_some();
+                    app.modo = modo.clone();
+                    let p = pantalla_en(&app, 80, 24);
+                    let pie = p.lines().nth(22).unwrap();
+                    assert_eq!(p.lines().count(), 24);
+                    if repo.is_some() {
+                        assert!(pie.contains("sube al repo"), "{pestana:?} {modo:?}: {pie}");
+                    }
+                    assert!(pie.contains("q salir"), "{pestana:?} {modo:?}: {p}");
+                    if modo != Modo::Normal && modo != Modo::ConfirmarSalida {
+                        assert!(pie.contains("Esc"), "{modo:?}: {pie}");
+                    }
+                    if modo == Modo::ConfirmarSalida {
+                        assert!(pie.contains("s confirma"), "{pie}");
+                    }
                 }
             }
         }
     }
+}
+
+#[test]
+fn fase4_listo_indica_destino_y_siguiente_pc_sin_credenciales_y_con_hooks() {
+    for repo in [
+        None,
+        Some("https://usuario:secreto@example.com/cookbook.git"),
+    ] {
+        let mut item = con_fuente("herramienta:lista");
+        item.estado = Estado::Aprobada;
+        let mut app = con_un_item(item);
+        app.archivo = "/tmp/otra-pc/recetas-ñ.toml".into();
+        app.repo = repo.map(str::to_string);
+        for instalador in [
+            InstaladorHook::Item("herramienta:lista".into()),
+            InstaladorHook::Externo("externa".into()),
+        ] {
+            let mut hook = Item::nuevo(&format!("hook:{}", instalador.nombre()), Tipo::Hook);
+            hook.instalado_por = Some(instalador);
+            app.recetario.items.push(hook);
+        }
+        app.mensaje = Some("última acción: aprobada".into());
+        for pestana in [Pestana::Armar, Pestana::Instalacion, Pestana::Checklist] {
+            app.pestana = pestana;
+            let p = pantalla_en(&app, 80, 24);
+            assert!(app.esta_listo());
+            assert!(
+                p.contains("COOKBOOK LISTO") && p.contains("última acción: aprobada"),
+                "{p}"
+            );
+            assert!(!p.contains("secreto") && !p.contains("usuario"), "{p}");
+            let junta: String = p.lines().take(6).map(str::trim_end).collect();
+            if repo.is_some() {
+                assert!(junta.contains("se sube al repo al salir"), "{p}");
+                assert!(
+                    junta.contains("rebake https://example.com/cookbook.git"),
+                    "{p}"
+                );
+                assert!(p.lines().nth(22).unwrap().contains("sube al repo"), "{p}");
+            } else {
+                assert!(
+                    junta.contains("solo en esta PC: /tmp/otra-pc/recetas-ñ.toml"),
+                    "{p}"
+                );
+                assert!(
+                    junta.contains("--archivo") && junta.contains("rebake clonar"),
+                    "{p}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn fase4_error_de_armado_permanece_en_pie_y_detalle_ante_avisos() {
+    let mut app = con_cuota(0, 1, 0);
+    tecla(&mut app, KeyCode::Enter);
+    tecla(&mut app, KeyCode::Char('s'));
+    app.registrar_investigacion("mcp:inv-000", Err(anyhow::anyhow!("sin cuota")), "hoy");
+    let ultima = app.mensaje.clone();
+    tecla(&mut app, KeyCode::Down);
+    tecla(&mut app, KeyCode::Char('j'));
+    app.version_nueva = Some("99.0.0".into());
+    app.terminar_comprobacion();
+    assert_eq!(app.mensaje, ultima);
+    assert!(pie(&app)[1].contains("sin cuota"));
+    assert!(pantalla_en(&app, 80, 24).contains("comprobación:"));
+    assert_eq!(app.por_resolver().len(), 1);
+    assert!(pantalla(&app).contains("sin cuota"));
+    app.registrar_investigacion("mcp:inv-000", Ok(receta_fase3()), "hoy");
+    assert!(app.recetario.item("mcp:inv-000").unwrap().error.is_none());
+}
+
+#[test]
+fn fase4_fin_de_corrida_y_tanda_sin_otras_acciones_es_resultado() {
+    for tanda in [false, true] {
+        let mut app = con_cuota(0, 1, 0);
+        tecla(
+            &mut app,
+            if tanda {
+                KeyCode::Char('t')
+            } else {
+                KeyCode::Enter
+            },
+        );
+        tecla(&mut app, KeyCode::Char('s'));
+        tecla(&mut app, KeyCode::Down);
+        app.registrar_investigacion("mcp:inv-000", Ok(receta_fase3()), "hoy");
+        assert!(app.mensaje.as_deref().unwrap().contains("por revisar"));
+        assert!(app.aviso.is_none());
+        assert!(app.investigando.is_empty());
+    }
+}
+
+#[test]
+fn fase4_fin_de_busqueda_e_instalacion_tardios_no_pisan_la_accion() {
+    use rebake::instalador::{Evento, Resultado};
+    let mut app = con_cuota(0, 0, 1);
+    tecla(&mut app, KeyCode::Enter);
+    tecla(&mut app, KeyCode::Down);
+    tecla(&mut app, KeyCode::Enter);
+    tecla(&mut app, KeyCode::Char('s'));
+    tecla(&mut app, KeyCode::Char('u'));
+    let ultima = app.mensaje.clone();
+    app.registrar_busqueda("mcp:bus-000", Err(anyhow::anyhow!("búsqueda fallida")));
+    assert_eq!(app.mensaje, ultima);
+    assert!(app.aviso.as_deref().unwrap().contains("búsqueda fallida"));
+    assert!(app.recetario.item("mcp:bus-000").unwrap().error.is_some());
+    app.instalacion = vec![("mcp:bus-000".into(), None)];
+    app.instalando = true;
+    app.iniciar_instalacion();
+    tecla(&mut app, KeyCode::Char('u'));
+    let ultima = app.mensaje.clone();
+    app.evento_instalacion(Evento::Fin(
+        "mcp:bus-000".into(),
+        Resultado::Fallo("instalación fallida".into()),
+    ));
+    assert_eq!(app.mensaje, ultima);
+    assert!(
+        app.aviso
+            .as_deref()
+            .unwrap()
+            .contains("Instalación terminada")
+    );
 }

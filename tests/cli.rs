@@ -741,3 +741,39 @@ fn fase4_instalacion_parcial_datos_stdout_errores_stderr_y_codigo_fallo() {
         "{err}"
     );
 }
+
+#[test]
+fn fase4_investigacion_parcial_conserva_ambos_resultados_y_falla_con_guia() {
+    use rebake::modelo::{Fuente, Item, Recetario, Tipo, Via};
+    let h = HomeFalso::nuevo();
+    let ruta = h.ruta().join("cookbook.toml");
+    let mut r = Recetario::nuevo();
+    for id in ["mcp:ok", "mcp:rota"] {
+        let mut item = Item::nuevo(id, Tipo::Mcp);
+        item.fuente = Some(Fuente {
+            repo: "https://example.com/repo".into(),
+            via: Via::Manual,
+            doc: None,
+        });
+        r.items.push(item);
+    }
+    archivo::guardar(&ruta, &r).unwrap();
+    let fake = h.binario("bin/claude", format!("#!/bin/sh\ncase \"$*\" in *mcp:rota*) echo '{{\"type\":\"result\",\"subtype\":\"error\",\"result\":\"fallo-sintetico\"}}'; exit 1;; esac\ncat <<'JSON'\n{RESPUESTA}\nJSON\n").as_bytes());
+    let o = recetario(
+        &h,
+        &["--archivo", ruta.to_str().unwrap(), "investigar"],
+        Some(fake.to_str().unwrap()),
+    );
+    assert!(!o.status.success(), "{}", texto(&o));
+    let out = String::from_utf8_lossy(&o.stdout);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(out.contains("1 por revisar, 1 con error"), "{out}");
+    assert!(!out.contains("fallo-sintetico"), "{out}");
+    assert!(
+        err.contains("fallo-sintetico") && err.contains("revisá"),
+        "{err}"
+    );
+    let r = archivo::leer(&ruta).unwrap();
+    assert_eq!(r.item("mcp:ok").unwrap().estado, Estado::PorRevisar);
+    assert!(r.item("mcp:rota").unwrap().error.is_some());
+}

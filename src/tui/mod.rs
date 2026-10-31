@@ -27,6 +27,9 @@ type Buscado = (String, Result<Posible>);
 
 #[derive(Default)]
 pub struct Arranque {
+    pub sincroniza: bool,
+    /// Origen del clon sincronizado, ya sin credenciales.
+    pub repo: Option<String>,
     /// Abrir en la pestaña Instalar.
     pub instalacion: bool,
     pub novedades: HashMap<String, Novedad>,
@@ -37,6 +40,11 @@ pub struct Arranque {
 pub fn ejecutar(ruta: &Path, home: &Path, arranque: Arranque) -> Result<()> {
     let recetario = archivo::leer(ruta)?;
     let mut app = App::nueva(recetario).con_arranque(arranque.instalacion, arranque.novedades);
+    app.archivo = ruta.display().to_string();
+    app.sincroniza = arranque.sincroniza;
+    app.repo = arranque
+        .repo
+        .map(|url| crate::secretos::sin_credenciales_url(&url));
     app.color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty());
     // Sin esta guarda, `ratatui::init()` toma /dev/tty aunque la salida esté capturada.
     if !std::io::stdout().is_terminal() {
@@ -96,6 +104,7 @@ fn bucle(
     let (tx_bus, rx_bus) = mpsc::channel::<Buscado>();
     let mut rx_inst: Option<mpsc::Receiver<Evento>> = None;
     let mut rx_comp: Option<mpsc::Receiver<(String, Presencia)>> = None;
+    let mut listo = false;
     loop {
         if let Some(rx) = &rx_version
             && let Ok(nueva) = rx.try_recv()
@@ -173,6 +182,7 @@ fn bucle(
             }
         }
         app.tic();
+        registrar_listo(app, &mut listo);
         terminal.draw(|f| vista::dibujar(f, app))?;
         if !event::poll(Duration::from_millis(100))? {
             continue;
@@ -318,10 +328,40 @@ fn tecla_registrada(app: &mut App, tecla: KeyEvent) -> Efecto {
 }
 
 fn guardar(app: &mut App, ruta: &Path) {
-    if let Err(e) = archivo::guardar(ruta, &app.recetario) {
-        tracing::error!(error = %format!("{e:#}"), "no pude guardar el recetario");
-        app.mensaje = Some(format!("no pude guardar: {e:#}"));
+    match archivo::guardar(ruta, &app.recetario) {
+        Ok(()) => {
+            app.error_guardado = None;
+            tracing::info!(
+                accion = "guardar",
+                resultado = "ok",
+                items = app.recetario.items.len()
+            );
+        }
+        Err(e) => {
+            app.error_guardado = Some(format!(
+                "no pude guardar: {e:#}; reintentá con otra acción que guarde"
+            ));
+            tracing::error!(
+                accion = "guardar",
+                resultado = "fallo",
+                causa = "escritura",
+                items = app.recetario.items.len()
+            );
+        }
     }
+}
+
+fn registrar_listo(app: &App, anterior: &mut bool) {
+    let listo = app.esta_listo();
+    if listo && !*anterior {
+        tracing::info!(
+            accion = "listo",
+            resultado = "ok",
+            items = app.recetario.items.len(),
+            repo = app.sincroniza
+        );
+    }
+    *anterior = listo;
 }
 
 fn escanear(app: &mut App, ruta: &Path) {
@@ -491,6 +531,7 @@ fn instalar(app: &mut App, home: &Path) -> Option<mpsc::Receiver<Evento>> {
     app.instalacion = orden.iter().map(|id| (id.clone(), None)).collect();
     app.pestana = Pestana::Instalacion;
     app.instalando = true;
+    app.iniciar_instalacion();
     let recetario = app.recetario.clone();
     let opciones = Opciones {
         dry_run: false,
@@ -889,7 +930,23 @@ mod tests {
             texto.contains("resultado=\"ok\"") && texto.contains("resultado=\"fallo\""),
             "{texto}"
         );
-        assert_eq!(texto.lines().count(), 2, "{texto}");
+        assert_eq!(texto.lines().count(), 3, "{texto}");
+        assert_eq!(
+            texto
+                .lines()
+                .filter(|l| l.contains("accion=\"escanear\""))
+                .count(),
+            2,
+            "{texto}"
+        );
+        assert_eq!(
+            texto
+                .lines()
+                .filter(|l| l.contains("accion=\"guardar\"") && l.contains("resultado=\"ok\""))
+                .count(),
+            1,
+            "{texto}"
+        );
         assert!(
             !texto.contains("pdf") && !texto.contains(home.to_str().unwrap()),
             "{texto}"
@@ -1051,8 +1108,15 @@ mod fase4_tests {
         let mut app = App::nueva(r);
         let salida = Arc::new(Mutex::new(Vec::new()));
         tracing::subscriber::with_default(capturar_logs(salida.clone()), || {
+            let mut listo = false;
+            registrar_listo(&app, &mut listo);
+            registrar_listo(&app, &mut listo);
             assert!(app.esta_listo());
             guardar(&mut app, &privado.join("cookbook.toml"));
+            assert!(!app.esta_listo());
+            registrar_listo(&app, &mut listo);
+            app.filtro = "ningún ítem".into();
+            app.mostrar_excluidas = true;
             assert!(!app.esta_listo());
             app.tecla(KeyEvent::new(KeyCode::Char('u'), event::KeyModifiers::NONE));
             let mut terminal =
@@ -1062,6 +1126,8 @@ mod fase4_tests {
             assert!(texto.contains("no pude guardar"), "{texto}");
             guardar(&mut app, &dir.path().join("cookbook.toml"));
             assert!(app.esta_listo());
+            registrar_listo(&app, &mut listo);
+            registrar_listo(&app, &mut listo);
         });
         let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
         let eventos: Vec<_> = log
@@ -1071,6 +1137,13 @@ mod fase4_tests {
         assert_eq!(eventos.len(), 2, "{log}");
         assert!(eventos[0].contains("resultado=\"fallo\""), "{log}");
         assert!(eventos[1].contains("resultado=\"ok\""), "{log}");
+        assert_eq!(
+            log.lines()
+                .filter(|l| l.contains("accion=\"listo\""))
+                .count(),
+            2,
+            "{log}"
+        );
         assert!(!log.contains(dir.path().to_str().unwrap()), "{log}");
     }
 }
