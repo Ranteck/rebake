@@ -13,11 +13,12 @@ Autor: Denis · Estado: aceptado · Fecha: 2026-10-29
 1. Lo sincronizado por la cuenta de Claude no aparece, no se investiga ni se instala, en ninguna
    PC ni desde la CLI, aunque ya esté en el cookbook.
 2. La lista se parte en POR RESOLVER arriba y LISTAS abajo; lo directo llega ya armado, gratis.
-   Lo excluido se esconde tras un contador y una tecla. Los hooks de una herramienta se ven
+   Una fila cambia de sección al escanear o al reabrir, no al aprobar. Lo excluido se esconde tras un contador y una tecla. Los hooks de una herramienta se ven
    dentro de ella; los propios siguen en la lista y los externos, en Checklist.
 3. Enter hace la acción siguiente del ítem: aprueba y pasa al próximo; arma o acepta un posible
    origen, pidiendo `s` si gasta Claude; en lo sin origen abre "Resolver" (pegar link gratis,
-   buscar por 1 corrida, excluir; un posible también se descarta). Nunca desaprueba.
+   buscar por 1 corrida, excluir; un posible también se descarta). En lo aprobado desaprueba,
+   como espacio.
 4. `t` arma solo lo que tiene origen; nunca busca orígenes.
 5. `x` excluye de un toque; el motivo es opcional.
 6. Con POR RESOLVER en cero, nada corriendo y el último guardado sin error, la pantalla dice
@@ -26,7 +27,8 @@ Autor: Denis · Estado: aceptado · Fecha: 2026-10-29
 7. Pestañas en el orden real: Armar, Instalar, Checklist.
 8. El resultado de cada acción (escanear, armar, guardar) dice qué cambió y queda a la vista
    hasta la próxima; ningún aviso de fondo lo pisa. Cómo salir está siempre a la vista, y
-   salir dice si sube el cookbook al repo.
+   salir dice si sube el cookbook al repo. Cómo escanear también; al abrirse en Armar escanea
+   sola, nunca al abrir con la URL ni en Instalar.
 
 ## Usuarios y sistemas afectados
 Denis; escaneo, `rebake investigar`, `rebake instalar` y la TUI. Enmienda `vista-clara`,
@@ -47,3 +49,9 @@ Ninguna.
 ## Cambios
 - 2026-10-29: salir a la vista y avisando si sube al repo. Denis: "¿q+s? Otra cosa que no te
   dice".
+- 2026-10-31: espacio y Enter aprueban o desaprueban sin mover la fila. Denis: "no me gusta
+  que desaparece de arriba… me gustaba como estaba antes que uno podía aprobar o desaprobar
+  con espacio". Aprobado.
+- 2026-10-31: `s escanear` a la vista y escaneo al abrir, solo en Armar: en una PC recién
+  formateada un escaneo puede quitar perfiles y vaciar la Checklist. Denis: "tampoco dice dónde
+  poner lo del s". Aprobado.
