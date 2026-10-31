@@ -706,3 +706,38 @@ fn escanear_cuenta_solo_items_propios_sin_exponer_sincronizados() {
     let r = archivo::leer(&ruta).unwrap();
     assert!(r.item("skill:pdf").unwrap().es_sincronizado());
 }
+
+#[test]
+fn fase4_instalacion_parcial_datos_stdout_errores_stderr_y_codigo_fallo() {
+    use rebake::modelo::{Item, Modo, Paso, Recetario, Tipo};
+    let h = HomeFalso::nuevo();
+    let ruta = h.ruta().join("cookbook.toml");
+    let mut r = Recetario::nuevo();
+    for (id, cmd) in [("herramienta:ok", "true"), ("herramienta:rota", "false")] {
+        let mut item = Item::nuevo(id, Tipo::Herramienta);
+        item.estado = Estado::Aprobada;
+        item.pasos = vec![Paso {
+            cmd: cmd.into(),
+            modo: Modo::Auto,
+            por_perfil: false,
+            cita: None,
+            nota: None,
+        }];
+        r.items.push(item);
+    }
+    archivo::guardar(&ruta, &r).unwrap();
+    let o = recetario(
+        &h,
+        &["--archivo", ruta.to_str().unwrap(), "instalar", "--si"],
+        None,
+    );
+    assert!(!o.status.success(), "{}", texto(&o));
+    let out = String::from_utf8_lossy(&o.stdout);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(out.contains("herramienta:ok: instalado"), "{out}");
+    assert!(!out.contains("falló"), "{out}");
+    assert!(
+        err.contains("herramienta:rota: falló") && err.contains("revis"),
+        "{err}"
+    );
+}

@@ -1031,3 +1031,46 @@ mod tests {
         assert_eq!(salida, b"\x1b[?2004h\x1b[?2004l");
     }
 }
+
+#[cfg(test)]
+mod fase4_tests {
+    use super::apoyo_pruebas::capturar_logs;
+    use super::*;
+    use crate::modelo::{Estado, Item, Recetario, Tipo};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn guardado_fallido_bloquea_listo_hasta_guardar_y_registra_una_vez_sin_ruta() {
+        let dir = tempfile::tempdir().unwrap();
+        let privado = dir.path().join("privado");
+        std::fs::write(&privado, "no es carpeta").unwrap();
+        let mut r = Recetario::nuevo();
+        let mut item = Item::nuevo("herramienta:a", Tipo::Herramienta);
+        item.estado = Estado::Aprobada;
+        r.items.push(item);
+        let mut app = App::nueva(r);
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        tracing::subscriber::with_default(capturar_logs(salida.clone()), || {
+            assert!(app.esta_listo());
+            guardar(&mut app, &privado.join("cookbook.toml"));
+            assert!(!app.esta_listo());
+            app.tecla(KeyEvent::new(KeyCode::Char('u'), event::KeyModifiers::NONE));
+            let mut terminal =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+            terminal.draw(|f| vista::dibujar(f, &app)).unwrap();
+            let texto = format!("{:?}", terminal.backend().buffer());
+            assert!(texto.contains("no pude guardar"), "{texto}");
+            guardar(&mut app, &dir.path().join("cookbook.toml"));
+            assert!(app.esta_listo());
+        });
+        let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        let eventos: Vec<_> = log
+            .lines()
+            .filter(|l| l.contains("accion=\"guardar\""))
+            .collect();
+        assert_eq!(eventos.len(), 2, "{log}");
+        assert!(eventos[0].contains("resultado=\"fallo\""), "{log}");
+        assert!(eventos[1].contains("resultado=\"ok\""), "{log}");
+        assert!(!log.contains(dir.path().to_str().unwrap()), "{log}");
+    }
+}

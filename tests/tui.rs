@@ -585,7 +585,7 @@ fn el_detalle_dice_que_falta_en_cada_estado() {
     for (item, texto) in [
         (
             con_fuente("plugin:a@x"),
-            "todavía no hay receta: `i` la arma",
+            "todavía no hay receta: Enter la arma",
         ),
         (sin_origen, "no sé de qué repo viene: Enter abre Resolver"),
         (
@@ -1353,11 +1353,12 @@ fn n_descarta_el_posible_sin_investigar() {
     assert!(x.posible.as_ref().unwrap().descartado);
     let p = pantalla(&app);
     assert!(
-        p.contains("Descartaste el posible origen: `i` te pide el link"),
+        p.contains("Descartaste el posible origen: Enter abre Resolver"),
         "{p}"
     );
-    // Ya no hay nada que aceptar: Enter no hace nada.
+    // Fase 3: sin posible pendiente, Enter abre Resolver sin gastar.
     assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    assert!(matches!(app.modo, rebake::tui::app::Modo::Resolver { .. }));
 }
 
 #[test]
@@ -3133,4 +3134,120 @@ fn fase3_link_directo_se_arma_gratis_y_hook_excluido_indica_reincluir() {
     assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
     assert!(app.mensaje.as_deref().unwrap().contains("x reincluir"));
     assert_eq!(app.recetario.items[0].estado, Estado::Excluida);
+}
+
+#[test]
+fn fase4_un_resultado_tardio_no_pisa_la_ultima_accion_ni_borra_el_error() {
+    let mut app = con_cuota(0, 2, 0);
+    tecla(&mut app, KeyCode::Enter);
+    tecla(&mut app, KeyCode::Char('s'));
+    let id = app.investigando.iter().next().unwrap().clone();
+    tecla(&mut app, KeyCode::Down);
+    tecla(&mut app, KeyCode::Char('x'));
+    let ultima = app.mensaje.clone();
+    app.registrar_investigacion(&id, Err(anyhow::anyhow!("fallo sintético")), "hoy");
+    assert_eq!(app.mensaje, ultima);
+    assert!(pantalla_en(&app, 80, 24).contains("fallo sintético"));
+    app.filtro = id.clone();
+    app.seleccion = 0;
+    assert!(app.por_resolver().iter().any(|i| i.id == id));
+    assert!(pantalla(&app).contains("fallo sintético"));
+    app.version_nueva = Some("99.0.0".into());
+    app.terminar_comprobacion();
+    assert_eq!(app.mensaje, ultima);
+    assert!(app.recetario.item(&id).unwrap().error.is_some());
+    app.registrar_investigacion(&id, Ok(receta_fase3()), "hoy");
+    assert!(app.recetario.item(&id).unwrap().error.is_none());
+}
+
+#[test]
+fn fase4_cada_bloqueo_es_global_incluso_con_filtro_y_excluidas() {
+    for caso in [
+        "error",
+        "posible",
+        "armando",
+        "buscando",
+        "claude",
+        "instalando",
+        "comprobando",
+    ] {
+        for excluidas in [false, true] {
+            let mut item = con_fuente("plugin:lista@x");
+            item.estado = Estado::Aprobada;
+            let mut app = con_un_item(item);
+            assert!(app.esta_listo());
+            app.mostrar_excluidas = excluidas;
+            app.filtro = "nada visible".into();
+            match caso {
+                "error" => app.recetario.items[0].error = Some("fallo".into()),
+                "posible" => {
+                    app.recetario.items[0].posible = Some(Posible {
+                        repo: Some("https://example.com/repo".into()),
+                        motivo: "revisar".into(),
+                        descartado: false,
+                    })
+                }
+                "armando" => {
+                    app.investigando.insert("fuera del filtro".into());
+                }
+                "buscando" => {
+                    app.buscando.insert("fuera del filtro".into());
+                }
+                "claude" => {
+                    app.claude_en_curso
+                        .insert(rebake::tui::app::Corrida::Buscar("fuera".into()));
+                }
+                "instalando" => app.instalando = true,
+                "comprobando" => app.comprobando = true,
+                _ => unreachable!(),
+            }
+            assert!(!app.esta_listo(), "{caso}, o={excluidas}");
+            assert!(!pantalla(&app).contains("COOKBOOK LISTO"), "{caso}");
+        }
+    }
+}
+
+#[test]
+fn fase4_salida_visible_en_tres_pestanas_y_todos_los_focos() {
+    use rebake::tui::app::{AccionClaude, Entrada, Modo};
+    for pestana in [Pestana::Armar, Pestana::Instalacion, Pestana::Checklist] {
+        for color in [false, true] {
+            for modo in [
+                Modo::Normal,
+                Modo::Ayuda,
+                Modo::Resolver {
+                    id: "ñ界".into(),
+                    opcion: 0,
+                },
+                Modo::Escribiendo {
+                    para: Entrada::Filtro,
+                    texto: "ñ界".repeat(99),
+                },
+                Modo::ConfirmarAprobacion {
+                    ids: vec!["a".into(); 999],
+                },
+                Modo::ConfirmarTanda {
+                    accion: AccionClaude::Armar(vec![con_fuente("a"); 999]),
+                    tanda: true,
+                },
+                Modo::ConfirmarInstalacion,
+                Modo::ConfirmarSalida,
+            ] {
+                let mut app = con_cuota(107, 141, 0);
+                app.pestana = pestana;
+                app.color = color;
+                app.modo = modo.clone();
+                let p = pantalla_en(&app, 80, 24);
+                let pie = p.lines().nth(22).unwrap();
+                assert_eq!(p.lines().count(), 24);
+                assert!(pie.contains("q salir"), "{pestana:?} {modo:?}: {p}");
+                if modo != Modo::Normal && modo != Modo::ConfirmarSalida {
+                    assert!(pie.contains("Esc"), "{modo:?}: {pie}");
+                }
+                if modo == Modo::ConfirmarSalida {
+                    assert!(pie.contains("s confirma"), "{pie}");
+                }
+            }
+        }
+    }
 }

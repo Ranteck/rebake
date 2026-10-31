@@ -510,3 +510,40 @@ fn instalar_lista_sin_marcas_si_no_hubo_cambios() {
         "{err}"
     );
 }
+
+#[test]
+fn fase4_publicacion_informa_publicado_al_dia_y_push_recuperado() {
+    let h = HomeFalso::nuevo();
+    let bare = remoto(&h, Some(COOKBOOK));
+    let clon = clonado(&h, &bare);
+    let o = rebake(&h, &["renombrar-perfil", "laburo", "casa"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("cookbook publicado en el repo"));
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("publicado"));
+    let o = rebake(&h, &["instalar", "--dry-run"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    assert!(
+        String::from_utf8_lossy(&o.stderr).contains("nada que subir"),
+        "{}",
+        texto(&o)
+    );
+    h.binario(
+        "remoto.git/hooks/pre-receive",
+        b"#!/bin/sh\necho rechazo-sintetico >&2\nexit 1\n",
+    );
+    let o = rebake(&h, &["renombrar-perfil", "casa", "otra"]);
+    assert!(o.status.success(), "{}", texto(&o));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        err.contains("guardado en disco")
+            && err.contains("próxima corrida")
+            && err.contains("rechazo-sintetico"),
+        "{err}"
+    );
+    assert!(String::from_utf8_lossy(&o.stdout).contains("casa → otra"));
+    assert!(
+        fs::read_to_string(clon.join("cookbook.toml"))
+            .unwrap()
+            .contains("otra")
+    );
+}
