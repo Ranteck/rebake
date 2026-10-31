@@ -126,7 +126,7 @@ fn aprobar_pendiente_muestra_error_y_no_guarda() {
         app.mensaje
             .as_deref()
             .unwrap()
-            .contains("todavía no tiene receta")
+            .contains("sin receta: Enter la arma")
     );
 }
 
@@ -673,10 +673,7 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
             por_revisar,
             " Enter  aprobar   e  editar   r  rearmar   x  excluir",
         ),
-        (
-            aprobada,
-            " Enter  2 Instalar   a  desaprobar   e  editar   r  rearmar",
-        ),
+        (aprobada, " Enter  desaprobar   e  editar   r  rearmar"),
         (excluida, " x  reincluir   e  editar"),
     ] {
         let mut app = con_un_item(item);
@@ -684,7 +681,8 @@ fn el_pie_muestra_solo_las_teclas_de_la_receta_elegida() {
         let pie = pie(&app);
         // Las teclas de todas las recetas viven en `?`: el pie solo suma la de la ayuda.
         assert!(
-            pie[0].contains(" ?  ayuda ") && pie[0].ends_with(&format!("{esperado}   q salir")),
+            pie[0].contains(" ?  ayuda ")
+                && pie[0].ends_with(&format!("{esperado}   s  escanear   q salir")),
             "{pie:?}"
         );
         assert!(!pie.join("").contains("investigar todas"), "{pie:?}");
@@ -737,7 +735,7 @@ fn el_pie_con_solo_por_revisar_no_ofrece_otra_tecla_del_paso() {
     let mut item = con_fuente("plugin:a@x");
     item.estado = Estado::PorRevisar;
     let pie = pie(&con_un_item(item));
-    for tecla in [" t  ", " s  ", " 2  "] {
+    for tecla in [" t  ", " 2  "] {
         assert!(!pie[0].contains(tecla), "{pie:?}");
     }
     assert!(pie[0].contains(" Enter  aprobar "), "{pie:?}");
@@ -756,10 +754,7 @@ fn el_pie_conserva_ayuda_y_armar_todas_a_80_columnas_con_receta_elegida() {
     assert!(app.seleccionado().is_some());
     let p = pantalla_en(&app, 80, 24);
     let primera = p.lines().nth(22).unwrap();
-    assert!(
-        primera.contains("q salir") && primera.contains("?  ayuda"),
-        "{p}"
-    );
+    assert!(primera.contains("q salir") && primera.contains("?"), "{p}");
     assert!(primera.contains("t armar"), "{p}");
 }
 
@@ -797,7 +792,7 @@ fn el_pie_no_ofrece_pasos_sin_trabajo_disponible() {
         },
     ] {
         let pie = pie(&app);
-        for tecla in [" t  ", " s  ", " 3  "] {
+        for tecla in [" t  ", " 3  "] {
             assert!(!pie[0].contains(tecla), "{pie:?}");
         }
     }
@@ -808,7 +803,7 @@ fn el_mensaje_va_en_su_propia_linea() {
     let mut app = con_un_item(con_fuente("plugin:a@x"));
     tecla(&mut app, KeyCode::Char('a'));
     let pie = pie(&app);
-    assert!(pie[1].contains("todavía no tiene receta"), "{pie:?}");
+    assert!(pie[1].contains("sin receta: Enter la arma"), "{pie:?}");
     assert!(!pie[0].contains("todavía"));
 }
 
@@ -1253,7 +1248,7 @@ fn espacio_no_aprueba_sin_receta_ni_excluida() {
         app.mensaje
             .as_deref()
             .unwrap()
-            .contains("todavía no tiene receta")
+            .contains("sin receta: Enter la arma")
     );
 
     let mut excluida = con_fuente("plugin:b@x");
@@ -2698,7 +2693,7 @@ fn detalle_de_receta_mixta_solo_anuncia_el_perfil_propio() {
 }
 
 #[test]
-fn fase3_enter_aprueba_y_avanza_en_por_resolver_sin_desaprobar() {
+fn fase5_enter_aprueba_y_avanza_y_en_aprobada_desaprueba_en_el_lugar() {
     let mut a = con_fuente("plugin:a@x");
     a.estado = Estado::PorRevisar;
     let mut b = con_fuente("plugin:b@x");
@@ -2713,10 +2708,27 @@ fn fase3_enter_aprueba_y_avanza_en_por_resolver_sin_desaprobar() {
     assert_eq!(app.seleccionado().unwrap().id, "plugin:b@x");
     assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
     assert_eq!(app.seleccionado().unwrap().id, "plugin:b@x");
-    let antes = app.recetario.clone();
-    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
-    assert_eq!(app.recetario, antes);
-    assert!(app.mensaje.as_deref().unwrap().contains("2 Instalar"));
+    let orden: Vec<_> = app.visibles().iter().map(|i| i.id.clone()).collect();
+    let seleccion = app.seleccion;
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(
+        app.recetario.item("plugin:b@x").unwrap().estado,
+        Estado::PorRevisar
+    );
+    assert_eq!(app.seleccion, seleccion);
+    assert_eq!(
+        app.visibles()
+            .iter()
+            .map(|i| i.id.clone())
+            .collect::<Vec<_>>(),
+        orden
+    );
+    assert!(
+        app.mensaje
+            .as_deref()
+            .unwrap()
+            .contains("vuelve a por revisar")
+    );
     assert!(app.claude_en_curso.is_empty());
     assert!(app.instalacion.is_empty());
 }
@@ -3488,4 +3500,126 @@ fn s_escanea_descripciones_sin_confirmar_ni_iniciar_claude() {
     assert_eq!(app.modo, antes);
     assert!(app.claude_en_curso.is_empty());
     assert!(app.investigando.is_empty());
+}
+
+#[test]
+fn fase5_espacio_fija_fila_y_seccion_y_listo_cuenta_por_estado_hasta_reabrir() {
+    let mut r = Recetario::nuevo();
+    for nombre in ["a", "b"] {
+        let mut item = con_fuente(&format!("plugin:{nombre}@x"));
+        item.estado = Estado::PorRevisar;
+        r.items.push(item);
+    }
+    let mut lista = con_fuente("plugin:lista@x");
+    lista.estado = Estado::Aprobada;
+    r.items.push(lista);
+    let mut app = App::nueva(r);
+    let orden: Vec<_> = app.visibles().iter().map(|i| i.id.clone()).collect();
+    for (id, restantes) in [("plugin:a@x", 1), ("plugin:b@x", 0)] {
+        app.restaurar_seleccion(Some(id));
+        let seleccion = app.seleccion;
+        assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Guardar);
+        assert_eq!(app.seleccion, seleccion);
+        assert_eq!(
+            app.visibles()
+                .iter()
+                .map(|i| i.id.clone())
+                .collect::<Vec<_>>(),
+            orden
+        );
+        assert_eq!(app.por_resolver().len(), restantes);
+        let p = pantalla_en(&app, 80, 24);
+        let izquierda: Vec<_> = p
+            .lines()
+            .map(|l| l.chars().take(32).collect::<String>())
+            .collect();
+        let fila = |texto: &str| izquierda.iter().position(|l| l.contains(texto)).unwrap();
+        assert!(fila("a@x") < fila("LISTAS"), "{p}");
+        assert!(fila("b@x") < fila("LISTAS"), "{p}");
+        assert_eq!(p.contains("COOKBOOK LISTO"), restantes == 0, "{p}");
+    }
+    assert!(app.esta_listo());
+    let mut reabierta = App::nueva(app.recetario.clone());
+    let p = pantalla_en(&reabierta, 80, 24);
+    assert!(!p.contains("POR RESOLVER"), "{p}");
+    assert!(p.contains("LISTAS"), "{p}");
+    for key in [KeyCode::Enter, KeyCode::Char(' ')] {
+        reabierta.restaurar_seleccion(Some("plugin:a@x"));
+        let seleccion = reabierta.seleccion;
+        assert_eq!(tecla(&mut reabierta, key), Efecto::Guardar);
+        assert_eq!(reabierta.seleccion, seleccion);
+        assert_eq!(
+            reabierta.recetario.item("plugin:a@x").unwrap().estado,
+            Estado::PorRevisar
+        );
+        assert!(!reabierta.esta_listo());
+        assert!(!pantalla_en(&reabierta, 80, 24).contains("POR RESOLVER"));
+        tecla(&mut reabierta, KeyCode::Char(' '));
+    }
+    assert!(reabierta.claude_en_curso.is_empty());
+    assert!(reabierta.instalacion.is_empty());
+}
+
+#[test]
+fn fase5_espacio_sin_receta_da_la_guia_y_no_cambia_el_cookbook() {
+    let mut app = con_un_item(con_fuente("plugin:b@x"));
+    let antes = app.recetario.clone();
+    assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Nada);
+    assert_eq!(app.recetario, antes);
+    assert!(pie(&app)[1].contains("sin receta: Enter la arma"));
+    assert!(app.claude_en_curso.is_empty());
+}
+
+#[test]
+fn fase5_s_escanear_siempre_visible_en_armar_y_ayuda_a_80x24() {
+    for mut app in [
+        App::nueva(Recetario::nuevo()),
+        con_cuota(123, 123, 123),
+        por_revisar_con_pasos(),
+        con_posible(Some("https://github.com/oraios/serena"), false),
+    ] {
+        app.color = false;
+        let p = pantalla_en(&app, 80, 24);
+        for texto in ["s escanear", "?", "q salir"] {
+            assert!(p.lines().nth(22).unwrap().contains(texto), "{p}");
+        }
+        app.sincroniza = true;
+        let con_repo = pantalla_en(&app, 80, 24);
+        for texto in ["s escanear", "?", "q salir", "sube al repo"] {
+            assert!(
+                con_repo.lines().nth(22).unwrap().contains(texto),
+                "{con_repo}"
+            );
+        }
+        tecla(&mut app, KeyCode::Char('?'));
+        let p = pantalla_en(&app, 80, 24);
+        for texto in ["s escanear", "desaprueba", "espacio"] {
+            assert!(p.contains(texto), "{p}");
+        }
+    }
+}
+
+#[test]
+fn fase5_un_requisito_agregado_al_armar_tambien_se_marca_sin_saltar() {
+    use rebake::investigador::Requisito;
+    let mut app = con_cuota(0, 1, 0);
+    let mut receta = receta_fase3();
+    receta.requiere.push(Requisito {
+        tipo: "mcp".into(),
+        nombre: "a".into(),
+    });
+    app.registrar_investigacion("mcp:inv-000", Ok(receta), "hoy");
+    app.registrar_investigacion("mcp:a", Ok(receta_fase3()), "hoy");
+    app.restaurar_seleccion(Some("mcp:a"));
+    let seleccion = app.seleccion;
+    let orden: Vec<_> = app.visibles().iter().map(|i| i.id.clone()).collect();
+    assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Guardar);
+    assert_eq!(app.seleccion, seleccion);
+    assert_eq!(
+        app.visibles()
+            .iter()
+            .map(|i| i.id.clone())
+            .collect::<Vec<_>>(),
+        orden
+    );
 }

@@ -268,7 +268,7 @@ fn recetas(f: &mut Frame, app: &App, area: Rect) {
     let mut seccion_actual = None;
     let mut tipo_actual = None;
     for (n, item) in app.visibles().into_iter().enumerate() {
-        let sec = item.seccion();
+        let sec = app.seccion_en_lista(item);
         if seccion_actual != Some(sec) {
             seccion_actual = Some(sec);
             tipo_actual = None;
@@ -855,12 +855,7 @@ fn teclas_de_receta(app: &App, item: &Item) -> Vec<(&'static str, &'static str)>
             ("r", "rearmar"),
             ("x", "excluir"),
         ],
-        Estado::Aprobada => vec![
-            ("Enter", "2 Instalar"),
-            ("a", "desaprobar"),
-            ("e", "editar"),
-            ("r", "rearmar"),
-        ],
+        Estado::Aprobada => vec![("Enter", "desaprobar"), ("e", "editar"), ("r", "rearmar")],
         Estado::Excluida => vec![("x", "reincluir"), ("e", "editar")],
     }
 }
@@ -950,15 +945,15 @@ fn ayuda(f: &mut Frame, app: &App, area: Rect) {
         Line::from("Buscar cuesta 1 corrida, sin armar. Pegar texto nunca ejecuta."),
         Line::from("t armar todas con origen: gratis o hasta 5 corridas; nunca busca."),
         Line::from("Claude (Enter, i/r, t, buscar): s confirma; otra tecla cancela."),
-        Line::from("Enter aprueba y avanza, nunca desaprueba; a/espacio alternan."),
+        Line::from("Enter aprueba y avanza; aprobada: desaprueba. a/espacio alternan."),
         Line::from("Aprobar queda guardado en el cookbook; v aprueba todas; e edita."),
         Line::from("x excluye sin motivo; o muestra/oculta excluidas; x reincluye."),
         Line::from("l pega link: Enter guarda; vacío busca con s. / filtra; u actualiza."),
-        Line::from("1 Armar. En esta PC: decidí cómo se instala cada cosa."),
+        Line::from("1 Armar. En esta PC: decidí cómo se instala cada cosa; s escanear."),
         Line::from("2 Instalar. En una PC nueva: instalá las recetas aprobadas."),
         Line::from("c comprueba; espacio marca solo para esa instalación; p instalar."),
         Line::from("3 Checklist. Después de instalar: lo que rebake no hace por vos."),
-        Line::from("espacio tilda; Enter despliega ajustes; s escanea; q salir."),
+        Line::from("espacio tilda; Enter despliega ajustes; q salir."),
         titulo("Marcas"),
         Line::from(leyenda(app)),
     ];
@@ -1013,7 +1008,6 @@ fn lineas_pie(app: &App, ancho: u16) -> Vec<Line<'static>> {
         spans.push(Span::raw(" "));
         spans.extend(teclas(&[("?", "ayuda")]));
         match paso_actual(app) {
-            0 => spans.extend(teclas(&[("s", "escanear")])),
             _ if gratis + claude > 0 => {
                 let accion = if compactar {
                     match (gratis, claude) {
@@ -1047,6 +1041,7 @@ fn lineas_pie(app: &App, ancho: u16) -> Vec<Line<'static>> {
         if let Some(item) = app.seleccionado() {
             spans.extend(teclas(&teclas_de_receta(app, item)));
         }
+        spans.extend(teclas(&[("s", "escanear")]));
     } else if app.pestana == Pestana::Checklist {
         spans.push(Span::raw(format!("  {TECLAS_CHECKLIST}")));
     } else {
@@ -1068,21 +1063,37 @@ fn lineas_pie(app: &App, ancho: u16) -> Vec<Line<'static>> {
             if let Some((tecla, accion)) = lista.first() {
                 acciones.push(format!("{tecla} {accion}"));
             }
-        } else if app.recetario.items.is_empty() {
-            acciones.push("s escanear".into());
         }
+        acciones.push("s escanear".into());
+        let obligatorias = acciones.len();
         if gratis + claude > 0 {
             acciones.push("t armar".into());
         }
         if por_revisar > 0 {
             acciones.push("v aprobar".into());
         }
-        let acciones = acciones.join("  ");
-        let completa = format!("1 Armar  2 Instalar  3 Checklist  {acciones}  ?  ayuda q salir");
+        let completa = format!(
+            "1 Armar  2 Instalar  3 Checklist  {}  ?  ayuda q salir",
+            acciones.join("  ")
+        );
         let texto = if completa.width() <= ancho as usize {
             completa
         } else {
-            format!("1 Armar 2 Inst 3 Check  {acciones}  ? q salir")
+            let reserva_repo = if app.sincroniza || app.repo.is_some() {
+                " (sube al repo)".width()
+            } else {
+                0
+            };
+            loop {
+                let texto = format!("1 Armar 2 Inst 3 Check {} ? q salir", acciones.join(" "));
+                if texto.width() + reserva_repo <= ancho as usize {
+                    break texto;
+                }
+                if acciones.len() == obligatorias {
+                    break texto.replace("3 Check", "3");
+                }
+                acciones.pop();
+            }
         };
         spans = vec![Span::raw(texto)];
     }

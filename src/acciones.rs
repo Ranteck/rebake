@@ -16,7 +16,7 @@ pub fn aprobar(r: &mut Recetario, id: &str) -> Result<()> {
         Estado::PorRevisar => item.estado = Estado::Aprobada,
         Estado::Aprobada => {}
         Estado::Pendiente => {
-            bail!("{id} todavía no tiene receta: investigalo o editalo antes de aprobar")
+            bail!("sin receta: Enter la arma")
         }
         Estado::Excluida => bail!("{id} está excluido: `x` lo devuelve"),
     }
