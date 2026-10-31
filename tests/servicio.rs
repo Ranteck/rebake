@@ -1,6 +1,6 @@
 mod comun;
 use comun::{HomeFalso, PacmanFalso, entorno, perfil};
-use rebake::modelo::{Estado, Item, Modo, Paso, Recetario, Tipo};
+use rebake::modelo::{Estado, Fuente, Item, Modo, Paso, Recetario, Tipo, Via};
 use rebake::servicio::{self, Novedad, mensaje_commit};
 
 #[test]
@@ -356,4 +356,49 @@ fn directa_nueva_queda_por_revisar_sin_claude_y_existente_queda_intacta() {
     let prop = r.item("skill:propia").unwrap();
     assert_eq!(prop.estado, Estado::Pendiente);
     assert!(prop.pasos.is_empty());
+}
+
+#[test]
+fn directa_pendiente_existente_se_arma_gratis_y_sin_origen_queda_intacta() {
+    if !comun::aislado("directa_pendiente_existente_se_arma_gratis_y_sin_origen_queda_intacta") {
+        return;
+    }
+    let h = HomeFalso::nuevo();
+    let mut r = Recetario::nuevo();
+    let mut directa = Item::nuevo("plugin:conocido@oficial", Tipo::Plugin);
+    directa.fuente = Some(Fuente {
+        repo: "https://github.com/anthropics/claude-plugins".into(),
+        via: Via::Metadatos,
+        doc: None,
+    });
+    directa.ausente = true;
+    let mut sin_origen = Item::nuevo("skill:propia", Tipo::Skill);
+    sin_origen.ausente = true;
+    let mut aprobada = directa.clone();
+    aprobada.id = "plugin:aprobado@oficial".into();
+    aprobada.estado = Estado::Aprobada;
+    let mut excluida = directa.clone();
+    excluida.id = "plugin:excluido@oficial".into();
+    excluida.estado = Estado::Excluida;
+    r.items = vec![
+        directa,
+        sin_origen.clone(),
+        aprobada.clone(),
+        excluida.clone(),
+    ];
+
+    let resumen = servicio::escanear(&mut r, &entorno(&h, &PacmanFalso(vec![]))).unwrap();
+    assert_eq!(resumen.directas, 1);
+    let armada = r.item("plugin:conocido@oficial").unwrap();
+    assert_eq!(armada.estado, Estado::PorRevisar);
+    assert!(
+        armada.pasos[0]
+            .cmd
+            .contains("claude plugin install conocido@oficial")
+    );
+    assert_eq!(r.item(&sin_origen.id), Some(&sin_origen));
+    assert_eq!(r.item(&aprobada.id), Some(&aprobada));
+    assert_eq!(r.item(&excluida.id), Some(&excluida));
+    let otra = servicio::escanear(&mut r, &entorno(&h, &PacmanFalso(vec![]))).unwrap();
+    assert_eq!(otra.directas, 0);
 }

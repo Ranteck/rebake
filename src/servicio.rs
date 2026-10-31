@@ -88,7 +88,7 @@ pub fn escanear(r: &mut Recetario, entorno: &Entorno) -> Result<ResumenEscaneo> 
     let candidatas: Vec<String> = r
         .items
         .iter()
-        .filter(|i| !antes.contains(&i.id) && !i.es_sincronizado() && i.estado == Estado::Pendiente)
+        .filter(|i| !i.es_sincronizado() && i.estado == Estado::Pendiente)
         .filter(|i| investigador::receta_directa(r, i).is_some())
         .map(|i| i.id.clone())
         .collect();
