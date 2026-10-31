@@ -173,6 +173,7 @@ pub(super) fn descripcion_skill(
             return None;
         }
     };
+    let texto = texto.trim_start_matches('\u{feff}');
     let mut lineas = texto.lines();
     if lineas.next()? != "---" {
         return None;
@@ -186,6 +187,11 @@ pub(super) fn descripcion_skill(
         .iter()
         .enumerate()
         .find_map(|(i, l)| l.strip_prefix("description:").map(|v| (i, v.trim())))?;
+    let continuacion = frente[indice + 1..]
+        .iter()
+        .take_while(|l| l.is_empty() || l.starts_with(char::is_whitespace))
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty());
     let descripcion = match valor.chars().next()? {
         '"' => serde_json::from_str::<String>(valor).ok()?,
         '\'' => {
@@ -195,15 +201,22 @@ pub(super) fn descripcion_skill(
             }
             interior.replace("''", "'")
         }
-        '>' | '|' if matches!(valor, ">" | "|") => frente[indice + 1..]
-            .iter()
-            .take_while(|l| l.is_empty() || l.starts_with(char::is_whitespace))
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty())
+        '>' | '|'
+            if matches!(
+                &valor.as_bytes()[1..],
+                [] | [b'+' | b'-']
+                    | [b'1'..=b'9']
+                    | [b'+' | b'-', b'1'..=b'9']
+                    | [b'1'..=b'9', b'+' | b'-']
+            ) =>
+        {
+            continuacion.collect::<Vec<_>>().join(" ")
+        }
+        '>' | '|' | '[' | '{' | '&' | '*' | '!' => return None,
+        _ => std::iter::once(valor)
+            .chain(continuacion)
             .collect::<Vec<_>>()
             .join(" "),
-        '>' | '|' | '[' | '{' | '&' | '*' | '!' => return None,
-        _ => valor.to_string(),
     };
     descripcion_visible(&descripcion, entorno)
 }

@@ -363,6 +363,20 @@ fn skills_leen_descripcion_completa_en_los_cuatro_formatos() {
         ("anidada", "---\nmetadata:\n  description: nested\n---"),
         ("sin_cierre", "---\ndescription: no closing delimiter"),
         ("objeto", "---\ndescription: {invalid: object}\n---"),
+        ("lista", "---\ndescription: [invalid, list]\n---"),
+        ("ancla", "---\ndescription: &anchor text\n---"),
+        ("alias", "---\ndescription: *anchor\n---"),
+        ("etiqueta", "---\ndescription: !tag text\n---"),
+        ("bloque_invalido", "---\ndescription: >text\n  ignored\n---"),
+        (
+            "indicadores_invalidos",
+            "---\ndescription: >++\n  ignored\n---",
+        ),
+        ("sangria_invalida", "---\ndescription: >0\n  ignored\n---"),
+        (
+            "dobles_multilinea",
+            "---\ndescription: \"First line.\n  Second line.\"\n---",
+        ),
     ] {
         h.escribir(&format!(".claude/skills/{nombre}/SKILL.md"), texto);
         let e = escanear_laburo(&h);
@@ -373,6 +387,59 @@ fn skills_leen_descripcion_completa_en_los_cuatro_formatos() {
     let e = escanear_laburo(&h);
     assert_eq!(hallazgo(&e, "skill:ilegible").descripcion, None);
     assert_eq!(e.avisos.len(), 1);
+}
+
+#[test]
+fn skills_leen_descripcion_en_bloques_con_indicadores() {
+    let h = HomeFalso::nuevo();
+    for (indice, indicador) in [">-", "|-", ">+", "|+", ">2", ">-2", ">2-"]
+        .iter()
+        .enumerate()
+    {
+        let nombre = format!("bloque_{indice}");
+        h.escribir(
+            &format!(".claude/skills/{nombre}/SKILL.md"),
+            &format!(
+                "---\ndescription: {indicador}\n  First line.\n  Second line.\nother: ignored\n---"
+            ),
+        );
+        let e = escanear_laburo(&h);
+        assert_eq!(
+            hallazgo(&e, &format!("skill:{nombre}"))
+                .descripcion
+                .as_deref(),
+            Some("First line. Second line."),
+            "{indicador}"
+        );
+    }
+}
+
+#[test]
+fn skills_leen_descripcion_con_bom() {
+    let h = HomeFalso::nuevo();
+    h.escribir(
+        ".claude/skills/bom/SKILL.md",
+        "\u{feff}---\ndescription: Author text, untouched.\n---\nBody ignored.",
+    );
+    let e = escanear_laburo(&h);
+    assert_eq!(
+        hallazgo(&e, "skill:bom").descripcion.as_deref(),
+        Some("Author text, untouched.")
+    );
+}
+
+#[test]
+fn skills_leen_descripcion_plana_de_varias_lineas() {
+    let h = HomeFalso::nuevo();
+    h.escribir(
+        ".claude/skills/plana/SKILL.md",
+        "---\ndescription: Use when\n  the user asks for help.\n\n  Keep the author's text.\nother: ignored\n---\nBody ignored.",
+    );
+    let e = escanear_laburo(&h);
+    assert_eq!(
+        hallazgo(&e, "skill:plana").descripcion.as_deref(),
+        Some("Use when the user asks for help. Keep the author's text.")
+    );
 }
 
 #[test]
