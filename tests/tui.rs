@@ -2711,3 +2711,318 @@ fn detalle_de_receta_mixta_solo_anuncia_el_perfil_propio() {
     let p = pantalla(&App::nueva(r));
     assert!(p.contains("Solo en: personal"), "{p}");
 }
+
+#[test]
+fn fase3_enter_aprueba_y_avanza_en_por_resolver_sin_desaprobar() {
+    let mut a = con_fuente("plugin:a@x");
+    a.estado = Estado::PorRevisar;
+    let mut b = con_fuente("plugin:b@x");
+    b.estado = Estado::PorRevisar;
+    let mut app = con_un_item(a);
+    app.recetario.items.push(b);
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(
+        app.recetario.item("plugin:a@x").unwrap().estado,
+        Estado::Aprobada
+    );
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:b@x");
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(app.seleccionado().unwrap().id, "plugin:b@x");
+    let antes = app.recetario.clone();
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    assert_eq!(app.recetario, antes);
+    assert!(app.mensaje.as_deref().unwrap().contains("2 Instalar"));
+    assert!(app.claude_en_curso.is_empty());
+    assert!(app.instalacion.is_empty());
+}
+
+#[test]
+fn fase3_enter_en_la_ultima_por_revisar_vuelve_a_la_primera_pendiente() {
+    let mut app = con_cuota(0, 1, 0);
+    let mut revisar = con_fuente("plugin:ultima@x");
+    revisar.estado = Estado::PorRevisar;
+    app.recetario.items.push(revisar);
+    app.restaurar_seleccion(Some("plugin:ultima@x"));
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(app.seleccionado().unwrap().id, "mcp:inv-000");
+}
+
+#[test]
+fn fase3_enter_arma_una_solo_tras_s_incluso_con_error_y_no_aprueba() {
+    for error in [None, Some("fallo anterior")] {
+        let mut app = con_cuota(0, 1, 0);
+        app.recetario.items[0].error = error.map(String::from);
+        assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+        assert!(pie(&app)[1].contains("¿Gastar 1 corrida de Claude?"));
+        assert!(app.claude_en_curso.is_empty());
+        assert_eq!(
+            tecla(&mut app, KeyCode::Char('s')),
+            Efecto::Investigar(vec!["mcp:inv-000".into()])
+        );
+        assert_eq!(app.claude_en_curso.len(), 1);
+        app.registrar_investigacion("mcp:inv-000", Ok(receta_fase3()), "2026-10-30");
+        assert_eq!(app.recetario.items[0].estado, Estado::PorRevisar);
+        assert!(app.plan().is_empty());
+    }
+}
+
+fn receta_fase3() -> rebake::investigador::Receta {
+    rebake::investigador::Receta {
+        repo: "https://github.com/a/b".into(),
+        doc: "documentación".into(),
+        pasos: vec![],
+        requiere: vec![],
+        verificar: None,
+        registro_hooks: None,
+    }
+}
+
+#[test]
+fn fase3_cancelar_aceptacion_deja_el_posible_y_el_cookbook_intactos() {
+    for cancelar in [
+        KeyCode::Esc,
+        KeyCode::Char('q'),
+        KeyCode::Enter,
+        KeyCode::Char('i'),
+    ] {
+        let mut app = con_posible(Some("https://github.com/oraios/serena"), false);
+        let antes = app.recetario.clone();
+        assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+        assert_eq!(app.recetario, antes);
+        assert_eq!(tecla(&mut app, cancelar), Efecto::Nada);
+        assert_eq!(app.recetario, antes);
+        assert!(app.claude_en_curso.is_empty());
+        assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+    }
+}
+
+#[test]
+fn fase3_pegar_link_guarda_sin_claude_ni_aprobacion_y_enter_lo_arma() {
+    for abrir in [KeyCode::Char('l'), KeyCode::Char('i'), KeyCode::Enter] {
+        let mut app = con_posible(Some("https://github.com/a/b"), true);
+        tecla(&mut app, abrir);
+        if abrir == KeyCode::Enter {
+            tecla(&mut app, KeyCode::Enter);
+        }
+        for c in "https://github.com/a/b".chars() {
+            tecla(&mut app, KeyCode::Char(c));
+        }
+        assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+        assert_eq!(
+            app.recetario.items[0].fuente.as_ref().unwrap().via,
+            Via::Manual
+        );
+        assert_eq!(app.recetario.items[0].estado, Estado::Pendiente);
+        assert!(app.recetario.items[0].posible.is_none());
+        assert!(app.claude_en_curso.is_empty());
+        assert!(app.mensaje.as_deref().unwrap().contains("Enter"));
+        assert!(app.mensaje.as_deref().unwrap().contains("1 corrida"));
+        assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+        assert_eq!(
+            tecla(&mut app, KeyCode::Char('s')),
+            Efecto::Investigar(vec!["mcp:serena".into()])
+        );
+    }
+}
+
+#[test]
+fn fase3_directa_con_origen_o_posible_se_arma_gratis_sin_confirmar() {
+    for posible in [false, true] {
+        let mut item = con_fuente("plugin:a@x");
+        if posible {
+            item.fuente = None;
+            item.posible = Some(Posible {
+                repo: Some("https://github.com/a/b".into()),
+                motivo: "candidato".into(),
+                descartado: false,
+            });
+        }
+        let mut app = con_un_item(item);
+        assert_eq!(
+            tecla(&mut app, KeyCode::Enter),
+            Efecto::Investigar(vec!["plugin:a@x".into()])
+        );
+        assert!(app.claude_en_curso.is_empty());
+        assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+        terminar_directas(&mut app, &["plugin:a@x".into()]);
+        assert_eq!(app.recetario.items[0].estado, Estado::PorRevisar);
+    }
+}
+
+#[test]
+fn fase3_resolver_navega_cancela_restaura_y_busca_solo_tras_s() {
+    let mut app = con_cuota(0, 0, 2);
+    app.seleccion = 1;
+    let antes = app.recetario.clone();
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    let p = pantalla_en(&app, 80, 24);
+    assert!(p.contains("Resolver"), "{p}");
+    assert!(p.contains(">pegar link (gratis)"), "{p}");
+    tecla(&mut app, KeyCode::Down);
+    assert!(pantalla_en(&app, 80, 24).contains(">buscar en la web (1 corrida)"));
+    tecla(&mut app, KeyCode::Char('k'));
+    tecla(&mut app, KeyCode::Char('j'));
+    tecla(&mut app, KeyCode::Esc);
+    assert_eq!(app.recetario, antes);
+    assert_eq!(app.seleccionado().unwrap().id, "mcp:bus-001");
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+    tecla(&mut app, KeyCode::Enter);
+    tecla(&mut app, KeyCode::Down);
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+    assert!(pie(&app)[1].contains("1 corrida"));
+    assert!(app.buscando.is_empty());
+    assert_eq!(
+        tecla(&mut app, KeyCode::Char('s')),
+        Efecto::Buscar(vec!["mcp:bus-001".into()])
+    );
+    assert_eq!(app.claude_en_curso.len(), 1);
+    assert!(app.investigando.is_empty());
+}
+
+#[test]
+fn fase3_resolver_excluye_gratis_y_ignora_item_resuelto_o_desaparecido() {
+    let mut app = con_cuota(0, 0, 2);
+    tecla(&mut app, KeyCode::Enter);
+    tecla(&mut app, KeyCode::Down);
+    tecla(&mut app, KeyCode::Down);
+    assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Guardar);
+    assert_eq!(
+        app.recetario.item("mcp:bus-000").unwrap().estado,
+        Estado::Excluida
+    );
+    assert!(app.claude_en_curso.is_empty());
+    for desaparece in [false, true] {
+        let mut app = con_cuota(0, 0, 2);
+        tecla(&mut app, KeyCode::Enter);
+        if desaparece {
+            app.recetario.items.remove(0);
+        } else {
+            app.registrar_investigacion("mcp:bus-000", Ok(receta_fase3()), "2026-10-30");
+        }
+        tecla(&mut app, KeyCode::Down);
+        assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+        assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+        assert!(app.claude_en_curso.is_empty());
+        assert!(app.recetario.item("mcp:bus-001").unwrap().fuente.is_none());
+        assert!(app.seleccion < app.visibles().len());
+    }
+}
+
+#[test]
+fn fase3_i_r_pagas_con_y_sin_origen_piden_s_y_revalidan() {
+    for key in ['i', 'r'] {
+        for origen in [false, true] {
+            let mut app = con_cuota(0, usize::from(origen), usize::from(!origen));
+            assert_eq!(tecla(&mut app, KeyCode::Char(key)), Efecto::Nada);
+            assert!(app.claude_en_curso.is_empty());
+            assert!(pie(&app)[1].contains("1 corrida"));
+            let efecto = tecla(&mut app, KeyCode::Char('s'));
+            assert_eq!(
+                efecto,
+                if origen {
+                    Efecto::Investigar(vec!["mcp:inv-000".into()])
+                } else {
+                    Efecto::Buscar(vec!["mcp:bus-000".into()])
+                }
+            );
+            assert_eq!(app.claude_en_curso.len(), 1);
+        }
+        let mut app = con_cuota(0, 1, 0);
+        tecla(&mut app, KeyCode::Char(key));
+        app.recetario.items[0].estado = Estado::Excluida;
+        assert_eq!(tecla(&mut app, KeyCode::Char('s')), Efecto::Nada);
+        assert!(app.claude_en_curso.is_empty());
+    }
+}
+
+#[test]
+fn fase3_t_s_arma_cinco_de_seis_y_deja_el_posible_intacto_sin_encadenar() {
+    let mut app = con_cuota(0, 6, 0);
+    let candidato = con_posible(Some("https://github.com/a/b"), false)
+        .recetario
+        .items
+        .remove(0);
+    app.recetario.items.push(candidato.clone());
+    assert_eq!(tecla(&mut app, KeyCode::Char('t')), Efecto::Nada);
+    assert!(app.claude_en_curso.is_empty());
+    let Efecto::Investigar(ids) = tecla(&mut app, KeyCode::Char('s')) else {
+        panic!()
+    };
+    assert_eq!(
+        ids,
+        (0..5)
+            .map(|n| format!("mcp:inv-{n:03}"))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(app.claude_en_curso.len(), 5);
+    for id in ids {
+        app.registrar_investigacion(&id, Ok(receta_fase3()), "2026-10-30");
+    }
+    assert_eq!(
+        app.recetario.item("mcp:inv-005").unwrap().estado,
+        Estado::Pendiente
+    );
+    assert_eq!(app.recetario.item("mcp:serena").unwrap(), &candidato);
+    assert!(app.buscando.is_empty());
+    assert!(app.claude_en_curso.is_empty());
+    assert_eq!(app.modo, rebake::tui::app::Modo::Normal);
+}
+
+#[test]
+fn fase3_enter_en_excluida_y_en_curso_orienta_sin_cambiar_el_estado() {
+    for estado in ["excluida", "armando", "buscando"] {
+        let mut app = con_cuota(0, 1, 0);
+        match estado {
+            "excluida" => {
+                app.recetario.items[0].estado = Estado::Excluida;
+                app.mostrar_excluidas = true;
+            }
+            "armando" => {
+                app.investigando.insert("mcp:inv-000".into());
+            }
+            _ => {
+                app.buscando.insert("mcp:inv-000".into());
+            }
+        }
+        let antes = app.recetario.clone();
+        assert_eq!(tecla(&mut app, KeyCode::Enter), Efecto::Nada);
+        assert_eq!(app.recetario, antes);
+        assert!(app.claude_en_curso.is_empty());
+        assert!(
+            app.mensaje
+                .as_deref()
+                .unwrap()
+                .contains(if estado == "excluida" {
+                    "x reincluir"
+                } else {
+                    estado
+                })
+        );
+    }
+}
+
+#[test]
+fn fase3_pie_resolver_y_confirmacion_caben_en_80_sin_color_y_sin_perder_salida() {
+    for color in [true, false] {
+        let mut app = con_cuota(0, 0, 1);
+        app.color = color;
+        tecla(&mut app, KeyCode::Enter);
+        let p = pantalla_en(&app, 80, 24);
+        for texto in [
+            "Resolver",
+            ">pegar link (gratis)",
+            "buscar en la web (1 corrida)",
+            "excluir",
+            "Esc",
+        ] {
+            assert!(p.contains(texto), "falta {texto}: {p}");
+        }
+        tecla(&mut app, KeyCode::Down);
+        tecla(&mut app, KeyCode::Enter);
+        let p = pantalla_en(&app, 80, 24);
+        assert!(
+            p.contains("¿Gastar 1 corrida de Claude? s confirma; otra tecla cancela"),
+            "{p}"
+        );
+    }
+}

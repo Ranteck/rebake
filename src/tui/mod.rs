@@ -872,4 +872,38 @@ mod tests {
         assert_eq!(texto.lines().count(), 4, "{texto}");
         assert!(!texto.contains("privada"), "{texto}");
     }
+    #[test]
+    fn fase3_enter_resolver_y_confirmacion_registran_una_decision_sin_datos_privados() {
+        let salida = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = capturar_logs(salida.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            let mut app = pendiente();
+            for code in [KeyCode::Enter, KeyCode::Esc] {
+                tecla_registrada(&mut app, KeyEvent::new(code, KeyModifiers::NONE));
+            }
+            app.recetario.items[0].fuente = None;
+            for code in [
+                KeyCode::Enter,
+                KeyCode::Down,
+                KeyCode::Enter,
+                KeyCode::Char('s'),
+            ] {
+                tecla_registrada(&mut app, KeyEvent::new(code, KeyModifiers::NONE));
+            }
+        });
+        let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
+        assert_eq!(log.lines().count(), 6, "{log}");
+        for linea in log.lines() {
+            for campo in ["accion=", "decision=", "corridas=", "resultado="] {
+                assert!(linea.contains(campo), "{linea}");
+            }
+        }
+        for decision in ["gratis", "preguntar", "confirmar", "cancelar"] {
+            assert!(log.contains(&format!("decision=\"{decision}\"")), "{log}");
+        }
+        assert!(log.contains("corridas=1"), "{log}");
+        for privado in ["privado", "https://", "/home/", "API_TOKEN"] {
+            assert!(!log.contains(privado), "{log}");
+        }
+    }
 }
