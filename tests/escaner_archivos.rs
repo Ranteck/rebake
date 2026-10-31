@@ -317,3 +317,114 @@ fn destino_ausente_conserva_marca_y_destino_propio_verificado_la_quita() {
         ["laburo"]
     );
 }
+
+#[test]
+fn skills_leen_descripcion_completa_en_los_cuatro_formatos() {
+    let h = HomeFalso::nuevo();
+    for (nombre, valor, esperado) in [
+        (
+            "plana",
+            "Author text, untouched.",
+            "Author text, untouched.",
+        ),
+        (
+            "dobles",
+            "\"Author says: \\\"hello\\\".\"",
+            "Author says: \"hello\".",
+        ),
+        (
+            "simples",
+            "'Author''s original text.'",
+            "Author's original text.",
+        ),
+        (
+            "plegado",
+            ">\n  First line.\n  Second line.",
+            "First line. Second line.",
+        ),
+        (
+            "literal",
+            "|\n  First line.\n  Second line.",
+            "First line. Second line.",
+        ),
+    ] {
+        h.escribir(&format!(".claude/skills/{nombre}/SKILL.md"), &format!("---\nname: {nombre}\ndescription: {valor}\nother: ignored\n---\nBody description: ignored"));
+        let e = escanear_laburo(&h);
+        assert_eq!(
+            hallazgo(&e, &format!("skill:{nombre}"))
+                .descripcion
+                .as_deref(),
+            Some(esperado)
+        );
+    }
+    for (nombre, texto) in [
+        ("falta", "---\nname: falta\n---\ndescription: body"),
+        ("rota", "---\ndescription: \"unclosed\n---"),
+        ("anidada", "---\nmetadata:\n  description: nested\n---"),
+        ("sin_cierre", "---\ndescription: no closing delimiter"),
+        ("objeto", "---\ndescription: {invalid: object}\n---"),
+    ] {
+        h.escribir(&format!(".claude/skills/{nombre}/SKILL.md"), texto);
+        let e = escanear_laburo(&h);
+        assert_eq!(hallazgo(&e, &format!("skill:{nombre}")).descripcion, None);
+        assert!(e.avisos.is_empty(), "{:?}", e.avisos);
+    }
+    h.escribir(".claude/skills/ilegible/SKILL.md/hijo", "directorio");
+    let e = escanear_laburo(&h);
+    assert_eq!(hallazgo(&e, "skill:ilegible").descripcion, None);
+    assert_eq!(e.avisos.len(), 1);
+}
+
+#[test]
+fn escaneo_sin_path_trae_descripcion_y_agrupa_la_primera() {
+    let h = HomeFalso::nuevo();
+    for (dir, texto) in [
+        (".claude", "First author's text"),
+        (".claude-personal", "Second author's text"),
+    ] {
+        h.escribir(&format!("{dir}/settings.json"), "{}");
+        h.escribir(
+            &format!("{dir}/skills/demo/SKILL.md"),
+            &format!("---\ndescription: {texto}\n---"),
+        );
+    }
+    let pacman = PacmanFalso(vec![]);
+    let mut entorno = entorno(&h, &pacman);
+    entorno.path.clear();
+    let e = escanear(
+        &entorno,
+        &[
+            perfil("laburo", "~/.claude"),
+            perfil("personal", "~/.claude-personal"),
+        ],
+    );
+    assert_eq!(
+        hallazgo(&e, "skill:demo").descripcion.as_deref(),
+        Some("First author's text")
+    );
+    assert_eq!(hallazgo(&e, "skill:demo").perfiles.len(), 2);
+    assert!(e.avisos.is_empty(), "{:?}", e.avisos);
+}
+
+#[test]
+fn descripcion_oculta_token_y_home_antes_de_guardar() {
+    let h = HomeFalso::nuevo();
+    let token = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789";
+    h.escribir(
+        ".claude/skills/privada/SKILL.md",
+        &format!(
+            "---\ndescription: TOKEN={token} path={}/private/file\n---",
+            h.ruta().display()
+        ),
+    );
+    let mut r = rebake::modelo::Recetario::nuevo();
+    r.perfiles.push(perfil("laburo", "~/.claude"));
+    rebake::fusion::fusionar(&mut r, escanear_laburo(&h), &|_| false);
+    let ruta = h.ruta().join("cookbook.toml");
+    rebake::archivo::guardar(&ruta, &r).unwrap();
+    let texto = std::fs::read_to_string(ruta).unwrap();
+    assert!(!texto.contains(token), "token expuesto");
+    assert!(!texto.contains(h.ruta().to_str().unwrap()), "home expuesto");
+    assert!(texto.contains("~/private/file"));
+    assert!(texto.contains(rebake::modelo::OCULTO));
+}

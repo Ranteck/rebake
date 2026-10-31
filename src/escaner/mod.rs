@@ -151,6 +151,63 @@ pub fn normalizar_url(url: &str) -> String {
         .to_string()
 }
 
+pub(super) fn descripcion_visible(texto: &str, entorno: &Entorno) -> Option<String> {
+    let texto = texto.trim();
+    (!texto.is_empty())
+        .then(|| crate::secretos::ocultar(texto).replace(&*entorno.home.to_string_lossy(), "~"))
+}
+
+pub(super) fn descripcion_skill(
+    ruta: &Path,
+    entorno: &Entorno,
+    avisos: &mut Vec<String>,
+) -> Option<String> {
+    let texto = match std::fs::read_to_string(ruta) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            avisos.push(format!(
+                "no pude leer {}: {e}",
+                rutas::contraer(ruta, &entorno.home)
+            ));
+            return None;
+        }
+    };
+    let mut lineas = texto.lines();
+    if lineas.next()? != "---" {
+        return None;
+    }
+    let frente: Vec<_> = lineas.by_ref().take_while(|l| *l != "---").collect();
+    // Sin cierre no es frontmatter: no extraer descripciones del cuerpo por accidente.
+    if frente.len() + 1 == texto.lines().count() {
+        return None;
+    }
+    let (indice, valor) = frente
+        .iter()
+        .enumerate()
+        .find_map(|(i, l)| l.strip_prefix("description:").map(|v| (i, v.trim())))?;
+    let descripcion = match valor.chars().next()? {
+        '"' => serde_json::from_str::<String>(valor).ok()?,
+        '\'' => {
+            let interior = valor.strip_prefix('\'')?.strip_suffix('\'')?;
+            if interior.replace("''", "").contains('\'') {
+                return None;
+            }
+            interior.replace("''", "'")
+        }
+        '>' | '|' if matches!(valor, ">" | "|") => frente[indice + 1..]
+            .iter()
+            .take_while(|l| l.is_empty() || l.starts_with(char::is_whitespace))
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" "),
+        '>' | '|' | '[' | '{' | '&' | '*' | '!' => return None,
+        _ => valor.to_string(),
+    };
+    descripcion_visible(&descripcion, entorno)
+}
+
 pub fn leer_json(ruta: &Path, entorno: &Entorno, avisos: &mut Vec<String>) -> Option<Value> {
     let texto = match std::fs::read_to_string(ruta) {
         Ok(t) => t,

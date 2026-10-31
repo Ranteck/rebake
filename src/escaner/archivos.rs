@@ -1,6 +1,6 @@
 use super::{
-    Entorno, Escaneo, Hallazgo, asignar_origen, clasificar_sincronizacion, leer_json,
-    normalizar_url,
+    Entorno, Escaneo, Hallazgo, asignar_origen, clasificar_sincronizacion, descripcion_skill,
+    leer_json, normalizar_url,
 };
 use crate::modelo::{Fuente, Tipo, Via};
 use crate::rutas::contraer;
@@ -55,6 +55,7 @@ fn skills(entorno: &Entorno, perfil: &str, dir: &Path, salida: &mut Escaneo) {
             salida.hallazgos.push(h);
             continue;
         }
+        h.descripcion = descripcion_skill(&ruta.join("SKILL.md"), entorno, &mut salida.avisos);
         if !asignar_origen(&mut h, &ruta, entorno) {
             match fuente_del_lock(lock.as_ref(), &nombre) {
                 Some(repo) => {
