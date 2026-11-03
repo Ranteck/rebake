@@ -82,7 +82,7 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
    gratis y sin Claude. El resultado queda en el pie. Al abrir con una URL arranca
    en **Instalar** y no escanea.
 
-2. Aparece cada cosa instalada en tus perfiles, dividida en **POR RESOLVER** (decisiones de receta pendientes, errores o posibles orígenes) y **LISTAS** (las aprobadas), agrupada por tipo. `s escanear` queda visible para repetir el escaneo.
+2. Aparece cada cosa instalada en tus perfiles, agrupada por tipo. Cada fila conserva su lugar, aprobada o no, incluso al escanear o reabrir. `s escanear` queda visible para repetir el escaneo.
    El cookbook se crea en `~/Documentos/rebake/cookbook.toml` (`~/Documents/…` en un sistema
    en inglés).
 
@@ -104,9 +104,9 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
 
 5. Enter aprueba y pasa a la siguiente; sobre una aprobada, la desaprueba sin avanzar.
    `a` o espacio alternan la aprobación sin mover la selección. La fila queda en su lugar
-   hasta escanear o reabrir; los contadores se actualizan al marcar.
+   al marcar; los contadores se actualizan con cada cambio.
    Lo que no querés instalar, excluilo con `x`.
-   Se oculta sin pedir motivo. `o` muestra u oculta los excluidos; sobre uno de ellos,
+   Se oculta sin pedir motivo. `o` muestra u oculta los excluidos en su lugar dentro de cada tipo; sobre uno de ellos,
    `x` lo vuelve a incluir conservando su receta. El motivo es opcional y se puede editar con `e`.
 
 6. **COOKBOOK LISTO** aparece cuando no hay decisiones pendientes ni trabajos en curso y el
@@ -117,7 +117,7 @@ revisión corre por debajo y no demora el arranque; sin red, no pasa nada.
 
 El pie conserva el resultado de tu última acción aunque te muevas por la lista. Los avisos
 de fondo aparecen arriba; los errores de armado o búsqueda siguen en el detalle del ítem y
-en POR RESOLVER hasta resolverse.
+cuentan como pendientes hasta resolverse.
 
 Lo mismo sin pantalla, para scripts:
 

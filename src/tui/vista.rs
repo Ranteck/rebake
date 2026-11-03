@@ -265,23 +265,8 @@ fn recetas(f: &mut Frame, app: &App, area: Rect) {
         Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(area);
     let mut lineas: Vec<Line> = Vec::new();
     let mut linea_sel = 0;
-    let mut seccion_actual = None;
     let mut tipo_actual = None;
     for (n, item) in app.visibles().into_iter().enumerate() {
-        let sec = app.seccion_en_lista(item);
-        if seccion_actual != Some(sec) {
-            seccion_actual = Some(sec);
-            tipo_actual = None;
-            let titulo = match sec {
-                crate::modelo::SeccionRecetas::PorResolver => "POR RESOLVER",
-                crate::modelo::SeccionRecetas::Listas => "LISTAS",
-                crate::modelo::SeccionRecetas::Excluidas => "EXCLUIDAS",
-            };
-            lineas.push(Line::from(Span::styled(
-                titulo,
-                Style::default().add_modifier(Modifier::BOLD),
-            )));
-        }
         if tipo_actual != Some(item.tipo) {
             tipo_actual = Some(item.tipo);
             lineas.push(Line::from(Span::styled(

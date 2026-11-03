@@ -403,7 +403,6 @@ fn escanear(app: &mut App, ruta: &Path, disparador: &str) {
                 format!(" · aviso: {}", res.avisos.join(" · "))
             };
             app.mensaje = Some(format!("escaneo: {} nuevos{avisos}", res.nuevos));
-            app.reordenar_recetas();
             app.restaurar_seleccion(elegido.as_deref());
             guardar(app, ruta);
         }
@@ -1176,13 +1175,13 @@ mod fase4_tests {
 mod fase5_tests {
     use super::apoyo_pruebas::{aislado, capturar_logs};
     use super::*;
-    use crate::modelo::{Estado, Fuente, Item, Recetario, SeccionRecetas, Tipo, Via};
+    use crate::modelo::{Estado, Fuente, Item, Recetario, Tipo, Via};
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn abrir_escanea_una_vez_tecla_reordena_y_instalar_no_toca_cookbook() {
+    fn abrir_escanea_una_vez_conserva_orden_y_instalar_no_toca_cookbook() {
         if !aislado(
-            "tui::fase5_tests::abrir_escanea_una_vez_tecla_reordena_y_instalar_no_toca_cookbook",
+            "tui::fase5_tests::abrir_escanea_una_vez_conserva_orden_y_instalar_no_toca_cookbook",
         ) {
             return;
         }
@@ -1221,21 +1220,35 @@ mod fase5_tests {
                 tecla_registrada(&mut app, KeyEvent::from(KeyCode::Char(' '))),
                 Efecto::Guardar
             );
-            assert_eq!(
-                app.seccion_en_lista(app.seleccionado().unwrap()),
-                SeccionRecetas::PorResolver
-            );
+            assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
+            assert_eq!(app.seleccion, 0);
+            assert_eq!(app.por_resolver().len(), 1);
+            assert!(!app.esta_listo());
             assert_eq!(
                 tecla_registrada(&mut app, KeyEvent::from(KeyCode::Char('s'))),
                 Efecto::Escanear
             );
             escanear(&mut app, &ruta, "tecla");
             assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
-            assert_eq!(app.seleccion, 1);
+            assert_eq!(app.seleccion, 0);
             assert_eq!(
-                app.seccion_en_lista(app.seleccionado().unwrap()),
-                SeccionRecetas::Listas
+                app.visibles()
+                    .iter()
+                    .map(|i| i.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["plugin:a@x", "plugin:b@x"]
             );
+            let reabierta = App::nueva(archivo::leer(&ruta).unwrap());
+            assert_eq!(
+                reabierta
+                    .visibles()
+                    .iter()
+                    .map(|i| i.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["plugin:a@x", "plugin:b@x"]
+            );
+            assert_eq!(reabierta.por_resolver().len(), 1);
+            assert!(!reabierta.esta_listo());
         });
         let log = String::from_utf8(salida.lock().unwrap().clone()).unwrap();
         let escaneos: Vec<_> = log

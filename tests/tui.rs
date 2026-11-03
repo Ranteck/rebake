@@ -1136,7 +1136,7 @@ fn alternar_aprobacion_dos_veces_conserva_seleccion_por_id_con_multiples_items()
 
     assert_eq!(app.seleccionado().unwrap().id, "plugin:a@x");
 
-    // Primera 'a': aprueba plugin:a@x y lo mueve a LISTAS.
+    // Primera 'a': aprueba plugin:a@x sin mover su fila.
     tecla(&mut app, KeyCode::Char('a'));
     assert_eq!(
         app.recetario.item("plugin:a@x").unwrap().estado,
@@ -2439,11 +2439,12 @@ fn grupos_imports_hooks_propios_vinculados_y_externos_en_pantalla_y_listo() {
     assert!(pos_skill < pos_jq);
     assert!(pos_hook_propio < pos_jq);
     assert!(pos_skill < pos_import);
-    assert!(pos_hook_propio < pos_import);
+    assert!(pos_import < pos_hook_propio);
 
     let p = pantalla(&app);
-    assert!(p.contains("POR RESOLVER"), "{p}");
-    assert!(p.contains("LISTAS"), "{p}");
+    for titulo in ["POR RESOLVER", "LISTAS", "EXCLUIDAS"] {
+        assert!(!p.contains(titulo), "{p}");
+    }
 
     let idx_jq = ids_visibles
         .iter()
@@ -3503,19 +3504,45 @@ fn s_escanea_descripciones_sin_confirmar_ni_iniciar_claude() {
 }
 
 #[test]
-fn fase5_espacio_fija_fila_y_seccion_y_listo_cuenta_por_estado_hasta_reabrir() {
+fn fase6_lista_por_tipo_sin_secciones_conserva_filas_y_listo_por_estado() {
     let mut r = Recetario::nuevo();
-    for nombre in ["a", "b"] {
+    for nombre in ["b", "c"] {
         let mut item = con_fuente(&format!("plugin:{nombre}@x"));
         item.estado = Estado::PorRevisar;
         r.items.push(item);
     }
-    let mut lista = con_fuente("plugin:lista@x");
+    let mut lista = con_fuente("plugin:a@x");
     lista.estado = Estado::Aprobada;
     r.items.push(lista);
+    for (id, tipo) in [
+        ("herramienta:z", Tipo::Herramienta),
+        ("import:z", Tipo::Import),
+        ("skill:z", Tipo::Skill),
+        ("marketplace:z", Tipo::Marketplace),
+    ] {
+        let mut item = Item::nuevo(id, tipo);
+        item.estado = Estado::Aprobada;
+        r.items.push(item);
+    }
     let mut app = App::nueva(r);
-    let orden: Vec<_> = app.visibles().iter().map(|i| i.id.clone()).collect();
-    for (id, restantes) in [("plugin:a@x", 1), ("plugin:b@x", 0)] {
+    let orden = vec![
+        "marketplace:z",
+        "plugin:a@x",
+        "plugin:b@x",
+        "plugin:c@x",
+        "skill:z",
+        "import:z",
+        "herramienta:z",
+    ];
+    assert_eq!(
+        app.visibles()
+            .iter()
+            .map(|i| i.id.as_str())
+            .collect::<Vec<_>>(),
+        orden
+    );
+    assert_eq!(app.por_resolver().len(), 2);
+    for (id, restantes) in [("plugin:b@x", 1), ("plugin:c@x", 0)] {
         app.restaurar_seleccion(Some(id));
         let seleccion = app.seleccion;
         assert_eq!(tecla(&mut app, KeyCode::Char(' ')), Efecto::Guardar);
@@ -3529,20 +3556,50 @@ fn fase5_espacio_fija_fila_y_seccion_y_listo_cuenta_por_estado_hasta_reabrir() {
         );
         assert_eq!(app.por_resolver().len(), restantes);
         let p = pantalla_en(&app, 80, 24);
+        assert!(p.contains(&format!("✓ {} aprobadas", 7 - restantes)), "{p}");
+        assert_eq!(
+            p.contains(&format!("□ {restantes} por revisar")),
+            restantes > 0,
+            "{p}"
+        );
         let izquierda: Vec<_> = p
             .lines()
             .map(|l| l.chars().take(32).collect::<String>())
             .collect();
         let fila = |texto: &str| izquierda.iter().position(|l| l.contains(texto)).unwrap();
-        assert!(fila("a@x") < fila("LISTAS"), "{p}");
-        assert!(fila("b@x") < fila("LISTAS"), "{p}");
+        for titulo in ["POR RESOLVER", "LISTAS", "EXCLUIDAS"] {
+            assert!(!p.contains(titulo), "{p}");
+        }
+        for par in [
+            "Marketplaces",
+            "Plugins",
+            "Skills",
+            "Imports",
+            "Herramientas",
+        ]
+        .windows(2)
+        {
+            assert!(fila(par[0]) < fila(par[1]), "{p}");
+        }
+        assert!(
+            fila("a@x") < fila("b@x") && fila("b@x") < fila("c@x"),
+            "{p}"
+        );
         assert_eq!(p.contains("COOKBOOK LISTO"), restantes == 0, "{p}");
     }
     assert!(app.esta_listo());
     let mut reabierta = App::nueva(app.recetario.clone());
+    assert_eq!(
+        reabierta
+            .visibles()
+            .iter()
+            .map(|i| i.id.as_str())
+            .collect::<Vec<_>>(),
+        orden
+    );
     let p = pantalla_en(&reabierta, 80, 24);
     assert!(!p.contains("POR RESOLVER"), "{p}");
-    assert!(p.contains("LISTAS"), "{p}");
+    assert!(!p.contains("LISTAS"), "{p}");
     for key in [KeyCode::Enter, KeyCode::Char(' ')] {
         reabierta.restaurar_seleccion(Some("plugin:a@x"));
         let seleccion = reabierta.seleccion;
@@ -3553,11 +3610,89 @@ fn fase5_espacio_fija_fila_y_seccion_y_listo_cuenta_por_estado_hasta_reabrir() {
             Estado::PorRevisar
         );
         assert!(!reabierta.esta_listo());
+        assert_eq!(reabierta.por_resolver().len(), 1);
+        assert_eq!(
+            reabierta
+                .visibles()
+                .iter()
+                .map(|i| i.id.as_str())
+                .collect::<Vec<_>>(),
+            orden
+        );
         assert!(!pantalla_en(&reabierta, 80, 24).contains("POR RESOLVER"));
         tecla(&mut reabierta, KeyCode::Char(' '));
     }
     assert!(reabierta.claude_en_curso.is_empty());
     assert!(reabierta.instalacion.is_empty());
+}
+
+#[test]
+fn fase6_excluidas_en_su_tipo_y_seleccion_por_id_estable_al_ocultar() {
+    let mut r = Recetario::nuevo();
+    for (id, tipo, estado) in [
+        ("skill:b-skill", Tipo::Skill, Estado::Aprobada),
+        ("plugin:c@x", Tipo::Plugin, Estado::PorRevisar),
+        ("plugin:b@x", Tipo::Plugin, Estado::Excluida),
+        ("skill:a-skill", Tipo::Skill, Estado::Excluida),
+        ("plugin:a@x", Tipo::Plugin, Estado::Aprobada),
+    ] {
+        let mut item = Item::nuevo(id, tipo);
+        item.estado = estado;
+        r.items.push(item);
+    }
+    let mut app = App::nueva(r);
+    app.restaurar_seleccion(Some("skill:b-skill"));
+    let seleccion = app.seleccion;
+    assert_eq!(tecla(&mut app, KeyCode::Char('o')), Efecto::Nada);
+    assert_eq!(app.seleccionado().unwrap().id, "skill:b-skill");
+    assert_eq!(
+        app.visibles()
+            .iter()
+            .map(|i| i.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "plugin:a@x",
+            "plugin:b@x",
+            "plugin:c@x",
+            "skill:a-skill",
+            "skill:b-skill"
+        ]
+    );
+    app.restaurar_seleccion(Some("plugin:a@x"));
+    let p = pantalla_en(&app, 80, 24);
+    let izquierda: Vec<_> = p
+        .lines()
+        .map(|l| l.chars().take(32).collect::<String>())
+        .collect();
+    let fila = |texto: &str| izquierda.iter().position(|l| l.contains(texto)).unwrap();
+    assert!(
+        fila("a@x") < fila("b@x") && fila("b@x") < fila("c@x"),
+        "{p}"
+    );
+    assert!(
+        fila("Plugins") < fila("b@x") && fila("b@x") < fila("Skills"),
+        "{p}"
+    );
+    assert!(
+        fila("Skills") < fila("a-skill") && fila("a-skill") < fila("b-skill"),
+        "{p}"
+    );
+    assert!(izquierda[fila("b@x")].contains('✗'), "{p}");
+    assert!(izquierda[fila("a-skill")].contains('✗'), "{p}");
+    assert!(!p.contains("EXCLUIDAS"), "{p}");
+    app.restaurar_seleccion(Some("skill:b-skill"));
+    assert_eq!(tecla(&mut app, KeyCode::Char('o')), Efecto::Nada);
+    assert_eq!(app.seleccionado().unwrap().id, "skill:b-skill");
+    assert_eq!(app.seleccion, seleccion);
+    assert_eq!(app.por_resolver().len(), 1);
+    assert!(!app.esta_listo());
+    assert_eq!(
+        app.visibles()
+            .iter()
+            .map(|i| i.id.as_str())
+            .collect::<Vec<_>>(),
+        ["plugin:a@x", "plugin:c@x", "skill:b-skill"]
+    );
 }
 
 #[test]

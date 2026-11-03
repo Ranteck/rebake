@@ -2,7 +2,7 @@ use crate::acciones;
 use crate::checklist;
 use crate::instalador::{self, Evento, Presencia, Resultado};
 use crate::investigador::{Receta, aplicar, aplicar_posible, receta_directa};
-use crate::modelo::{Ajuste, Estado, Fuente, Item, Posible, Recetario, SeccionRecetas, Via};
+use crate::modelo::{Ajuste, Estado, Fuente, Item, Posible, Recetario, Via};
 use crate::servicio::Novedad;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use std::collections::{HashMap, HashSet};
@@ -119,8 +119,6 @@ pub struct TandaActiva {
 
 pub struct App {
     pub recetario: Recetario,
-    // Aprobar cambia la marca; abrir o escanear vuelve a agrupar las filas.
-    secciones: HashMap<String, SeccionRecetas>,
     pub pestana: Pestana,
     pub seleccion: usize,
     pub filtro: String,
@@ -167,11 +165,6 @@ pub struct App {
 impl App {
     pub fn nueva(recetario: Recetario) -> Self {
         App {
-            secciones: recetario
-                .items
-                .iter()
-                .map(|i| (i.id.clone(), i.seccion()))
-                .collect(),
             recetario,
             pestana: Pestana::Armar,
             seleccion: 0,
@@ -282,45 +275,15 @@ impl App {
             })
             .filter(|i| i.id.to_lowercase().contains(&filtro))
             .collect();
-        items.sort_by(|a, b| {
-            (self.seccion_en_lista(a), a.tipo, &a.id).cmp(&(
-                self.seccion_en_lista(b),
-                b.tipo,
-                &b.id,
-            ))
-        });
+        items.sort_by(|a, b| (a.tipo, &a.id).cmp(&(b.tipo, &b.id)));
         items
-    }
-
-    pub fn reordenar_recetas(&mut self) {
-        self.secciones = self
-            .recetario
-            .items
-            .iter()
-            .map(|i| (i.id.clone(), i.seccion()))
-            .collect();
-    }
-
-    pub fn seccion_en_lista(&self, item: &Item) -> SeccionRecetas {
-        if item.estado == Estado::Excluida {
-            return SeccionRecetas::Excluidas;
-        }
-        self.secciones
-            .get(&item.id)
-            .copied()
-            .filter(|s| *s != SeccionRecetas::Excluidas)
-            .unwrap_or(SeccionRecetas::PorResolver)
     }
 
     pub fn por_resolver(&self) -> Vec<&Item> {
         self.recetario
             .items
             .iter()
-            .filter(|i| {
-                !i.es_sincronizado()
-                    && i.instalado_por.is_none()
-                    && i.seccion() == crate::modelo::SeccionRecetas::PorResolver
-            })
+            .filter(|i| !i.es_sincronizado() && i.instalado_por.is_none() && i.por_resolver())
             .collect()
     }
 
@@ -871,7 +834,7 @@ impl App {
                 let pendientes: Vec<String> = self
                     .visibles()
                     .into_iter()
-                    .filter(|i| i.seccion() == crate::modelo::SeccionRecetas::PorResolver)
+                    .filter(|i| i.por_resolver())
                     .map(|i| i.id.clone())
                     .collect();
                 let pos = pendientes.iter().position(|i| i == id).unwrap_or(0);
