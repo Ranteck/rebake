@@ -12,18 +12,19 @@ Autor: Denis · Estado: aceptado · Fecha: 2026-10-29
 ## Resultado esperado
 1. Lo sincronizado por la cuenta de Claude no aparece, no se investiga ni se instala, en ninguna
    PC ni desde la CLI, aunque ya esté en el cookbook.
-2. La lista se parte en POR RESOLVER arriba y LISTAS abajo; lo directo llega ya armado, gratis.
-   Una fila cambia de sección al escanear o al reabrir, no al aprobar. Lo excluido se esconde tras un contador y una tecla. Los hooks de una herramienta se ven
-   dentro de ella; los propios siguen en la lista y los externos, en Checklist.
+2. La lista va por tipo, como antes: cada fila en su lugar, aprobada o no, y no se mueve al
+   aprobar, escanear ni reabrir. Lo directo llega ya armado, gratis. Lo excluido se esconde tras
+   un contador y una tecla. Los hooks de una herramienta se ven dentro de ella; los propios
+   siguen en la lista y los externos, en Checklist.
 3. Enter hace la acción siguiente del ítem: aprueba y pasa al próximo; arma o acepta un posible
    origen, pidiendo `s` si gasta Claude; en lo sin origen abre "Resolver" (pegar link gratis,
    buscar por 1 corrida, excluir; un posible también se descarta). En lo aprobado desaprueba,
    como espacio.
 4. `t` arma solo lo que tiene origen; nunca busca orígenes.
 5. `x` excluye de un toque; el motivo es opcional.
-6. Con POR RESOLVER en cero, nada corriendo y el último guardado sin error, la pantalla dice
+6. Con nada por resolver, nada corriendo y el último guardado sin error, la pantalla dice
    "COOKBOOK LISTO", si quedó subido al repo o solo en esta PC, y qué sigue en la otra PC;
-   errores y posibles quedan en POR RESOLVER.
+   errores y posibles cuentan como por resolver.
 7. Pestañas en el orden real: Armar, Instalar, Checklist.
 8. El resultado de cada acción (escanear, armar, guardar) dice qué cambió y queda a la vista
    hasta la próxima; ningún aviso de fondo lo pisa. Cómo salir está siempre a la vista, y
@@ -55,3 +56,7 @@ Ninguna.
 - 2026-10-31: `s escanear` a la vista y escaneo al abrir, solo en Armar: en una PC recién
   formateada un escaneo puede quitar perfiles y vaciar la Checklist. Denis: "tampoco dice dónde
   poner lo del s". Aprobado.
+- 2026-11-03: sin secciones POR RESOLVER y LISTAS; la lista vuelve a ir por tipo y cada fila
+  queda en su lugar. Denis: "deja como estaba antes, que las cosas aparezcan en su lugar
+  correspondiente y uno va ítem por ítem aprobando con espacio o desaprobando o excluyéndolo".
+  Aprobado.

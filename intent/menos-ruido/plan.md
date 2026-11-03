@@ -1,6 +1,6 @@
 # Plan: rediseño de Recetas
 Estado: aceptado
-Intent/spec aceptados: 2026-10-29; base v0.12.1. Fase 5: enmiendas 2026-10-31, base v0.17.0.
+Intent/spec aceptados: 2026-10-29; base v0.12.1. Fase 5: enmiendas 2026-10-31, base v0.17.0. Fase 6: enmienda 2026-11-03, base v0.18.0.
 
 ## Archivos que cambian
 Existen: `src/modelo.rs`, `src/escaner/mod.rs`, `src/escaner/archivos.rs`, `src/escaner/plugins.rs`, `src/fusion.rs`, `src/servicio.rs`, `src/instalador.rs`, `src/checklist.rs`, `src/acciones.rs`, `src/investigador.rs`, `src/main.rs`, `src/sincro.rs`, `src/tui/app.rs`, `src/tui/vista.rs`, `src/tui/mod.rs`, `tests/comun/mod.rs`, `tests/checklist.rs`, `README.md`, `Cargo.toml`, `Cargo.lock` y los tests de la tabla. Nuevos: ninguno.
@@ -27,7 +27,8 @@ Ampliar suites.
 | t+s: cinco de seis Claude, queda uno; posible intacto, sin encadenar | `tests/tui.rs` | REQ-4 |
 | i/r pagas, con/sin origen: cero antes de s, una después | `tests/tui.rs` | REQ-4 |
 | Enter/espacio en aprobada: por revisar, fila y selección quietas; cero corridas/instalaciones | `tests/tui.rs` | REQ-3 |
-| Aprobar/desaprobar no reordena; contador/LISTO por estado; escanear o reabrir reacomoda | `tests/tui.rs` | REQ-2, REQ-3 |
+| Lista por tipo sin POR RESOLVER/LISTAS; aprobar, desaprobar, escanear o reabrir no mueve filas; contador/LISTO por estado | `tests/tui.rs`, `src/tui/mod.rs` | REQ-2, REQ-3, REQ-6 |
+| Con `o`, lo excluido aparece en su lugar por tipo; selección por id estable al ocultar | `tests/tui.rs` | REQ-5, REQ-9 |
 | Espacio sin receta guía a Enter, sin cambios | `tests/tui.rs` | REQ-3 |
 | `s escanear` en pie de Armar y ayuda, 80×24 | `tests/tui.rs` | REQ-7 |
 | Abrir sin URL escanea una vez sin `s`; con URL, cero escaneos y cookbook intacto | `tests/tui.rs`, `src/tui/mod.rs` | REQ-11 |
@@ -48,9 +49,10 @@ Cada fase exige tests rojos, suite verde, README y commit; entrega una TUI usabl
 3. **Guiar acciones** (REQ-3, REQ-4, REQ-9). Ampliar Modo/Efecto y reutilizar confirmaciones para Enter/Resolver e i/r, que se conservan con s si gastan. Implementar las orientaciones de la tabla. Un lector Crossterm maneja paste y restaura foco. Denis conoce el costo antes de confirmar; la CLI no agrega confirmaciones.
 4. **Cerrar claramente** (REQ-6–REQ-8, REQ-10). Guardar informa éxito a App; separar resultados/avisos y conservar errores. Reusar Rama/publicar para arranque/salida. Denis ve qué cambió, qué falta, dónde quedó guardado y cómo salir.
 5. **Marcar en el lugar y escanear solo** (REQ-2, REQ-3, REQ-7, REQ-11). App fija el orden por sección al abrir y al escanear; aprobar/desaprobar cambia la marca sin reordenar. Enter/espacio alternan en aprobadas; sin receta, guía a Enter. Pie y ayuda muestran `s escanear`. `servicio::escanear` arma gratis las directas pendientes, no solo las nuevas. `tui::ejecutar` escanea al abrir si no arranca en Instalar, por el mismo camino y evento que `s`. Se publica como v0.18.0.
+6. **Lista por tipo** (REQ-2, REQ-6, REQ-8, REQ-9; enmienda 2026-11-03). `visibles` ordena solo por tipo e id; se borran `App.secciones`, `reordenar_recetas` y `seccion_en_lista`, y `vista::recetas` deja los títulos por tipo sin POR RESOLVER/LISTAS/EXCLUIDAS. Con `o`, lo excluido se ve en su lugar con su marca. El estado sigue decidiendo qué está por resolver: contadores, LISTO y el «pasa al próximo» de Enter no cambian. README sin secciones. Se publica como v0.19.0.
 
 ## Riesgos
-Una carpeta ausente no borra marcas; perfiles vacíos no habilitan ejecución global. Conservar fixes v0.12.1. Los tests antiguos de i/r, link vacío y cuota incorporan s porque REQ-4 sustituye el lanzamiento inmediato, sin perder validaciones. Fase 5: el test «Enter en LISTAS indica 2 Instalar» pasa a desaprobar porque lo pide la enmienda; el escaneo al abrir nunca corre con URL.
+Una carpeta ausente no borra marcas; perfiles vacíos no habilitan ejecución global. Conservar fixes v0.12.1. Los tests antiguos de i/r, link vacío y cuota incorporan s porque REQ-4 sustituye el lanzamiento inmediato, sin perder validaciones. Fase 5: el test «Enter en LISTAS indica 2 Instalar» pasa a desaprobar porque lo pide la enmienda; el escaneo al abrir nunca corre con URL. Fase 6: los tests que afirman POR RESOLVER/LISTAS o el reacomodo al reabrir cambian porque la enmienda 2026-11-03 los anula; los de selección por id y LISTO se conservan.
 
 ## Prueba
 HomeFalso/tempfile, Git bare y Claude falsos evitan configuración real/red. Ejecutar casos de escaneo con Git en hijos current_exe/--exact, como `tests/investigador.rs`: cada Command usa env_clear, HOME temporal, XDG_CONFIG_HOME, PATH de fixtures, GIT_CONFIG_NOSYSTEM=1 y GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM=/dev/null. Git espía verifica herencia; configs inválidas prueban aislamiento, sin variables globales.
