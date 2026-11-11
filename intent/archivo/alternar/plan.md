@@ -45,3 +45,9 @@ Los tests del pie que hoy esperan `a  aprobar   e  editar…` se actualizan a
 - `cargo test` (193 actuales más los nuevos) y `cargo clippy --all-targets -- -D warnings`.
 - Manual (Denis): en Recetas, espacio dos veces sobre una receta (aprueba y desaprueba),
   `x` + motivo y `x` de nuevo (excluye y recupera); en Instalación, espacio sigue marcando.
+
+## Diferencias con lo construido
+Archivado 2026-11-11. Auditoría de Codex (solo lectura, por REQ, sobre `3a4c791`): alternar
+aprobado y excluido funciona como pide el spec, pero el spec y este plan quedaron desactualizados
+en el motivo, los textos y los atajos que muestra la TUI; mandan el código y `tests/tui.rs`.
+`cargo test --locked` en verde (401) al archivar.

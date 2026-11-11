@@ -1056,3 +1056,9 @@ git commit -m "docs: rebake clonar in the README; bump to 0.3.0"
 - `cargo test --locked`: los 14 tests de `tests/sincro.rs` y los 3 de `tests/servicio.rs` muestran REQ-1 a REQ-10 según la tabla; la suite existente muestra que nada se rompió.
 - `cargo clippy --all-targets -- -D warnings` y `cargo fmt --check` limpios.
 - Manual (REQ-11 y uso real), solo con tu OK porque pushea al repo real: `rebake clonar https://github.com/Ranteck/rebake-cookbok` en una carpeta de prueba con `--archivo`, un `rebake renombrar-perfil` de ida y vuelta, y ver los commits en GitHub.
+
+## Diferencias con lo construido
+Archivado 2026-11-11. Auditoría de Codex (solo lectura, por REQ, sobre `3a4c791`): el flujo de
+clonar y sincronizar está construido. El REQ-4 dice literalmente que no se corre git en otro
+repo, pero la marca del clon se detecta con una consulta a `git config`; manda el código
+(`src/sincro.rs`). `cargo test --locked` en verde (401) al archivar.
