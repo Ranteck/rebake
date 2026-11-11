@@ -193,13 +193,23 @@ pub(super) fn descripcion_skill(
         .map(|l| l.trim())
         .filter(|l| !l.is_empty());
     let descripcion = match valor.chars().next()? {
-        '"' => serde_json::from_str::<String>(valor).ok()?,
-        '\'' => {
-            let interior = valor.strip_prefix('\'')?.strip_suffix('\'')?;
-            if interior.replace("''", "").contains('\'') {
-                return None;
-            }
-            interior.replace("''", "'")
+        comilla @ ('"' | '\'') => {
+            let mut junto = String::new();
+            std::iter::once(valor)
+                .chain(continuacion)
+                .find_map(|parte| {
+                    if !junto.is_empty() {
+                        junto.push(' ');
+                    }
+                    junto.push_str(parte);
+                    if comilla == '"' {
+                        serde_json::from_str::<String>(&junto).ok()
+                    } else {
+                        let interior = junto.strip_prefix('\'')?.strip_suffix('\'')?;
+                        (!interior.replace("''", "").contains('\''))
+                            .then(|| interior.replace("''", "'"))
+                    }
+                })?
         }
         '>' | '|'
             if matches!(

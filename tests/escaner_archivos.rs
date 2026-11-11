@@ -374,8 +374,12 @@ fn skills_leen_descripcion_completa_en_los_cuatro_formatos() {
         ),
         ("sangria_invalida", "---\ndescription: >0\n  ignored\n---"),
         (
-            "dobles_multilinea",
-            "---\ndescription: \"First line.\n  Second line.\"\n---",
+            "dobles_multilinea_sin_cierre",
+            "---\ndescription: \"First line.\n  Second line.\n---",
+        ),
+        (
+            "simples_multilinea_sin_cierre",
+            "---\ndescription: 'First line.\n  Second line.\n---",
         ),
     ] {
         h.escribir(&format!(".claude/skills/{nombre}/SKILL.md"), texto);
@@ -439,6 +443,100 @@ fn skills_leen_descripcion_plana_de_varias_lineas() {
     assert_eq!(
         hallazgo(&e, "skill:plana").descripcion.as_deref(),
         Some("Use when the user asks for help. Keep the author's text.")
+    );
+}
+
+#[test]
+fn skills_leen_descripcion_entre_comillas_de_varias_lineas() {
+    let h = HomeFalso::nuevo();
+    for (nombre, valor, esperado) in [
+        (
+            "dobles_multilinea",
+            "\"Use when the user\n  asks for \\\"help\\\".\"",
+            "Use when the user asks for \"help\".",
+        ),
+        (
+            "simples_multilinea",
+            "'Use when the user\n  asks for ''help''.'",
+            "Use when the user asks for 'help'.",
+        ),
+    ] {
+        h.escribir(
+            &format!(".claude/skills/{nombre}/SKILL.md"),
+            &format!("---\ndescription: {valor}\nother: ignored\n---\nBody ignored."),
+        );
+        let e = escanear_laburo(&h);
+        assert_eq!(
+            hallazgo(&e, &format!("skill:{nombre}"))
+                .descripcion
+                .as_deref(),
+            Some(esperado),
+            "{nombre}"
+        );
+    }
+}
+
+#[test]
+fn doble_cerrada_en_primera_linea_con_comentario_indentado() {
+    let h = HomeFalso::nuevo();
+    h.escribir(
+        ".claude/skills/doble_comentario/SKILL.md",
+        "---\ndescription: \"First line.\"\n  # indented comment\nother: ignored\n---\nBody.",
+    );
+    let e = escanear_laburo(&h);
+    assert_eq!(
+        hallazgo(&e, "skill:doble_comentario")
+            .descripcion
+            .as_deref(),
+        Some("First line.")
+    );
+}
+
+#[test]
+fn simple_cerrada_en_primera_linea_con_comentario_indentado() {
+    let h = HomeFalso::nuevo();
+    h.escribir(
+        ".claude/skills/simple_comentario/SKILL.md",
+        "---\ndescription: 'First line.'\n  # indented comment\nother: ignored\n---\nBody.",
+    );
+    let e = escanear_laburo(&h);
+    assert_eq!(
+        hallazgo(&e, "skill:simple_comentario")
+            .descripcion
+            .as_deref(),
+        Some("First line.")
+    );
+}
+
+#[test]
+fn doble_multilinea_con_comentario_indentado() {
+    let h = HomeFalso::nuevo();
+    h.escribir(
+        ".claude/skills/doble_multi_comentario/SKILL.md",
+        "---\ndescription: \"Use when the user\n  asks for help.\"\n  # indented comment\nother: ignored\n---\nBody.",
+    );
+    let e = escanear_laburo(&h);
+    assert_eq!(
+        hallazgo(&e, "skill:doble_multi_comentario")
+            .descripcion
+            .as_deref(),
+        Some("Use when the user asks for help.")
+    );
+}
+
+#[test]
+fn simple_multilinea_con_comentario_indentado() {
+    let h = HomeFalso::nuevo();
+    h.escribir(
+        ".claude/skills/simple_multi_comentario/SKILL.md",
+        "---\ndescription: 'Use when the user\n  asks for help.'\n  # indented comment\nother: ignored\n---\nBody.",
+    );
+    let e = escanear_laburo(&h);
+    assert_eq!(
+        hallazgo(&e, "skill:simple_multi_comentario")
+            .descripcion
+            .as_deref(),
+        Some("Use when the user asks for help.")
     );
 }
 
