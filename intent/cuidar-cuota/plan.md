@@ -41,3 +41,11 @@ Pruebas nuevas deterministas: teclas, efectos, resultados inyectados y `TestBack
 - `cargo fmt`: formato.
 - `cargo clippy --all-targets -- -D warnings`: compilación y lint de todos los targets.
 - `cargo test --locked`: tabla completa: gratis (REQ-1), pregunta persistente (REQ-2), confirmación/cancelación (REQ-3), concurrencia (REQ-4), ancho (REQ-5), costo (REQ-6), errores (REQ-7), regresiones (REQ-8).
+
+## Diferencias con lo construido
+2026-11-11. REQ-2 y REQ-3 (búsquedas de origen dentro de `t`): sustituidos por la enmienda
+del 2026-10-29 (`intent.md`, Cambios): `t` arma solo lo que tiene origen y no rellena con
+búsquedas. REQ-8: `i` también pide `s` antes de una corrida paga, por la restricción de
+menos-ruido «ninguna corrida de Claude sin mostrar cuántas son y pedir `s`»
+(`intent/archivo/menos-ruido/intent.md`). REQ-5: a 80 columnas el pie muestra `t` con las dos
+cuentas, abreviando las pestañas a `1 2 3`; lo prueba un render real a 80 en `tests/tui.rs`.

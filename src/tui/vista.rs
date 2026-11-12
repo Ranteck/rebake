@@ -181,7 +181,10 @@ fn cabecera(app: &App, aviso_corto: bool, corta: bool) -> String {
         .as_ref()
         .map_or_else(String::new, |nueva| {
             if aviso_corto {
-                format!(" ⬆ {nueva}: u actualiza ·")
+                format!(
+                    " ⬆ {nueva} (tenés {}): u actualiza ·",
+                    env!("CARGO_PKG_VERSION")
+                )
             } else {
                 format!(
                     " ⬆ rebake {nueva} disponible (tenés {}): u actualiza  ·",
@@ -467,6 +470,11 @@ fn lineas_detalle(app: &App, item: &Item, ancho: u16) -> Vec<Line<'static>> {
     }
     let mut l = vec![Line::from(primera)];
     l.extend(descripcion.into_iter().map(Line::from));
+    if app.pestana == Pestana::Instalacion
+        && let Some(faltan) = perfiles_faltantes(app, &item.id)
+    {
+        l.push(Line::from(format!("falta en: {}", faltan.join(", "))));
+    }
     // La primera línea ya dice el estado; los perfiles importan solo si no son todos.
     let propios = item.perfiles_propios().count();
     if propios > 0 && propios < app.recetario.perfiles.len() {
@@ -655,19 +663,30 @@ fn checklist(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+fn perfiles_faltantes<'a>(app: &'a App, id: &str) -> Option<&'a [String]> {
+    match app.presencia.get(id) {
+        Some(Presencia::Falta(faltan)) if faltan.is_empty() => {
+            app.recetario.item(id).map(|i| i.perfiles.as_slice())
+        }
+        Some(Presencia::Falta(faltan)) => Some(faltan),
+        _ => None,
+    }
+}
+
 fn texto_presencia(app: &App, id: &str) -> String {
+    if let Some(faltan) = perfiles_faltantes(app, id) {
+        let todos = app.recetario.item(id).map_or(&[][..], |i| &i.perfiles[..]);
+        return if faltan.len() >= todos.len() {
+            "falta".into()
+        } else {
+            format!("falta en {}", faltan.join(", "))
+        };
+    }
     match app.presencia.get(id) {
         None if app.comprobando => "comprobando…".into(),
         None => "sin comprobar".into(),
         Some(Presencia::Instalada) => "instalada".into(),
-        Some(Presencia::Falta(faltan)) => {
-            let todos = app.recetario.item(id).map_or(&[][..], |i| &i.perfiles[..]);
-            if faltan.is_empty() || faltan.len() >= todos.len() {
-                "falta".into()
-            } else {
-                format!("falta en {}", faltan.join(", "))
-            }
-        }
+        Some(Presencia::Falta(_)) => "falta".into(),
         Some(Presencia::SinComprobacion) => "no se puede saber".into(),
         Some(Presencia::NoSePudo(_)) => "no se pudo comprobar".into(),
     }
@@ -1050,34 +1069,37 @@ fn lineas_pie(app: &App, ancho: u16) -> Vec<Line<'static>> {
             }
         }
         acciones.push("s escanear".into());
-        let obligatorias = acciones.len();
+        let mut opcionales = acciones.len();
         if gratis + claude > 0 {
-            acciones.push("t armar".into());
+            let cuenta = match (gratis, claude) {
+                (n, 0) => format!("{n}"),
+                (0, n) => format!("{n} Claude"),
+                (g, c) => format!("{g} + {c} Claude"),
+            };
+            acciones.push(format!("t {cuenta}"));
         }
         if por_revisar > 0 {
-            acciones.push("v aprobar".into());
+            acciones.push(format!("v aprobar {por_revisar}"));
         }
+        let reserva_repo = if app.sincroniza || app.repo.is_some() {
+            " (sube al repo)".width()
+        } else {
+            0
+        };
         let completa = format!(
             "1 Armar  2 Instalar  3 Checklist  {}  ?  ayuda q salir",
             acciones.join("  ")
         );
-        let texto = if completa.width() <= ancho as usize {
+        let texto = if completa.width() + reserva_repo <= ancho as usize {
             completa
         } else {
-            let reserva_repo = if app.sincroniza || app.repo.is_some() {
-                " (sube al repo)".width()
-            } else {
-                0
-            };
             loop {
-                let texto = format!("1 Armar 2 Inst 3 Check {} ? q salir", acciones.join(" "));
-                if texto.width() + reserva_repo <= ancho as usize {
+                let texto = format!("1 2 3 {} ? ayuda q salir", acciones.join(" "));
+                if texto.width() + reserva_repo <= ancho as usize || opcionales == 0 {
                     break texto;
                 }
-                if acciones.len() == obligatorias {
-                    break texto.replace("3 Check", "3");
-                }
-                acciones.pop();
+                opcionales -= 1;
+                acciones.remove(0);
             }
         };
         spans = vec![Span::raw(texto)];

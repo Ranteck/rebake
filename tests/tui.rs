@@ -415,8 +415,69 @@ fn p_confirma_cuantas_de_cuantas_e_instala_las_marcadas() {
 #[test]
 fn abrir_instalacion_no_pide_comprobar() {
     let mut app = App::nueva(recetario());
-    assert_eq!(tecla(&mut app, KeyCode::Char('3')), Efecto::Nada);
+    assert_eq!(tecla(&mut app, KeyCode::Char('2')), Efecto::Nada);
+    assert_eq!(app.pestana, Pestana::Instalacion);
     assert!(app.presencia.is_empty() && !app.comprobando);
+}
+
+#[test]
+fn pendientes_del_plan_pie_real_80_columnas_conserva_cuentas_y_ayuda() {
+    use unicode_width::UnicodeWidthStr;
+    for repo in [false, true] {
+        for (gratis, claude, cuenta) in [
+            (107, 141, "107 + 141 Claude"),
+            (999, 0, "999"),
+            (0, 999, "999 Claude"),
+        ] {
+            let mut app = con_cuota(gratis, claude, 0);
+            for n in 0..999 {
+                let mut item = con_fuente(&format!("plugin:revisar-{n}@x"));
+                item.estado = Estado::PorRevisar;
+                app.recetario.items.push(item);
+            }
+            app.sincroniza = repo;
+            let pantalla = pantalla_en(&app, 80, 24);
+            let pie = pantalla.lines().nth(22).unwrap().trim_end();
+            for esperado in [
+                format!("t {cuenta}"),
+                "v aprobar 999".into(),
+                "? ayuda".into(),
+                "q salir".into(),
+            ] {
+                assert!(pie.contains(&esperado), "falta {esperado:?}: {pie}");
+            }
+            if repo {
+                assert!(pie.ends_with(" (sube al repo)"), "{pie}");
+            }
+            assert!(pie.width() <= 80, "{pie}");
+            println!("pie 80x24: {pie}");
+        }
+    }
+}
+
+#[test]
+fn pendientes_del_plan_cabecera_compacta_conserva_version_instalada() {
+    let mut app = App::nueva(recetario());
+    app.version_nueva = Some("99.0.0".into());
+    let p = pantalla_en(&app, 80, 24);
+    let cabecera = p.lines().next().unwrap();
+    assert!(
+        cabecera.contains(&format!(
+            "⬆ 99.0.0 (tenés {}): u actualiza",
+            env!("CARGO_PKG_VERSION")
+        )),
+        "{cabecera}"
+    );
+}
+
+#[test]
+fn pendientes_del_plan_instalar_detalle_muestra_perfiles_faltantes() {
+    let mut app = con_plan();
+    app.recetario.item_mut(CODEX).unwrap().perfiles = vec!["laburo".into(), "personal".into()];
+    app.registrar_presencia(CODEX, Presencia::Falta(vec!["personal".into()]));
+    resaltar(&mut app, CODEX);
+    let p = pantalla(&app);
+    assert!(p.contains("falta en: personal"), "{p}");
 }
 
 #[test]
@@ -755,7 +816,7 @@ fn el_pie_conserva_ayuda_y_armar_todas_a_80_columnas_con_receta_elegida() {
     let p = pantalla_en(&app, 80, 24);
     let primera = p.lines().nth(22).unwrap();
     assert!(primera.contains("q salir") && primera.contains("?"), "{p}");
-    assert!(primera.contains("t armar"), "{p}");
+    assert!(primera.contains("t 1"), "{p}");
 }
 
 #[test]
@@ -1980,7 +2041,13 @@ fn el_pie_mide_80_columnas_con_cuentas_de_tres_cifras_incluso_con_filtro() {
         assert_eq!(UnicodeWidthStr::width(&linea[..fin]), ancho, "{linea}");
         let chica = pantalla_en(&app, 80, 24);
         let pie = chica.lines().nth(22).unwrap();
-        for esperado in ["1 Armar", "2 Inst", "3 Check", "q salir", "t armar"] {
+        let cuenta = texto.trim().replace("t  armar", "t");
+        let (pestanas, ayuda) = if c == 0 {
+            ("1 Armar  2 Instalar  3 Checklist", "?  ayuda")
+        } else {
+            ("1 2 3", "? ayuda")
+        };
+        for esperado in [pestanas, "q salir", ayuda, &cuenta] {
             assert!(pie.contains(esperado), "falta {esperado:?}: {pie}");
         }
         assert!(chica.lines().nth(23).unwrap().contains("Escaneo terminado"));
@@ -2309,13 +2376,12 @@ fn el_pie_en_80_columnas_con_pendientes_y_por_revisar_mide_78_columnas_hasta_v()
     let chica = pantalla_en(&app, 80, 24);
     let pie = chica.lines().nth(22).unwrap();
     for esperado in [
-        "1 Armar",
-        "2 Inst",
-        "3 Check",
+        "1 2 3",
         "q salir",
-        "t armar",
-        "v aprobar",
-        "Enter armar gratis",
+        "? ayuda",
+        "t 999 + 999 Claude",
+        "v aprobar 999",
+        "s escanear",
     ] {
         assert!(pie.contains(esperado), "falta {esperado:?} en {pie}");
     }

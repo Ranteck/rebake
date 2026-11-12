@@ -64,3 +64,9 @@ enmienda: ya no hay pregunta. Su intención pasa a tests sobre `instalar` con la
   enseguida, la cabecera muestra "rebake 0.6.0 disponible (tenés 0.5.0): U actualiza", `U` la
   reemplaza y vuelve la pantalla (la v0.6.0 pregunta `[s/N]`; se contesta "n").
 - Arranque de un subcomando con GitHub: igual que sin red (~0,01 s).
+
+## Diferencias con lo construido
+2026-11-11. REQ-3: el aviso compacto de la cabecera también muestra la versión instalada
+(`⬆ X (tenés Y): u actualiza`). REQ-4: `U` → exec → pantalla nueva sigue siendo prueba manual,
+como dice este plan; los tests cubren instalar con checksum y el `Efecto::Actualizar`. REQ-9:
+`--help` sin consulta a la red quedó cubierto por un test (el comportamiento ya existía).

@@ -46,3 +46,10 @@ Pruebas deterministas con TestBackend y estados simulados; sin procesos externos
 - `cargo fmt --check`: formato.
 - `cargo clippy --all-targets -- -D warnings`: compilación y lint limpios.
 - `cargo test --locked`: tabla completa: masiva con `acciones::aprobar` (REQ-1, REQ-2, REQ-8), lista vacía (REQ-3), alternar con `□` (REQ-4), tanda mixta con/sin pendientes e `i` aislado (REQ-5), marca (REQ-6), prefijo en 78 cols sin desbordar 80 (REQ-7).
+
+## Diferencias con lo construido
+2026-11-11. REQ-5 (tanda mixta de investigaciones y búsquedas): ya no existe. Desde la enmienda
+del 2026-10-29 (`intent/cuidar-cuota/intent.md`, Cambios), `t` arma solo lo que tiene origen y no
+busca orígenes, así que el balance de fin de tanda cubre solo investigaciones. REQ-7: a 80
+columnas el pie abrevia las pestañas a `1 2 3` y conserva `? ayuda`, `t` con sus cuentas y
+`v aprobar N` (decisión de Denis, 2026-11-11); lo prueba un render real a 80 en `tests/tui.rs`.

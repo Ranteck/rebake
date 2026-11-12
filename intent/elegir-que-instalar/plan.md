@@ -749,3 +749,8 @@ fn instalar_lista_sin_marcas_si_no_hubo_cambios() {
 3. Con el clon real de Denis: `rebake` abre en Recetas y la pestaña 3 dice que no hay recetas
    aprobadas (las 73 están pendientes).
 4. Revisión de seguridad del diff completo antes de proponer el merge.
+
+## Diferencias con lo construido
+2026-11-11. La pestaña Instalar pasó de `3` a `2` por el reorden de menos-ruido; el test
+`abrir_instalacion_no_pide_comprobar` se actualizó a la tecla nueva. REQ-11: el panel de detalle
+de Instalar muestra «falta en: <perfiles>», con el mismo cálculo que la lista.

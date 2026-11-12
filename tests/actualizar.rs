@@ -313,3 +313,17 @@ fn version_no_consulta_la_red() {
     assert!(o.status.success());
     assert!(s.pedidos().is_empty(), "{:?}", s.pedidos());
 }
+
+#[test]
+fn help_no_consulta_la_red() {
+    let s = Servidor::nuevo("99.0.0");
+    let c = Copia::nueva();
+    let o = Command::new(c.bin())
+        .arg("--help")
+        .env("HOME", c.home.path())
+        .env("REBAKE_BASE_URL", &s.base)
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    assert!(s.pedidos().is_empty(), "{:?}", s.pedidos());
+}
